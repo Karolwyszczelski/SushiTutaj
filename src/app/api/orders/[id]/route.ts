@@ -116,7 +116,7 @@ export async function PATCH(
   const { data: existing, error: getErr } = await (supabaseAdmin as any)
     .from("orders")
     .select(
-      "id, restaurant_id, phone, contact_email, selected_option, status, user_id, legal_accept"
+      "id, restaurant_id, phone, contact_email, selected_option, status, user, legal_accept"
     )
     .eq("id", orderId)
     .maybeSingle();

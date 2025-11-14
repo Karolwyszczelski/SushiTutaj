@@ -2,12 +2,11 @@
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
-import type { Database } from "@/types/supabase";
 import { getSessionAndRole } from "@/lib/serverAuth";
 
 export async function GET() {
   // ✅ tylko cookies — bez headers
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+  const supabase = createRouteHandlerClient({ cookies });
 
   const { data, error } = await supabase
     .from("menu_items")
@@ -36,7 +35,7 @@ export async function POST(request: Request) {
   }
 
   // 3) insert
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+ const supabase = createRouteHandlerClient({ cookies });
 
   // Uwaga: w projekcie aktualizacje używają `category_id`.
   // Dla zgodności: jeśli przyjdzie `category`, mapujemy go do `category_id`.

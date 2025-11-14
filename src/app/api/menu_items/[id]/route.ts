@@ -18,7 +18,7 @@ export async function PATCH(
   const body = await request.json();
 
   // WA: typy Database nie mają `menu_items` → rzutujemy klienta na any
-  const supabase = createRouteHandlerClient({ cookies }) as any;
+  const supabase = createRouteHandlerClient({ cookies });
 
   const { data, error } = await supabase
     .from("menu_items")

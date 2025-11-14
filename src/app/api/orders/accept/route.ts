@@ -1,8 +1,6 @@
-// src/app/api/orders/accept/route.ts
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-import type { RouteContext } from "next";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
@@ -23,22 +21,11 @@ const fmtPL = (iso: string) =>
     timeZone: "Europe/Warsaw",
   });
 
-// literalna ścieżka route'a
-type Route = "/api/orders/accept";
-
-export async function POST(
-  req: Request,
-  ctx: RouteContext<Route>
-) {
-  const { id } = await ctx.params;
-
+export async function POST(req: Request, { params }: { params: { id: string } }) {
   const { session, role } = await getSessionAndRole(req);
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (role !== "admin" && role !== "employee") {
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (role !== "admin" && role !== "employee")
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
 
   try {
     const body = await req.json().catch(() => ({}));
@@ -50,23 +37,17 @@ export async function POST(
     const { data: order, error: selErr } = await supabaseAdmin
       .from("orders")
       .select("id, contact_email, phone, name, selected_option, restaurant_id")
-      .eq("id", id)
+      .eq("id", params.id)
       .maybeSingle();
     if (selErr) throw selErr;
-    if (!order) {
-      return NextResponse.json({ error: "Order not found" }, { status: 404 });
-    }
+    if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
     // 2) Aktualizacja statusu + ETA (obsługa obu nazw kolumn)
     const { data: updated, error: updErr } = await supabaseAdmin
-      .from("orders")
-      .update({
-        status: "accepted",
-        deliveryTime: etaISO,
-        delivery_time: etaISO,
-      })
-      .eq("id", id)
-      .select("id, status, deliveryTime, delivery_time")
+   .from("orders")
+   .update({ status: "accepted", deliveryTime: etaISO })
+   .eq("id", params.id)
+   .select("id, status, deliveryTime")
       .maybeSingle();
     if (updErr) throw updErr;
 
@@ -95,12 +76,9 @@ export async function POST(
     return NextResponse.json({
       id: updated?.id,
       status: updated?.status,
-      deliveryTime: updated?.deliveryTime || updated?.delivery_time || etaISO,
+      deliveryTime: updated?.deliveryTime || etaISO,
     });
   } catch (e: any) {
-    return NextResponse.json(
-      { error: e?.message || "Server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
 }
