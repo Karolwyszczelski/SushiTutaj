@@ -1,5 +1,7 @@
+// src/app/api/orders/status/[id]/route.ts
 export const runtime = "nodejs";
 
+import type { RouteContext } from "next";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verify } from "@/lib/orderLink";
@@ -10,9 +12,17 @@ const supabaseAdmin = createClient(
   { auth: { persistSession: false } }
 );
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
-  const id = params?.id;
-  if (!id) return NextResponse.json({ error: "missing_id" }, { status: 400 });
+// literalna ścieżka route'a
+type Route = "/api/orders/status/[id]";
+
+export async function GET(
+  req: Request,
+  ctx: RouteContext<Route>
+) {
+  const { id } = await ctx.params;
+  if (!id) {
+    return NextResponse.json({ error: "missing_id" }, { status: 400 });
+  }
 
   // wymagamy podpisu ?t=
   const url = new URL(req.url);
@@ -35,9 +45,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     console.error("[status.get] db error:", error);
     return NextResponse.json({ error: "db_error" }, { status: 500 });
   }
-  if (!data) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  if (!data) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
 
-  const etaFinal: string | null = (data as any).eta ?? (data as any).deliveryTime ?? null;
+  const etaFinal: string | null =
+    (data as any).eta ?? (data as any).deliveryTime ?? null;
 
   return NextResponse.json({
     id: data.id,

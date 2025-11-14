@@ -1,6 +1,8 @@
+// src/app/api/admin/tables/[id]/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+import type { RouteContext } from "next";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
@@ -22,10 +24,19 @@ const Patch = z.object({
   seats: z.number().int().min(1).optional(),
 });
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+// literalna ścieżka route'a
+type Route = "/api/admin/tables/[id]";
+
+export async function PATCH(
+  req: Request,
+  ctx: RouteContext<Route>
+) {
+  const { id } = await ctx.params;
+
   const { session, role } = await getSessionAndRole();
-  if (!session || (role !== "admin" && role !== "employee"))
+  if (!session || (role !== "admin" && role !== "employee")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const json = await req.json();
   const raw = {
@@ -33,13 +44,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     x: json.x !== undefined ? Number(json.x) : undefined,
     y: json.y !== undefined ? Number(json.y) : undefined,
     number_of_seats:
-      json.number_of_seats !== undefined ? Number(json.number_of_seats)
-      : json.seats !== undefined ? Number(json.seats)
-      : undefined,
+      json.number_of_seats !== undefined
+        ? Number(json.number_of_seats)
+        : json.seats !== undefined
+        ? Number(json.seats)
+        : undefined,
   };
   const parsed = Patch.safeParse(raw);
-  if (!parsed.success)
-    return NextResponse.json({ error: "Validation", details: parsed.error.format() }, { status: 400 });
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Validation", details: parsed.error.format() },
+      { status: 400 }
+    );
+  }
 
   const patch: any = { ...parsed.data };
   delete patch.seats;
@@ -47,7 +64,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const { data, error } = await supabaseAdmin
     .from("restaurant_tables")
     .update(patch)
-    .eq("id", params.id)
+    .eq("id", id)
     .select()
     .single();
 
@@ -55,12 +72,22 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   return NextResponse.json({ table: data });
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-  const { session, role } = await getSessionAndRole();
-  if (!session || (role !== "admin" && role !== "employee"))
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function DELETE(
+  _req: Request,
+  ctx: RouteContext<Route>
+) {
+  const { id } = await ctx.params;
 
-  const { error } = await supabaseAdmin.from("restaurant_tables").delete().eq("id", params.id);
+  const { session, role } = await getSessionAndRole();
+  if (!session || (role !== "admin" && role !== "employee")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { error } = await supabaseAdmin
+    .from("restaurant_tables")
+    .delete()
+    .eq("id", id);
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

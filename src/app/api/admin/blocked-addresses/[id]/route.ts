@@ -1,6 +1,8 @@
+// src/app/api/admin/blocked-addresses/[id]/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+import type { RouteContext } from "next";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
@@ -80,15 +82,19 @@ async function requireAdminAndRestaurant() {
   return { restaurantId };
 }
 
+// literalna ścieżka tego route'a
+type Route = "/api/admin/blocked-addresses/[id]";
+
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } }
+  ctx: RouteContext<Route>
 ) {
-  const ctx = await requireAdminAndRestaurant();
-  if ("error" in ctx) return ctx.error;
-  const { restaurantId } = ctx;
+  const { id } = await ctx.params;
 
-  const id = params.id;
+  const ctxAuth = await requireAdminAndRestaurant();
+  if ("error" in ctxAuth) return ctxAuth.error;
+  const { restaurantId } = ctxAuth;
+
   if (!id) {
     return NextResponse.json({ error: "Brak ID wpisu." }, { status: 400 });
   }
@@ -107,8 +113,7 @@ export async function PATCH(
           : body.note === null
           ? null
           : String(body.note),
-      active:
-        typeof body.active === "boolean" ? body.active : undefined,
+      active: typeof body.active === "boolean" ? body.active : undefined,
     });
   } catch (e) {
     console.error("[blocked_addresses] invalid body (PATCH)", e);
@@ -137,13 +142,14 @@ export async function PATCH(
 
 export async function DELETE(
   _req: Request,
-  { params }: { params: { id: string } }
+  ctx: RouteContext<Route>
 ) {
-  const ctx = await requireAdminAndRestaurant();
-  if ("error" in ctx) return ctx.error;
-  const { restaurantId } = ctx;
+  const { id } = await ctx.params;
 
-  const id = params.id;
+  const ctxAuth = await requireAdminAndRestaurant();
+  if ("error" in ctxAuth) return ctxAuth.error;
+  const { restaurantId } = ctxAuth;
+
   if (!id) {
     return NextResponse.json({ error: "Brak ID wpisu." }, { status: 400 });
   }
