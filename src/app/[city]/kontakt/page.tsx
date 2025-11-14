@@ -1,5 +1,5 @@
 // src/app/[city]/kontakt/page.tsx
-import type { Metadata, PageProps } from "next";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getRestaurantBySlug } from "@/lib/tenant";
 import {
@@ -13,8 +13,6 @@ import {
   Music,
 } from "lucide-react";
 
-type Route = "/[city]/kontakt";
-
 type OpeningHours = {
   mon_thu?: { open: string; close: string } | null;
   fri_sat?: { open: string; close: string } | null;
@@ -22,9 +20,9 @@ type OpeningHours = {
 };
 
 export async function generateMetadata(
-  { params }: PageProps<Route>
+  { params }: { params: { city: string } }
 ): Promise<Metadata> {
-  const { city } = await params;
+  const { city } = params;
   const r = await getRestaurantBySlug(city);
 
   const title = r ? `Kontakt — ${r.name} ${r.city}` : "Kontakt";
@@ -36,9 +34,9 @@ export async function generateMetadata(
 }
 
 export default async function Page(
-  { params }: PageProps<Route>
+  { params }: { params: { city: string } }
 ) {
-  const { city } = await params;
+  const { city } = params;
   const r = await getRestaurantBySlug(city);
 
   if (!r) {
