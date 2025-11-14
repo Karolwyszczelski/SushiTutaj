@@ -6,26 +6,31 @@ import { MapPin, Phone, Mail, Clock, Instagram, Facebook, ExternalLink, Music } 
 
 type Params = { city: string };
 
-type OpeningHours = {
-  mon_thu?: { open: string; close: string } | null;
-  fri_sat?: { open: string; close: string } | null;
-  sun?: { open: string; close: string } | null;
-} | null;
+type ContactPageProps = {
+  params: Promise<Params>;
+};
 
-export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
-  const r = await getRestaurantBySlug(params.city);
+export async function generateMetadata({ params }: ContactPageProps): Promise<Metadata> {
+  const { city } = await params;
+  const r = await getRestaurantBySlug(city);
+
   const title = r ? `Kontakt — ${r.name} ${r.city}` : "Kontakt";
   const description = r
     ? `Kontakt do ${r.name} w mieście ${r.city}. Telefon, adres, godziny otwarcia i linki społecznościowe.`
     : "Dane kontaktowe";
+
   return { title, description };
 }
 
-export default async function Page({ params }: { params: Params }) {
-  const r = await getRestaurantBySlug(params.city);
-  if (!r) return <main className="px-6 py-24 text-center">Lokal nieaktywny.</main>;
+export default async function Page({ params }: ContactPageProps) {
+  const { city } = await params;
+  const r = await getRestaurantBySlug(city);
 
-  const oh = r.opening_hours as OpeningHours;
+  if (!r) {
+    return <main className="px-6 py-24 text-center">Lokal nieaktywny.</main>;
+  }
+
+  const oh = (r.opening_hours as any) || null;
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-24">
