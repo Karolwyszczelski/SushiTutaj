@@ -61,6 +61,7 @@ function normalizePhone(phone?: string | null) {
 const optLabel = (v?: string) =>
   v === "delivery" ? "DOSTAWA" : v === "takeaway" ? "NA WYNOS" : "NA WYNOS";
 
+/* ====== Pomocnicze: ID restauracji z członkostwa ====== */
 type RestaurantAdminMinimal = { restaurant_id: string; added_at?: string } | null;
 async function resolveRestaurantId(
   userId: string | null,
@@ -77,7 +78,7 @@ async function resolveRestaurantId(
     .limit(1)
     .maybeSingle();
 
-  const row = resp.data as unknown as RestaurantAdminMinimal; // typowy shim – w Database może brakować tabeli
+  const row = resp.data as unknown as RestaurantAdminMinimal; // typy mogą być niekompletne
   return row?.restaurant_id ?? null;
 }
 
@@ -110,8 +111,9 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // pobierz zamówienie po id
-  const { data: existing, error: getErr } = await supabaseAdmin
+  // SELECT istniejącego zamówienia
+  // WA: typy Database mogą nie zawierać niektórych kolumn (np. user_id) → rzutujemy na any
+  const { data: existing, error: getErr } = await (supabaseAdmin as any)
     .from("orders")
     .select(
       "id, restaurant_id, phone, contact_email, selected_option, status, user_id, legal_accept"
@@ -141,9 +143,7 @@ export async function PATCH(
   if (clientTime) updateData.client_delivery_time = clientTime;
   if (body.items !== undefined) {
     updateData.items =
-      typeof body.items === "string"
-        ? body.items
-        : JSON.stringify(body.items);
+      typeof body.items === "string" ? body.items : JSON.stringify(body.items);
   }
   if (body.selected_option) updateData.selected_option = body.selected_option;
   if (body.payment_method) updateData.payment_method = body.payment_method;
@@ -166,8 +166,8 @@ export async function PATCH(
   }
   updateData.updated_at = new Date().toISOString();
 
-  // Aktualizacja (z kontrolą restauracji)
-  const { data, error } = await supabaseAdmin
+  // UPDATE zamówienia (również rzutowany na any, by nie blokować buildu)
+  const { data, error } = await (supabaseAdmin as any)
     .from("orders")
     .update(updateData)
     .eq("id", orderId)
@@ -242,7 +242,7 @@ export async function PATCH(
       updated.user_id || updated.user || updated.userId || undefined;
 
     if (!toEmail && userId) {
-      // @ts-ignore admin auth typing
+      // @ts-ignore — API adminAuth w supabase-js jest słabo typowane
       const { data: userRes } = await adminAuth.auth.admin.getUserById(userId);
       toEmail = userRes?.user?.email || toEmail;
     }

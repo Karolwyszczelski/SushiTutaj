@@ -151,7 +151,9 @@ export async function middleware(req: NextRequest) {
       console.error("[middleware] restaurant_admins error:", error.message);
     }
 
-    adminRole = (data?.role as string) ?? null;
+    // WA: jeżeli typy Database nie mają tej tabeli, `data` ma typ `never`
+    const row = (data ?? null) as { role?: string } | null;
+    adminRole = row?.role ?? null;
   } catch (e: any) {
     console.error("[middleware] restaurant_admins exception:", e?.message ?? e);
   }

@@ -2,7 +2,6 @@
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
-import type { Database } from "@/types/supabase";
 import { getSessionAndRole } from "@/lib/serverAuth";
 
 export async function PATCH(
@@ -17,7 +16,10 @@ export async function PATCH(
   }
 
   const body = await request.json();
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+
+  // WA: typy Database nie mają `menu_items` → rzutujemy klienta na any
+  const supabase = createRouteHandlerClient({ cookies }) as any;
+
   const { data, error } = await supabase
     .from("menu_items")
     .update({
@@ -30,7 +32,7 @@ export async function PATCH(
     })
     .eq("id", id)
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
@@ -47,9 +49,11 @@ export async function DELETE(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const supabase = createRouteHandlerClient<Database>({ cookies });
-  const { error } = await supabase.from("menu_items").delete().eq("id", id);
+  // WA: jw.
+  const supabase = createRouteHandlerClient({ cookies }) as any;
 
+  const { error } = await supabase.from("menu_items").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
   return NextResponse.json({ success: true });
 }
