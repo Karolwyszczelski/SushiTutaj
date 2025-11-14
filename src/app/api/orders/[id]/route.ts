@@ -61,6 +61,7 @@ function normalizePhone(phone?: string | null) {
 const optLabel = (v?: string) =>
   v === "delivery" ? "DOSTAWA" : v === "takeaway" ? "NA WYNOS" : "NA WYNOS";
 
+type RestaurantAdminMinimal = { restaurant_id: string; added_at?: string } | null;
 async function resolveRestaurantId(
   userId: string | null,
   cookieRid?: string | null
@@ -68,7 +69,7 @@ async function resolveRestaurantId(
   if (cookieRid) return cookieRid;
   if (!userId) return null;
 
-  const { data } = await supabaseAdmin
+  const resp = await supabaseAdmin
     .from("restaurant_admins")
     .select("restaurant_id, added_at")
     .eq("user_id", userId)
@@ -76,7 +77,8 @@ async function resolveRestaurantId(
     .limit(1)
     .maybeSingle();
 
-  return (data?.restaurant_id as string) ?? null;
+  const row = resp.data as unknown as RestaurantAdminMinimal; // typowy shim – w Database może brakować tabeli
+  return row?.restaurant_id ?? null;
 }
 
 /* ====== PATCH ====== */
