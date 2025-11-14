@@ -1,0 +1,452 @@
+[
+  {
+    "category": "Burger",
+    "subcategories": [
+      {
+        "name": "100% Wołowina",
+        "items": [
+          {
+            "name": "Standard Burger",
+            "price": 25,
+            "description": "Klasyczny burger z soczystą wołowiną, chrupiącym bekonem i świeżymi warzywami.",
+            "ingredients": [
+              "bułka",
+              "200g wołowina",
+              "bekon",
+              "sałata masłowa",
+              "pikle",
+              "pomidor",
+              "czerwona cebula",
+              "majonez",
+              "ketchup",
+              "musztarda"
+            ],
+            "availableAddons": [
+              "ser cheddar",
+              "jalapeño",
+              "nachosy",
+              "konfitura z cebuli",
+              "gruszka",
+              "płynny ser",
+              "sos BBQ",
+              "sos meksykański"
+            ]
+          },
+          {
+            "name": "Cheeseburger",
+            "price": 26,
+            "description": "Wołowina z bekonem i serem cheddar – klasyk w najlepszym wydaniu.",
+            "ingredients": [
+              "200g wołowina",
+              "bekon",
+              "ser cheddar",
+              "sałata masłowa",
+              "pomidor",
+              "majonez",
+              "ketchup"
+            ],
+            "availableAddons": [
+              "jalapeño",
+              "pikle",
+              "konfitura z cebuli",
+              "gruszka",
+              "płynny ser",
+              "nachosy"
+            ]
+          },
+          {
+            "name": "BBQ Cheeseburger",
+            "price": 27,
+            "description": "Wyrazisty smak BBQ, bekon i ser cheddar dla miłośników intensywnych smaków.",
+            "ingredients": [
+              "200g wołowina",
+              "bekon",
+              "ser cheddar",
+              "sos BBQ",
+              "cebula",
+              "majonez",
+              "sałata masłowa"
+            ],
+            "availableAddons": [
+              "pikle",
+              "jalapeño",
+              "ketchup",
+              "musztarda",
+              "gruszka"
+            ]
+          },
+          {
+            "name": "TexMex Cheeseburger",
+            "price": 27,
+            "description": "Delikatne mięso kurczaka w chrupiącej panierce, idealne dla każdego.",
+            "ingredients": [
+              "kurczak w panierce",
+              "ser cheddar",
+              "jalapeño",
+              "nachosy",
+              "pikle",
+              "czerwona cebula",
+              "sos meksykański"
+            ],
+            "availableAddons": [
+              "bekon",
+              "pomidor",
+              "majonez",
+              "musztarda",
+              "gruszka"
+            ]
+          },
+          {
+            "name": "Sweet Onion Cheeseburger",
+            "price": 29,
+            "description": "Wołowina z konfiturą z cebuli dla fanów słodko-wytrawnych połączeń.",
+            "ingredients": [
+              "200g wołowina",
+              "ser cheddar",
+              "konfitura z cebuli",
+              "sałata",
+              "majonez"
+            ],
+            "availableAddons": [
+              "jalapeño",
+              "pikle",
+              "płynny ser",
+              "nachosy"
+            ]
+          },
+          {
+            "name": "Premium z Karmelizowaną Gruszką",
+            "price": 29,
+            "description": "Wyrafinowany burger z karmelizowaną gruszką i bekonem w musztardowym aromacie.",
+            "ingredients": [
+              "200g wołowina",
+              "ser cheddar",
+              "bekon",
+              "gruszka",
+              "musztarda",
+              "majonez"
+            ],
+            "availableAddons": [
+              "płynny ser",
+              "jalapeño",
+              "ketchup"
+            ]
+          },
+          {
+            "name": "Black Burger",
+            "price": 31,
+            "description": "Czarna maślana bułka i pikantne dodatki dla miłośników niebanalnego stylu.",
+            "ingredients": [
+              "200g wołowina",
+              "czarna maślana bułka",
+              "sos meksykański",
+              "bekon",
+              "jalapeño",
+              "nachosy",
+              "ser cheddar"
+            ],
+            "availableAddons": [
+              "pomidor",
+              "ogórek",
+              "musztarda",
+              "majonez"
+            ]
+          },
+          {
+            "name": "Serowy Burger",
+            "price": 31,
+            "description": "Potrójna dawka sera z bekonem i sosem, idealna dla fanów kremowych smaków.",
+            "ingredients": [
+              "200g wołowina",
+              "bekon",
+              "ser cheddar",
+              "ketchup",
+              "musztarda",
+              "pomidor",
+              "pikle",
+              "płynny ser"
+            ],
+            "availableAddons": [
+              "jalapeño",
+              "gruszka",
+              "majonez"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "100% Kurczak",
+        "items": [
+          {
+            "name": "Chicken Crunchy",
+            "price": 28,
+            "description": "Chrupiąca panierka z soczystym kurczakiem, świeżymi warzywami i klasycznymi sosami.",
+            "ingredients": [
+              "kurczak w panierce",
+              "sałata masłowa",
+              "ser cheddar",
+              "majonez",
+              "ketchup",
+              "pomidor",
+              "musztarda"
+            ],
+            "availableAddons": [
+              "bekon",
+              "jalapeño",
+              "pikle",
+              "gruszka"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "100% Vege",
+        "items": [
+          {
+            "name": "BBQ Vegeburger",
+            "price": 27,
+            "description": "Roślinny burger z ciecierzycy i sosem BBQ w wersji wege.",
+            "ingredients": [
+              "burger z ciecierzycy",
+              "ser cheddar",
+              "sos BBQ",
+              "ogórek",
+              "sałata",
+              "pomidor"
+            ],
+            "availableAddons": [
+              "pikle",
+              "jalapeño",
+              "bekon",
+              "gruszka"
+            ]
+          },
+          {
+            "name": "TexMex Vegeburger",
+            "price": 27,
+            "description": "Pikantne meksykańskie akcenty w burgerze z fasoli i nachosami.",
+            "ingredients": [
+              "burger z fasoli",
+              "kukurydza",
+              "papryka",
+              "nachosy",
+              "sos meksykański"
+            ],
+            "availableAddons": [
+              "pomidor",
+              "pikle",
+              "płynny ser",
+              "majonez"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Specjał",
+        "items": [
+          {
+            "name": "Burger Miesiąca",
+            "price": 32,
+            "description": "Zapytaj obsługę o aktualny smak miesiąca."
+          },
+          {
+            "name": "Burger po Twojemu",
+            "price": 32,
+            "description": "Wybór bułki, mięsa i 5 wybranych składników."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "category": "Kids",
+    "items": [
+      {
+        "name": "Mini Zestaw Standard",
+        "price": 27,
+        "description": "Mniejszy burger wołowy + frytki i soczek – idealny dla najmłodszych.",
+        "ingredients": [
+          "100g wołowina",
+          "bekon",
+          "ser cheddar",
+          "sałata masłowa",
+          "pomidor",
+          "majonez",
+          "ketchup"
+        ]
+      },
+      {
+        "name": "Mini Zestaw Chicken",
+        "price": 26,
+        "description": "Chrupiący kurczak w bułce + frytki i soczek dla małych smakoszy.",
+        "ingredients": [
+          "100g kurczak w panierce",
+          "bekon",
+          "ser cheddar",
+          "sałata masłowa",
+          "pomidor",
+          "majonez",
+          "ketchup"
+        ]
+      }
+    ]
+  },
+  {
+    "category": "Frytki",
+    "items": [
+      {
+        "name": "Frytki (150g)",
+        "price": 9
+      },
+      {
+        "name": "Frytki (300g)",
+        "price": 12
+      },
+      {
+        "name": "Frytki z Batatów (150g)",
+        "price": 12
+      },
+      {
+        "name": "Frytki z Batatów (300g)",
+        "price": 20
+      },
+      {
+        "name": "Frytki z Serem (300g)",
+        "price": 17
+      }
+    ]
+  },
+  {
+    "category": "Pancake",
+    "items": [
+      {
+        "name": "Classic American",
+        "price": 22,
+        "description": "Tradycyjne amerykańskie naleśniki z syropem klonowym i orzechami.",
+        "ingredients": [
+          "pancakes",
+          "syrop klonowy",
+          "masło",
+          "orzechy"
+        ]
+      },
+      {
+        "name": "Classic Nutella",
+        "price": 25,
+        "description": "Puszyste naleśniki z Nutellą, bitą śmietaną i bananem.",
+        "ingredients": [
+          "pancakes",
+          "Nutella",
+          "bita śmietana",
+          "banan",
+          "posypka czekoladowa"
+        ]
+      },
+      {
+        "name": "Tutti Fruit",
+        "price": 28,
+        "description": "Owocowa kompozycja z jogurtem naturalnym, świeżymi owocami i musem malinowym.",
+        "ingredients": [
+          "pancakes",
+          "jogurt naturalny",
+          "świeże owoce",
+          "bezy",
+          "mus malinowy"
+        ]
+      },
+      {
+        "name": "Choco Shock",
+        "price": 27,
+        "description": "Czekoladowe szaleństwo z Nutellą, M&M’s i sosem czekoladowym.",
+        "ingredients": [
+          "pancakes",
+          "Nutella",
+          "M&M’s",
+          "ciasteczka Oreo",
+          "posypka czekoladowa",
+          "sos czekoladowy"
+        ]
+      },
+      {
+        "name": "Pink Panther",
+        "price": 29,
+        "description": "Słodkie połączenie pianek Marshmallow, bezy i sosu toffi w różowym wydaniu.",
+        "ingredients": [
+          "pancakes",
+          "bezy",
+          "pianki Marshmallow",
+          "czekolada karmelowa",
+          "krem Marshmallow Fluff",
+          "bita śmietana",
+          "sos toffi",
+          "posypka kolorowa"
+        ]
+      },
+      {
+        "name": "Pan & Maxi King",
+        "price": 29,
+        "description": "Naleśniki z Nutellą, masłem orzechowym i batonikiem Maxi King w towarzystwie karmelowego popcornu.",
+        "ingredients": [
+          "pancakes",
+          "Nutella",
+          "masło orzechowe",
+          "Maxi King",
+          "orzeszki solone",
+          "precelki",
+          "popcorn karmelowy",
+          "krówka",
+          "sos toffi"
+        ]
+      }
+    ]
+  },
+  {
+    "category": "Napoje",
+    "items": [
+      {
+        "name": "Coca-Cola 0,3l",
+        "price": 6
+      },
+      {
+        "name": "Coca-Cola 0,5l",
+        "price": 7
+      },
+      {
+        "name": "Coca-Cola 2,0l",
+        "price": 9
+      },
+      {
+        "name": "Sprite 0,5l",
+        "price": 6
+      },
+      {
+        "name": "Fanta 0,5l",
+        "price": 6
+      },
+      {
+        "name": "Woda gazowana Kropla Beskidu 0,5l",
+        "price": 5
+      },
+      {
+        "name": "Woda niegazowana Kropla Beskidu 0,5l",
+        "price": 5
+      },
+      {
+        "name": "Sok pomarańczowy Tymbark 1l",
+        "price": 8
+      },
+      {
+        "name": "Sok jabłkowy Tymbark 1l",
+        "price": 8
+      },
+      {
+        "name": "Red Bull",
+        "price": 9
+      },
+      {
+        "name": "Lemoniada (sezonowa)",
+        "price": 10
+      }
+    ]
+  }
+]

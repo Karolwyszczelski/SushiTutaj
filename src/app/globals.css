@@ -1,0 +1,112 @@
+/* Tailwind */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Kolory */
+:root{
+  --accent-red-dark:#7a0d0d;
+  --accent-red:#a61b1b;
+  --accent-red-dark-2:#b11212;
+  --bg-dim:0.05; /* przyciemnienie tła */
+}
+
+/* Bazowe */
+html,body{height:100%}
+html{
+  color-scheme:dark;
+  -webkit-text-size-adjust:100%;
+  text-rendering:optimizeLegibility;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  scroll-behavior:smooth;
+}
+
+/* Tło + warstwa przyciemniająca */
+body{
+  color:#fff;
+  background:#191818 center/cover no-repeat fixed;
+  font-family:var(--font-sans),ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans","Apple Color Emoji","Segoe UI Emoji";
+  min-height:100svh;
+  position:relative;
+}
+body::before{
+  content:"";
+  position:fixed; inset:0;
+  background:rgba(0,0,0,var(--bg-dim));
+  pointer-events:none;
+  z-index:0; /* nad tłem, pod treścią */
+}
+body > *{ position:relative; z-index:1; }
+
+@media (max-width:1024px){
+  body{ background-attachment:scroll; }
+}
+
+/* Akcentowa czcionka dla H1/H2 */
+.font-display{ font-family:var(--font-display), serif; }
+
+/* Linki i focus */
+a{ color:#fff; }
+a:hover{ opacity:.9; }
+:focus-visible{ outline:2px solid #fff; outline-offset:2px; }
+
+/* Ikony na biało */
+.icon-plus path,.icon-check path{
+  fill:#fff !important;
+  stroke:#fff !important;
+  display:inline !important;
+  opacity:1 !important;
+}
+
+/* Tap behavior */
+*{ -webkit-tap-highlight-color:transparent; }
+html,body{ touch-action:manipulation; }
+
+/* Preferencje ruchu */
+@media (prefers-reduced-motion:reduce){
+  html{ scroll-behavior:auto; }
+}
+
+/* Animacje */
+@keyframes plate-spin{
+  0%{ transform:rotate(0deg); }
+  60%{ transform:rotate(360deg); }
+  100%{ transform:rotate(360deg); }
+}
+.plate-spin{ animation:plate-spin 1.8s ease-in-out both; }
+@media (prefers-reduced-motion:reduce){
+  .plate-spin{ animation:none !important; }
+}
+
+/* Utilsy layoutu i fade krawędzi */
+@layer utilities{
+  /* spójny padding L/R dla sekcji */
+  .wrap{ @apply mx-auto w-full max-w-7xl px-5 sm:px-8 lg:px-40; }
+
+  /* miękkie wygaszenie zawartości do tła */
+  .fade-edges{
+    -webkit-mask-image: radial-gradient(120% 120% at 50% 50%, #000 65%, transparent 100%);
+            mask-image: radial-gradient(120% 120% at 50% 50%, #000 65%, transparent 100%);
+    -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+  }
+
+  /* przyciski */
+  .btn-primary{
+    @apply rounded-full px-6 py-3 text-sm font-medium
+           bg-gradient-to-r from-[var(--accent-red-dark)]
+           via-[var(--accent-red)] to-[var(--accent-red-dark-2)]
+           hover:opacity-95;
+  }
+  .btn-ghost{
+    @apply rounded-full px-6 py-3 text-sm font-medium
+           border border-white/20 hover:bg-white/10;
+  }
+}
+
+/* wygaszenie krawędzi obrazka (Safari/Chromium) */
+.edge-fade{
+  -webkit-mask-image: radial-gradient(140% 140% at 50% 50%, #000 68%, rgba(0,0,0,0) 90%);
+          mask-image: radial-gradient(140% 140% at 50% 50%, #000 68%, rgba(0,0,0,0) 90%);
+  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+}
