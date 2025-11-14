@@ -18,9 +18,12 @@ const toInt = (v: string | null, d: number) => {
 };
 
 export async function GET(req: Request) {
-  // Next 15: przekaż funkcję zwracającą awaited cookieStore
-  const cookieStore = await cookies();
-  const supabase = createRouteHandlerClient<Database>({ cookies: () => cookieStore });
+  // ✅ PRZEKAZUJEMY PROVIDER COOKIES (funkcję), nie gotowy obiekt
+  // W zależności od wersji @supabase/auth-helpers-nextjs obie formy działają:
+  // 1) rekomendowane (najprostsze):
+  const supabase = createRouteHandlerClient<Database>({ cookies });
+  // 2) gdybyś miał starszą definicję, użyj tak:
+  // const supabase = createRouteHandlerClient<Database>({ cookies: async () => cookies() });
 
   const { data: u } = await supabase.auth.getUser();
   const userId = u?.user?.id || null;
@@ -32,10 +35,9 @@ export async function GET(req: Request) {
   const offset = Math.max(0, toInt(url.searchParams.get("offset"), 0));
   const slugParam = (url.searchParams.get("restaurant") || "").toLowerCase() || null;
 
-  // id restauracji z cookie
+  const cookieStore = cookies(); // lokalnie do odczytu wartości
   let rid = normalizeUuid(cookieStore.get("restaurant_id")?.value || null);
 
-  // jeśli podano slug w URL -> przelicz na id
   if (slugParam) {
     const { data: rest, error } = await supabase
       .from("restaurants")
@@ -47,7 +49,6 @@ export async function GET(req: Request) {
     rid = normalizeUuid(rest.id as string);
   }
 
-  // fallback: ostatnia restauracja przypisana userowi
   if (!rid) {
     const { data: last, error } = await supabase
       .from("restaurant_admins")
@@ -62,7 +63,6 @@ export async function GET(req: Request) {
 
   if (!rid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // pobierz wyłącznie zamówienia tej restauracji (RLS dodatkowo filtruje po userze)
   const sel = `
     id, created_at, status, total_price,
     name, selected_option,
@@ -79,7 +79,6 @@ export async function GET(req: Request) {
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
-  // "open" = wszystko do obsługi w panelu
   if (scope === "open") {
     q = q.in("status", ["new", "pending", "placed", "accepted"]);
   }
@@ -104,7 +103,7 @@ export async function GET(req: Request) {
     payment_method: o.payment_method ?? null,
     payment_status: o.payment_status ?? null,
     client_delivery_time: o.client_delivery_time ?? null,
-    deliveryTime: o.deliveryTime ?? o.delivery_time ?? null,
+    deliveryTime: o.deliveryTime ?? null, // w Twoich typach nie ma `delivery_time`
   }));
 
   return NextResponse.json(
