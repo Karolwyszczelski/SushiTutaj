@@ -18,7 +18,7 @@ const toInt = (v: string | null, d: number) => {
 };
 
 export async function GET(req: Request) {
-  // provider do supabase – przekazujemy funkcję cookies
+  // Provider cookies dla supabase
   const supabase = createRouteHandlerClient<Database>({ cookies });
 
   const { data: u } = await supabase.auth.getUser();
@@ -31,31 +31,40 @@ export async function GET(req: Request) {
   const offset = Math.max(0, toInt(url.searchParams.get("offset"), 0));
   const slugParam = (url.searchParams.get("restaurant") || "").toLowerCase() || null;
 
-  // ⬅️ krytyczna poprawka: cookies() trzeba awaitować przed .get(...)
+  // cookies() jest Promise -> await
   const cookieStore = await cookies();
   let rid = normalizeUuid(cookieStore.get("restaurant_id")?.value || null);
 
+  // Jeśli podano slug → pobierz id (typ wymuszony przez .returns)
   if (slugParam) {
-    const { data: rest, error } = await supabase
+    const { data: rows, error } = await supabase
       .from("restaurants")
       .select("id")
       .eq("slug", slugParam)
-      .maybeSingle();
+      .returns<{ id: string }[]>() // <- kluczowe: unikamy `never`
+      .limit(1);
+
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    if (!rest?.id) return NextResponse.json({ error: "Unknown restaurant" }, { status: 404 });
-    rid = normalizeUuid(rest.id as string);
+
+    const restId = rows?.[0]?.id || null;
+    if (!restId) return NextResponse.json({ error: "Unknown restaurant" }, { status: 404 });
+
+    rid = normalizeUuid(restId);
   }
 
+  // Fallback: ostatnia restauracja przypisana userowi
   if (!rid) {
     const { data: last, error } = await supabase
       .from("restaurant_admins")
       .select("restaurant_id, added_at")
       .eq("user_id", userId)
       .order("added_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    rid = normalizeUuid((last?.restaurant_id as string) || null);
+
+    const lastId = (last?.[0]?.restaurant_id as string) || null;
+    rid = normalizeUuid(lastId);
   }
 
   if (!rid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -100,7 +109,7 @@ export async function GET(req: Request) {
     payment_method: o.payment_method ?? null,
     payment_status: o.payment_status ?? null,
     client_delivery_time: o.client_delivery_time ?? null,
-    deliveryTime: o.deliveryTime ?? null, // w Twoich typach nie ma `delivery_time`
+    deliveryTime: o.deliveryTime ?? null,
   }));
 
   return NextResponse.json(
