@@ -3,7 +3,8 @@ import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@/types/supabase";
 
-export async function getSessionAndRole() {
+
+export async function getSessionAndRole(_req?: Request) {
   // 1) Tworzymy klienta z dostępem do ciasteczek
   const supabase = createRouteHandlerClient<Database>({ cookies });
 
