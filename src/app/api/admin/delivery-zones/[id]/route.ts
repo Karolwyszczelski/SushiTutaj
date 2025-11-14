@@ -2,7 +2,6 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import type { RouteContext } from "next";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
@@ -84,14 +83,11 @@ async function requireAdminAndRestaurant() {
   return { restaurantId };
 }
 
-// literalna ścieżka tego route'a
-type Route = "/api/admin/delivery-zones/[id]";
-
 export async function PATCH(
   req: Request,
-  ctx: RouteContext<Route>
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await ctx.params;
+  const { id } = await params;
 
   const ctxAuth = await requireAdminAndRestaurant();
   if ("error" in ctxAuth) return ctxAuth.error;
@@ -145,9 +141,9 @@ export async function PATCH(
 
 export async function DELETE(
   _req: Request,
-  ctx: RouteContext<Route>
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await ctx.params;
+  const { id } = await params;
 
   const ctxAuth = await requireAdminAndRestaurant();
   if ("error" in ctxAuth) return ctxAuth.error;
