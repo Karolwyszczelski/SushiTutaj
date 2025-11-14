@@ -1,21 +1,12 @@
+// next.config.ts
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
 
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-
-  // przenieś tu:
+  // nowa flaga dla Next 15 – zamiast experimental.typedRoutes
   typedRoutes: true,
-
-  // i usuń z:
-  // experimental: { typedRoutes: true },
 };
 
 export default nextConfig;
