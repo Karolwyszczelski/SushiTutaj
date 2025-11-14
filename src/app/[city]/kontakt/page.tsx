@@ -1,16 +1,29 @@
 // src/app/[city]/kontakt/page.tsx
-import type { Metadata } from "next";
+import type { Metadata, PageProps } from "next";
 import Link from "next/link";
 import { getRestaurantBySlug } from "@/lib/tenant";
-import { MapPin, Phone, Mail, Clock, Instagram, Facebook, ExternalLink, Music } from "lucide-react";
+import {
+  MapPin,
+  Phone,
+  Mail,
+  Clock,
+  Instagram,
+  Facebook,
+  ExternalLink,
+  Music,
+} from "lucide-react";
 
-type Params = { city: string };
+type Route = "/[city]/kontakt";
 
-type ContactPageProps = {
-  params: Promise<Params>;
+type OpeningHours = {
+  mon_thu?: { open: string; close: string } | null;
+  fri_sat?: { open: string; close: string } | null;
+  sun?: { open: string; close: string } | null;
 };
 
-export async function generateMetadata({ params }: ContactPageProps): Promise<Metadata> {
+export async function generateMetadata(
+  { params }: PageProps<Route>
+): Promise<Metadata> {
   const { city } = await params;
   const r = await getRestaurantBySlug(city);
 
@@ -22,7 +35,9 @@ export async function generateMetadata({ params }: ContactPageProps): Promise<Me
   return { title, description };
 }
 
-export default async function Page({ params }: ContactPageProps) {
+export default async function Page(
+  { params }: PageProps<Route>
+) {
   const { city } = await params;
   const r = await getRestaurantBySlug(city);
 
@@ -30,14 +45,15 @@ export default async function Page({ params }: ContactPageProps) {
     return <main className="px-6 py-24 text-center">Lokal nieaktywny.</main>;
   }
 
-  const oh = (r.opening_hours as any) || null;
+  const oh = (r.opening_hours as OpeningHours | null) ?? null;
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-24">
       <header className="text-center">
         <h1 className="font-display text-4xl sm:text-6xl">Kontakt — {r.city}</h1>
         <p className="mt-3 text-white/80">
-          Telefon, adres, godziny i nasze profile. Dane zmieniają się automatycznie dla każdego miasta.
+          Telefon, adres, godziny i nasze profile. Dane zmieniają się automatycznie
+          dla każdego miasta.
         </p>
       </header>
 
@@ -73,7 +89,10 @@ export default async function Page({ params }: ContactPageProps) {
               </div>
               <div className="mt-4 flex items-center gap-3">
                 <Mail className="h-5 w-5 text-white/70" />
-                <Link href={r.email ? `mailto:${r.email}` : "#"} className="text-white/90">
+                <Link
+                  href={r.email ? `mailto:${r.email}` : "#"}
+                  className="text-white/90"
+                >
                   {r.email ?? "—"}
                 </Link>
               </div>
@@ -88,11 +107,21 @@ export default async function Page({ params }: ContactPageProps) {
             <div>
               <div className="text-sm uppercase text-white/60">Godziny otwarcia</div>
               <ul className="mt-2 space-y-1 text-white/90">
-                <li>Pon–Czw: {oh?.mon_thu ? `${oh.mon_thu.open}–${oh.mon_thu.close}` : "—"}</li>
-                <li>Pt–Sob: {oh?.fri_sat ? `${oh.fri_sat.open}–${oh.fri_sat.close}` : "—"}</li>
-                <li>Nd: {oh?.sun ? `${oh.sun.open}–${oh.sun.close}` : "—"}</li>
+                <li>
+                  Pon–Czw:{" "}
+                  {oh?.mon_thu ? `${oh.mon_thu.open}–${oh.mon_thu.close}` : "—"}
+                </li>
+                <li>
+                  Pt–Sob:{" "}
+                  {oh?.fri_sat ? `${oh.fri_sat.open}–${oh.fri_sat.close}` : "—"}
+                </li>
+                <li>
+                  Nd: {oh?.sun ? `${oh.sun.open}–${oh.sun.close}` : "—"}
+                </li>
               </ul>
-              <p className="mt-3 text-sm text-white/60">Zamówienia: tylko gotówka, odbiór lub dostawa.</p>
+              <p className="mt-3 text-sm text-white/60">
+                Zamówienia: tylko gotówka, odbiór lub dostawa.
+              </p>
             </div>
           </div>
         </div>
