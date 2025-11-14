@@ -1,6 +1,8 @@
+// src/app/api/admin/[id]/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+import type { RouteContext } from "next";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
@@ -24,33 +26,59 @@ const PatchSchema = z.object({
   cost_per_km: z.number().nonnegative().optional(),
 });
 
-export async function PATCH(_: Request, { params }: { params: { id: string } }) {
-  const { session, role } = await getSessionAndRole();
-  if (!session || (role !== "admin" && role !== "employee"))
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+// literalna ścieżka tego route'a
+type Route = "/api/admin/[id]";
 
-  const body = await _.json();
+export async function PATCH(
+  req: Request,
+  ctx: RouteContext<Route>
+) {
+  const { id } = await ctx.params;
+
+  const { session, role } = await getSessionAndRole();
+  if (!session || (role !== "admin" && role !== "employee")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await req.json();
   const parsed = PatchSchema.safeParse(body);
-  if (!parsed.success)
+  if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+  }
 
   const { data, error } = await supabaseAdmin
     .from("delivery_zones")
     .update(parsed.data)
-    .eq("id", params.id)
+    .eq("id", id)
     .select()
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
   return NextResponse.json({ zone: data });
 }
 
-export async function DELETE(_: Request, { params }: { params: { id: string } }) {
-  const { session, role } = await getSessionAndRole();
-  if (!session || (role !== "admin" && role !== "employee"))
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function DELETE(
+  _req: Request,
+  ctx: RouteContext<Route>
+) {
+  const { id } = await ctx.params;
 
-  const { error } = await supabaseAdmin.from("delivery_zones").delete().eq("id", params.id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const { session, role } = await getSessionAndRole();
+  if (!session || (role !== "admin" && role !== "employee")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { error } = await supabaseAdmin
+    .from("delivery_zones")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
   return NextResponse.json({ ok: true });
 }
