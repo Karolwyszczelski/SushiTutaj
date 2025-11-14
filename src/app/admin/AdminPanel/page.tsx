@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import type { Route } from "next";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Settings, TrendingUp, PieChart, Clock, RefreshCw, Download } from "lucide-react";
 import "react-calendar/dist/Calendar.css";
@@ -115,7 +116,7 @@ function aggregateStats(list: StatsResponse[]): StatsResponse {
   }
 
   // uśrednienie avgFulfillmentTime i monthAvgFulfillment
-  // (proste średnie z dostępnych źródeł; bez ważenia)
+  // (proste średnie z dostępnych; bez ważenia)
   const sources = Math.max(1, list.length);
   for (const [d, sumPlusEps] of Object.entries(out.avgFulfillmentTime!)) {
     out.avgFulfillmentTime![d] = Math.round((Number(sumPlusEps) - 1e-9) / sources);
@@ -158,7 +159,7 @@ export default function AdminPanel() {
         setBooted(true);
       }
     };
-    init();
+    void init();
   }, []);
 
   // pobieranie statystyk i live count
@@ -310,7 +311,8 @@ export default function AdminPanel() {
   const goOrders = () => {
     const base = "/admin/pickup-order";
     const q = city !== "all" ? `?restaurant=${city}` : "";
-    router.push(`${base}${q}`);
+    const href = `${base}${q}` as Route;
+    router.push(href);
   };
 
   const exportTopCSV = () => {
@@ -503,7 +505,9 @@ export default function AdminPanel() {
             <ul className="divide-y divide-slate-100 text-sm">
               {topDishesData.map((d, i) => (
                 <li key={i} className="flex items-center justify-between py-2">
-                  <span className="truncate pr-4">{i + 1}. {d.dish}</span>
+                  <span className="truncate pr-4">
+                    {i + 1}. {d.dish}
+                  </span>
                   <span className="font-medium text-slate-800">{d.orders} zam.</span>
                 </li>
               ))}
