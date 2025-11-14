@@ -2,7 +2,6 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import type { RouteContext } from "next";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
@@ -20,18 +19,17 @@ const Patch = z.object({
   x: z.number().optional(),
   y: z.number().optional(),
   number_of_seats: z.number().int().min(1).optional(),
-  // stary frontend czasem wysyła "seats"
+  // kompatybilność ze starym frontendem
   seats: z.number().int().min(1).optional(),
 });
 
-// literalna ścieżka route'a
-type Route = "/api/admin/tables/[id]";
+// literalna ścieżka route'a: /api/admin/tables/[id]
 
 export async function PATCH(
   req: Request,
-  ctx: RouteContext<Route>
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await ctx.params;
+  const { id } = await params;
 
   const { session, role } = await getSessionAndRole();
   if (!session || (role !== "admin" && role !== "employee")) {
@@ -50,6 +48,7 @@ export async function PATCH(
         ? Number(json.seats)
         : undefined,
   };
+
   const parsed = Patch.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json(
@@ -58,8 +57,8 @@ export async function PATCH(
     );
   }
 
-  const patch: any = { ...parsed.data };
-  delete patch.seats;
+  const patch: Record<string, unknown> = { ...parsed.data };
+  delete (patch as any).seats;
 
   const { data, error } = await supabaseAdmin
     .from("restaurant_tables")
@@ -74,9 +73,9 @@ export async function PATCH(
 
 export async function DELETE(
   _req: Request,
-  ctx: RouteContext<Route>
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await ctx.params;
+  const { id } = await params;
 
   const { session, role } = await getSessionAndRole();
   if (!session || (role !== "admin" && role !== "employee")) {
