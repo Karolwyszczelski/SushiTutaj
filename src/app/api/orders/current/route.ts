@@ -18,7 +18,7 @@ const toInt = (v: string | null, d: number) => {
 };
 
 export async function GET(req: Request) {
-  // Supabase z providerem cookies
+  // Klient Supabase (przekazujemy provider cookies z next/headers)
   const supabase = createRouteHandlerClient<Database>({ cookies });
 
   // Użytkownik
@@ -33,17 +33,17 @@ export async function GET(req: Request) {
   const offset = Math.max(0, toInt(url.searchParams.get("offset"), 0));
   const slugParam = (url.searchParams.get("restaurant") || "").toLowerCase() || null;
 
-  // Cookie store (Next 15: sync)
-  const cookieStore = cookies();
+  // >>> ZMIANA TU: cookies() jest Promise -> await <<<
+  const cookieStore = await cookies();
   let rid = normalizeUuid(cookieStore.get("restaurant_id")?.value || null);
 
-  // Slug -> id (jawny typ wyniku, by uniknąć `never`)
+  // Slug -> id (jawny typ, by uniknąć `never`)
   if (slugParam) {
     const { data: rows, error } = await supabase
       .from("restaurants")
       .select("id")
       .eq("slug", slugParam)
-      .returns<{ id: string }[]>() // <- kluczowe
+      .returns<{ id: string }[]>() // ważne dla TS
       .limit(1);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -71,7 +71,7 @@ export async function GET(req: Request) {
 
   if (!rid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Selekcja kolumn (Twoje typy mają `deliveryTime`, bez `delivery_time`)
+  // Selekcja kolumn (w Twoich typach jest `deliveryTime`, bez `delivery_time`)
   const sel = `
     id, created_at, status, total_price,
     name, selected_option,
