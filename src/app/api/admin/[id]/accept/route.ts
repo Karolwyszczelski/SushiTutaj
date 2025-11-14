@@ -4,12 +4,11 @@ export const revalidate = 0;
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import type { Database } from "@/types/supabase";
 import { getSessionAndRole } from "@/lib/serverAuth";
 import { sendOrderAcceptedEmail } from "@/lib/e-mail";
 import { sendSms } from "@/lib/sms";
 
-const supabaseAdmin = createClient<Database>(
+const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
   { auth: { persistSession: false } }
@@ -24,7 +23,7 @@ const fmtPL = (iso: string) =>
 
 // Uwaga: to jest *statyczny* route bez [id] – id pobieramy z body.
 export async function POST(req: Request) {
-  const { session, role } = await getSessionAndRole(req);
+  const { session, role } = await getSessionAndRole();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (role !== "admin" && role !== "employee")
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -35,9 +34,10 @@ export async function POST(req: Request) {
     if (!id) return NextResponse.json({ error: "Missing order id" }, { status: 400 });
 
     const m = Number(body?.minutes);
-    const minutes = Number.isFinite(m) ? Math.max(5, Math.min(180, m)) : 30;
+    const minutes = Number.isFinite(m) ? Math.max(5, Math.min(180, m)) : 30; // clamp 5–180
     const etaISO = new Date(Date.now() + minutes * 60_000).toISOString();
 
+    // 1) Pobierz minimalne dane zamówienia (kontakt + opcja)
     const { data: order, error: selErr } = await supabaseAdmin
       .from("orders")
       .select("id, contact_email, phone, name, selected_option, restaurant_id")
@@ -46,14 +46,17 @@ export async function POST(req: Request) {
     if (selErr) throw selErr;
     if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
+    // 2) Aktualizacja statusu + ETA
     const { data: updated, error: updErr } = await supabaseAdmin
       .from("orders")
-      .update({ status: "accepted", deliveryTime: etaISO, delivery_time: etaISO })
+      // jeśli masz tylko kolumnę snake_case, możesz zostawić samo `delivery_time`
+      .update({ status: "accepted", deliveryTime: etaISO, delivery_time: etaISO } as any)
       .eq("id", id)
       .select("id, status, deliveryTime, delivery_time")
       .maybeSingle();
     if (updErr) throw updErr;
 
+    // 3) E-mail
     if (order.contact_email) {
       await sendOrderAcceptedEmail(order.contact_email, {
         name: order.name || "Kliencie",
@@ -63,6 +66,7 @@ export async function POST(req: Request) {
       });
     }
 
+    // 4) SMS
     try {
       if (order.phone) {
         const msg = `Sushi Tutaj: Zamówienie #${order.id} zaakceptowane. Planowany czas: ${fmtPL(etaISO)}. Dziękujemy!`;
@@ -75,7 +79,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       id: updated?.id,
       status: updated?.status,
-      deliveryTime: updated?.deliveryTime || updated?.delivery_time || etaISO,
+      deliveryTime: (updated as any)?.deliveryTime || (updated as any)?.delivery_time || etaISO,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
