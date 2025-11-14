@@ -1,3 +1,4 @@
+// src/app/api/orders/accept/route.ts
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -6,7 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 import { getSessionAndRole } from "@/lib/serverAuth";
 import { sendOrderAcceptedEmail } from "@/lib/e-mail";
-import { sendSms } from "@/lib/sms"; // NEW
+import { sendSms } from "@/lib/sms";
 
 const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -21,37 +22,41 @@ const fmtPL = (iso: string) =>
     timeZone: "Europe/Warsaw",
   });
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const { session, role } = await getSessionAndRole(req);
+export async function POST(req: Request) {
+  // Uwaga: brak drugiego argumentu, bo to NIE jest route dynamiczny
+  const { session, role } = await getSessionAndRole(); // Twoja wersja przyjmuje 0 arg.
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (role !== "admin" && role !== "employee")
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
     const body = await req.json().catch(() => ({}));
+    const id = String(body?.id ?? "").trim();
+    if (!id) return NextResponse.json({ error: "Missing order id" }, { status: 400 });
+
     const m = Number(body?.minutes);
-    const minutes = Number.isFinite(m) ? Math.max(5, Math.min(180, m)) : 30; // clamp 5–180
+    const minutes = Number.isFinite(m) ? Math.max(5, Math.min(180, m)) : 30;
     const etaISO = new Date(Date.now() + minutes * 60_000).toISOString();
 
-    // 1) Pobierz dane zamówienia do weryfikacji + kontaktu
+    // pobierz zamówienie do walidacji/kontaktu
     const { data: order, error: selErr } = await supabaseAdmin
       .from("orders")
       .select("id, contact_email, phone, name, selected_option, restaurant_id")
-      .eq("id", params.id)
+      .eq("id", id)
       .maybeSingle();
     if (selErr) throw selErr;
     if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
-    // 2) Aktualizacja statusu + ETA (obsługa obu nazw kolumn)
+    // aktualizacja statusu i ETA — używaj kolumny `deliveryTime` (w typach jej używasz)
     const { data: updated, error: updErr } = await supabaseAdmin
-   .from("orders")
-   .update({ status: "accepted", deliveryTime: etaISO })
-   .eq("id", params.id)
-   .select("id, status, deliveryTime")
+      .from("orders")
+      .update({ status: "accepted", deliveryTime: etaISO })
+      .eq("id", id)
+      .select("id, status, deliveryTime")
       .maybeSingle();
     if (updErr) throw updErr;
 
-    // 3) E-mail do klienta (jeśli jest adres)
+    // e-mail do klienta
     if (order.contact_email) {
       await sendOrderAcceptedEmail(order.contact_email, {
         name: order.name || "Kliencie",
@@ -61,12 +66,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       });
     }
 
-    // 4) SMS do klienta (PL bramka)
+    // SMS do klienta (zabezpieczone try/catch)
     try {
       if (order.phone) {
-        const msg = `Sushi Tutaj: Zamówienie #${order.id} zaakceptowane. Planowany czas: ${fmtPL(
-          etaISO
-        )}. Dziękujemy!`;
+        const msg = `Sushi Tutaj: Zamówienie #${order.id} zaakceptowane. Planowany czas: ${fmtPL(etaISO)}. Dziękujemy!`;
         await sendSms(order.phone, msg);
       }
     } catch (e) {
