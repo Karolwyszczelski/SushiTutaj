@@ -18,57 +18,60 @@ const toInt = (v: string | null, d: number) => {
 };
 
 export async function GET(req: Request) {
-  // Provider cookies dla supabase
+  // Supabase z providerem cookies
   const supabase = createRouteHandlerClient<Database>({ cookies });
 
+  // Użytkownik
   const { data: u } = await supabase.auth.getUser();
   const userId = u?.user?.id || null;
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // Parametry
   const url = new URL(req.url);
   const scope = url.searchParams.get("scope") || "open";
   const limit = Math.max(1, Math.min(100, toInt(url.searchParams.get("limit"), 20)));
   const offset = Math.max(0, toInt(url.searchParams.get("offset"), 0));
   const slugParam = (url.searchParams.get("restaurant") || "").toLowerCase() || null;
 
-  // cookies() jest Promise -> await
-  const cookieStore = await cookies();
+  // Cookie store (Next 15: sync)
+  const cookieStore = cookies();
   let rid = normalizeUuid(cookieStore.get("restaurant_id")?.value || null);
 
-  // Jeśli podano slug → pobierz id (typ wymuszony przez .returns)
+  // Slug -> id (jawny typ wyniku, by uniknąć `never`)
   if (slugParam) {
     const { data: rows, error } = await supabase
       .from("restaurants")
       .select("id")
       .eq("slug", slugParam)
-      .returns<{ id: string }[]>() // <- kluczowe: unikamy `never`
+      .returns<{ id: string }[]>() // <- kluczowe
       .limit(1);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     const restId = rows?.[0]?.id || null;
     if (!restId) return NextResponse.json({ error: "Unknown restaurant" }, { status: 404 });
-
     rid = normalizeUuid(restId);
   }
 
-  // Fallback: ostatnia restauracja przypisana userowi
+  // Fallback: ostatnia restauracja przypisana userowi (też jawny typ)
   if (!rid) {
-    const { data: last, error } = await supabase
+    const { data: lastRows, error } = await supabase
       .from("restaurant_admins")
       .select("restaurant_id, added_at")
       .eq("user_id", userId)
       .order("added_at", { ascending: false })
-      .limit(1);
+      .limit(1)
+      .returns<{ restaurant_id: string; added_at: string }[]>();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    const lastId = (last?.[0]?.restaurant_id as string) || null;
+    const lastId = lastRows?.[0]?.restaurant_id || null;
     rid = normalizeUuid(lastId);
   }
 
   if (!rid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // Selekcja kolumn (Twoje typy mają `deliveryTime`, bez `delivery_time`)
   const sel = `
     id, created_at, status, total_price,
     name, selected_option,
