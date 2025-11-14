@@ -13,6 +13,8 @@ import {
   Music,
 } from "lucide-react";
 
+type Route = "/[city]/kontakt";
+
 type OpeningHours = {
   mon_thu?: { open: string; close: string } | null;
   fri_sat?: { open: string; close: string } | null;
@@ -20,9 +22,9 @@ type OpeningHours = {
 };
 
 export async function generateMetadata(
-  { params }: { params: { city: string } }
+  { params }: PageProps<Route>
 ): Promise<Metadata> {
-  const { city } = params;
+  const { city } = await params;
   const r = await getRestaurantBySlug(city);
 
   const title = r ? `Kontakt — ${r.name} ${r.city}` : "Kontakt";
@@ -34,9 +36,9 @@ export async function generateMetadata(
 }
 
 export default async function Page(
-  { params }: { params: { city: string } }
+  { params }: PageProps<Route>
 ) {
-  const { city } = params;
+  const { city } = await params;
   const r = await getRestaurantBySlug(city);
 
   if (!r) {
