@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getRestaurantBySlug } from "@/lib/tenant";
-import { MapPin, Phone, Mail, Clock, Instagram, Facebook, ExternalLink } from "lucide-react";
+import { MapPin, Phone, Mail, Clock, Instagram, Facebook, ExternalLink, Music } from "lucide-react";
 
 type Params = { city: string };
 

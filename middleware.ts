@@ -1,3 +1,4 @@
+// middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
@@ -9,7 +10,7 @@ const CANONICAL_HOST =
   process.env.NEXT_PUBLIC_BASE_URL?.replace(/^https?:\/\//, "") ||
   "www.mediagalaxy.pl";
 
-/** WordPress ścieżki do odcięcia */
+/** Ścieżki po starem WP */
 const WP_PREFIXES = [
   "/wp-admin",
   "/wp-content",
@@ -24,7 +25,7 @@ const WP_PREFIXES = [
   "/archives",
 ] as const;
 
-/** Dozwolone publiczne trasy */
+/** Dozwolone znane trasy */
 const WHITELIST = new Set<string>([
   "/",
   "/menu",
@@ -32,6 +33,7 @@ const WHITELIST = new Set<string>([
   "/rezerwacje",
   "/pickup-order",
   "/verify",
+  "/admin",
   "/admin/login",
   "/legal/regulamin",
   "/legal/polityka-prywatnosci",
@@ -53,13 +55,10 @@ const normalizePath = (raw: string) => {
   return p.length ? p : "/";
 };
 
-/** Heurystyka spamowych URL-i */
 const isSpamPath = (pathname: string, req: NextRequest) => {
   if (WP_PREFIXES.some((p) => pathname.startsWith(p))) return true;
-
   if (/^\/\d{4}(?:\/\d{2}(?:\/\d{2})?)?(?:\/|$)/.test(pathname)) return true;
   if (/^\/\d{6,}(?:\/|$)/.test(pathname)) return true;
-
   if (/\.(php|asp|aspx|jsp|cgi|cfm)(?:\/|$)/i.test(pathname)) return true;
 
   const segs = pathname.split("/").filter(Boolean);
@@ -87,7 +86,7 @@ export async function middleware(req: NextRequest) {
     host.startsWith("localhost") ||
     host.startsWith("127.0.0.1");
 
-  // 0) HTTPS + host kanoniczny
+  // kanoniczny host
   if (!isPreview && host && host !== CANONICAL_HOST) {
     const url = new URL(req.url);
     url.protocol = "https:";
@@ -98,93 +97,31 @@ export async function middleware(req: NextRequest) {
 
   const pathname = normalizePath(req.nextUrl.pathname);
 
-  // 0.5) /gone przepuszczamy
-  if (pathname === "/gone") return NextResponse.next();
+  // /gone zostawiamy w spokoju
+  if (pathname === "/gone") {
+    return NextResponse.next();
+  }
 
-  // 1) Spam → 410
+  // spam / stare ścieżki WP
   if (isSpamPath(pathname, req)) {
     const gone = new NextResponse("Gone", { status: 410 });
     gone.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
     return gone;
   }
 
-  // Zawsze ustawiaj cookie 'restaurant_slug' dla pierwszego segmentu ścieżki (poza /admin)
-  const seg0 = pathname.split("/").filter(Boolean)[0] || null;
-  if (seg0 && seg0 !== "admin") {
-    const resSet = NextResponse.next();
-    resSet.cookies.set("restaurant_slug", seg0.toLowerCase(), {
-      path: "/",
-      httpOnly: false,
-      sameSite: "lax",
-      secure: !isPreview,
-      maxAge: 60 * 60 * 24 * 7,
-    });
-    // Publiczne strony nie wymagają auth
-    if (!pathname.startsWith("/admin")) return resSet;
-    // dla /admin przechodzimy dalej z tym samym obiektem odpowiedzi
-    // i będziemy go dalej modyfikować
-    return await handleAdmin(req, resSet, isPreview);
-  }
-
-  // Publiczne strony bez segmentu/slug-u
+  // wszystko poza /admin* nie wymaga auth
   if (!pathname.startsWith("/admin")) return NextResponse.next();
 
-  // /admin flow
-  return await handleAdmin(req, NextResponse.next(), isPreview);
-}
+  // /admin/login — dostępne bez logowania
+  if (pathname === "/admin/login") return NextResponse.next();
 
-async function handleAdmin(req: NextRequest, res: NextResponse, isPreview: boolean) {
+  const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
-  const pathname = normalizePath(req.nextUrl.pathname);
-
-  // 2.1) /admin/login
-  if (pathname === "/admin/login") {
-    if (!session) return res;
-
-    const { data: membership } = await supabase
-      .from("restaurant_admins")
-      .select("restaurant_id, added_at")
-      .eq("user_id", session.user.id)
-      .order("added_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (!membership?.restaurant_id) return res;
-
-    const redirect = NextResponse.redirect(new URL("/admin/AdminPanel", req.nextUrl.origin));
-
-    redirect.cookies.set("restaurant_id", String(membership.restaurant_id), {
-      path: "/",
-      httpOnly: false,
-      sameSite: "lax",
-      secure: !isPreview,
-      maxAge: 60 * 60 * 24 * 7,
-    });
-
-    const { data: r } = await supabase
-      .from("restaurants")
-      .select("slug")
-      .eq("id", membership.restaurant_id)
-      .maybeSingle();
-
-    if (r?.slug) {
-      redirect.cookies.set("restaurant_slug", String(r.slug), {
-        path: "/",
-        httpOnly: false,
-        sameSite: "lax",
-        secure: !isPreview,
-        maxAge: 60 * 60 * 24 * 7,
-      });
-    }
-
-    return redirect;
-  }
-
-  // 3) Ochrona pozostałych /admin/*
+  // brak sesji → 401/redirect
   if (!session) {
     if (isJsonRequest(req)) {
       return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
@@ -197,56 +134,65 @@ async function handleAdmin(req: NextRequest, res: NextResponse, isPreview: boole
     return NextResponse.redirect(url);
   }
 
-  // 4) Membership
-  const { data: membership, error: mErr } = await supabase
-    .from("restaurant_admins")
-    .select("restaurant_id, added_at")
-    .eq("user_id", session.user.id)
-    .order("added_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // sprawdzenie uprawnień w restaurant_admins
+  let adminRole: string | null = null;
 
-  if (mErr || !membership?.restaurant_id) {
-    const url = new URL("/admin/login", req.nextUrl.origin);
-    url.searchParams.set("err", "no-restaurant");
-    return NextResponse.redirect(url);
+  try {
+    const { data, error } = await supabase
+      .from("restaurant_admins")
+      .select("role")
+      .eq("user_id", session.user.id)
+      .order("added_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      // jeśli coś wywaliło, traktujemy jak brak uprawnień
+      console.error("[middleware] restaurant_admins error:", error.message);
+    }
+
+    adminRole = (data?.role as string) ?? null;
+  } catch (e: any) {
+    console.error("[middleware] restaurant_admins exception:", e?.message ?? e);
   }
 
-  // 5) Cookies: id + slug
-  res.cookies.set("restaurant_id", String(membership.restaurant_id), {
-    path: "/",
-    httpOnly: false,
-    sameSite: "lax",
-    secure: !isPreview,
-    maxAge: 60 * 60 * 24 * 7,
-  });
-
-  const { data: r } = await supabase
-    .from("restaurants")
-    .select("slug")
-    .eq("id", membership.restaurant_id)
-    .maybeSingle();
-
-  if (r?.slug) {
-    res.cookies.set("restaurant_slug", String(r.slug), {
-      path: "/",
-      httpOnly: false,
-      sameSite: "lax",
-      secure: !isPreview,
-      maxAge: 60 * 60 * 24 * 7,
-    });
+  // użytkownik zalogowany, ale nie jest adminem żadnej restauracji
+  if (!adminRole) {
+    if (isJsonRequest(req)) {
+      return new NextResponse(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return NextResponse.redirect(new URL("/", req.nextUrl.origin));
   }
 
-  // 6) /admin → panel
+  // routing /admin → odpowiedni panel
   if (pathname === "/admin") {
-    return NextResponse.redirect(new URL("/admin/AdminPanel", req.nextUrl.origin));
+    let dest = "/";
+
+    if (adminRole === "employee") {
+      dest = "/admin/EmployeePanel";
+    } else {
+      // owner / admin / inne role traktujemy jako pełny admin
+      dest = "/admin/AdminPanel";
+    }
+
+    if (dest !== pathname) {
+      return NextResponse.redirect(new URL(dest, req.nextUrl.origin));
+    }
   }
+
+  // dodatkowe ograniczenie: "employee" nie wejdzie na AdminPanel, jeśli chcesz:
+  // if (pathname.startsWith("/admin/AdminPanel") && adminRole === "employee") {
+  //   return NextResponse.redirect(new URL("/admin/EmployeePanel", req.nextUrl.origin));
+  // }
 
   return res;
 }
 
 export const config = {
   matcher: [
-    "/((?!_next|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml)|favicon\\.ico|robots\\.txt|sitemap\\.xml).*)",
+    "/((?!_next|.*\\.(?:png|jpg|jpeg|gif|webp|svg|ico|css|js|map|txt|xml|woff2?)|favicon\\.ico|robots\\.txt|sitemap\\.xml).*)",
   ],
 };
