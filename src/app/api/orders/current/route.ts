@@ -18,12 +18,8 @@ const toInt = (v: string | null, d: number) => {
 };
 
 export async function GET(req: Request) {
-  // ✅ PRZEKAZUJEMY PROVIDER COOKIES (funkcję), nie gotowy obiekt
-  // W zależności od wersji @supabase/auth-helpers-nextjs obie formy działają:
-  // 1) rekomendowane (najprostsze):
+  // provider do supabase – przekazujemy funkcję cookies
   const supabase = createRouteHandlerClient<Database>({ cookies });
-  // 2) gdybyś miał starszą definicję, użyj tak:
-  // const supabase = createRouteHandlerClient<Database>({ cookies: async () => cookies() });
 
   const { data: u } = await supabase.auth.getUser();
   const userId = u?.user?.id || null;
@@ -35,7 +31,8 @@ export async function GET(req: Request) {
   const offset = Math.max(0, toInt(url.searchParams.get("offset"), 0));
   const slugParam = (url.searchParams.get("restaurant") || "").toLowerCase() || null;
 
-  const cookieStore = cookies(); // lokalnie do odczytu wartości
+  // ⬅️ krytyczna poprawka: cookies() trzeba awaitować przed .get(...)
+  const cookieStore = await cookies();
   let rid = normalizeUuid(cookieStore.get("restaurant_id")?.value || null);
 
   if (slugParam) {
