@@ -2,7 +2,6 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import type { RouteContext } from "next";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
@@ -26,14 +25,11 @@ const PatchSchema = z.object({
   cost_per_km: z.number().nonnegative().optional(),
 });
 
-// literalna ścieżka tego route'a
-type Route = "/api/admin/[id]";
-
 export async function PATCH(
   req: Request,
-  ctx: RouteContext<Route>
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await ctx.params;
+  const { id } = await params;
 
   const { session, role } = await getSessionAndRole();
   if (!session || (role !== "admin" && role !== "employee")) {
@@ -62,9 +58,9 @@ export async function PATCH(
 
 export async function DELETE(
   _req: Request,
-  ctx: RouteContext<Route>
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await ctx.params;
+  const { id } = await params;
 
   const { session, role } = await getSessionAndRole();
   if (!session || (role !== "admin" && role !== "employee")) {
