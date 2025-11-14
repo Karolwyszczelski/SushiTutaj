@@ -1,5 +1,4 @@
 // src/app/api/[city]/check-availability/route.ts
-import type { RouteContext } from "next";
 import { NextResponse } from "next/server";
 import {
   isOrderingOpenNow,
@@ -11,13 +10,11 @@ import { getRestaurantBySlug } from "@/lib/tenant";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Route = "/api/[city]/check-availability";
-
 export async function POST(
   req: Request,
-  { params }: RouteContext<Route>
+  { params }: { params: { city: string } }
 ) {
-  const { city } = await params;
+  const { city } = params;
 
   const r = await getRestaurantBySlug(city);
   if (!r) {
