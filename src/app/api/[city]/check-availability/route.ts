@@ -1,4 +1,7 @@
 // src/app/api/[city]/check-availability/route.ts
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
 import {
   isOrderingOpenNow,
@@ -7,14 +10,12 @@ import {
 } from "@/lib/serverChecks";
 import { getRestaurantBySlug } from "@/lib/tenant";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 export async function POST(
   req: Request,
-  { params }: { params: { city: string } }
+  { params }: { params: Promise<{ city: string }> }
 ) {
-  const { city } = params;
+  // w Next 15 params jest Promise – trzeba je awaitować
+  const { city } = await params;
 
   const r = await getRestaurantBySlug(city);
   if (!r) {
