@@ -1,12 +1,13 @@
 // src/app/api/menu_items/route.ts
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import type { Database } from "@/types/supabase";
 import { getSessionAndRole } from "@/lib/serverAuth";
 
 export async function GET() {
-  const supabase = createRouteHandlerClient<Database>({ cookies, headers });
+  // ✅ tylko cookies — bez headers
+  const supabase = createRouteHandlerClient<Database>({ cookies });
 
   const { data, error } = await supabase
     .from("menu_items")
@@ -20,41 +21,39 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  // 1) check auth
+  // 1) auth
   const { session, role } = await getSessionAndRole();
   if (!session || role !== "admin") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // 2) parse JSON body
-  let body: {
-    name: string;
-    price: number;
-    category: string;
-    subcategory?: string | null;
-    description?: string | null;
-    ingredients: string[];
-  };
+  // 2) parse JSON
+  let body: any;
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // 3) insert into Supabase
-  const supabase = createRouteHandlerClient<Database>({ cookies, headers });
+  // 3) insert
+  const supabase = createRouteHandlerClient<Database>({ cookies });
+
+  // Uwaga: w projekcie aktualizacje używają `category_id`.
+  // Dla zgodności: jeśli przyjdzie `category`, mapujemy go do `category_id`.
+  const insertPayload: any = {
+    name: body.name,
+    price: body.price,
+    category_id: body.category_id ?? body.category ?? null,
+    subcategory: body.subcategory ?? null,
+    description: body.description ?? null,
+    ingredients: body.ingredients,
+    available: true,
+    order: 0,
+  };
+
   const { data, error } = await supabase
     .from("menu_items")
-    .insert({
-      name: body.name,
-      price: body.price,
-      category: body.category,
-      subcategory: body.subcategory ?? null,
-      description: body.description ?? null,
-      ingredients: body.ingredients,
-      available: true,
-      order: 0,
-    })
+    .insert(insertPayload)
     .select()
     .single();
 
