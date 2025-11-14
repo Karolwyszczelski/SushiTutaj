@@ -1,6 +1,7 @@
 // src/app/admin/page.tsx
 import { supabaseServer } from "@/lib/supabaseServer";
 import { redirect } from "next/navigation";
+import type { Route } from "next";
 import AdminLogin from "./login/page";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,6 @@ export default async function AdminEntry() {
   }
 
   // 2) Czy użytkownik jest administratorem którejkolwiek restauracji?
-  // Akceptujemy role: owner/admin/manager (dopasuj do swoich wartości)
   const { data: adminRow, error: adminErr } = await supabase
     .from("restaurant_admins")
     .select("user_id, role")
@@ -32,10 +32,10 @@ export default async function AdminEntry() {
 
   // 3) Routing wg uprawnień
   if (!adminErr && adminRow) {
-    // Admin dowolnej z 3 restauracji → panel administracyjny
-    redirect("/admin/adminPanel");
+    // Admin → panel administracyjny
+    redirect("/admin/adminPanel" as Route);
   }
 
   // Zalogowany, ale nie-admin → strona główna
-  redirect("/");
+  redirect("/" as Route);
 }
