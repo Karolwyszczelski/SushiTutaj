@@ -2,7 +2,6 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import type { RouteContext } from "next";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
@@ -80,12 +79,12 @@ async function resolveRestaurantId(
   return (data?.restaurant_id as string) ?? null;
 }
 
-/* ====== Route type dla typed routes ====== */
-type Route = "/api/orders/[id]";
-
 /* ====== PATCH ====== */
-export async function PATCH(request: Request, ctx: RouteContext<Route>) {
-  const { id: orderId } = await ctx.params; // <- poprawna nazwa parametru z [id]
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: orderId } = await params;
 
   const { session, role } = await getSessionAndRole(request);
   if (!session || (role !== "admin" && role !== "employee")) {
@@ -322,13 +321,11 @@ export async function PATCH(request: Request, ctx: RouteContext<Route>) {
           </div>
         `;
 
-        // zakładam, że sendEmail przyjmuje { to, subject, html }
         await sendEmail({
           to: toEmail,
           subject,
           html,
-          // jeśli Twój helper wspiera "from", możesz dodać:
-          // from: EMAIL_FROM,
+          // from: EMAIL_FROM, // jeśli Twój helper wspiera
         });
       }
     }

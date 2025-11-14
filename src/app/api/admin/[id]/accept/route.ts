@@ -1,14 +1,15 @@
-// src/app/api/admin/[id]/accept/route.ts
-export const runtime = "nodejs";
+// src/app/api/orders/accept/route.ts
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/supabase";
+import { getSessionAndRole } from "@/lib/serverAuth";
 import { sendOrderAcceptedEmail } from "@/lib/e-mail";
+import { sendSms } from "@/lib/sms";
 
-// Supabase admin client (service role)
-const supabaseAdmin = createClient(
+const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
   { auth: { persistSession: false } }
@@ -21,71 +22,62 @@ const fmtPL = (iso: string) =>
     timeZone: "Europe/Warsaw",
   });
 
-// UWAGA: używamy RouteContext z literalną ścieżką tego route
-export async function POST(req: Request, ctx: RouteContext<"/api/admin/[id]/accept">) {
-  const { id } = await ctx.params;
+// Uwaga: to jest *statyczny* route bez [id] – id pobieramy z body.
+export async function POST(req: Request) {
+  const { session, role } = await getSessionAndRole(req);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (role !== "admin" && role !== "employee")
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  if (!id) {
-    return NextResponse.json({ error: "missing_id" }, { status: 400 });
-  }
-
-  // pobierz zamówienie do walidacji i e-maila
-  const { data: ord, error: getErr } = await supabaseAdmin
-    .from("orders")
-    .select("id, restaurant_id, contact_email, name, selected_option, status")
-    .eq("id", id)
-    .single();
-
-  if (getErr) {
-    return NextResponse.json({ error: getErr.message }, { status: 400 });
-  }
-  if (!ord) {
-    return NextResponse.json({ error: "not_found" }, { status: 404 });
-  }
-
-  // ETA z body
-  let minutes = 30;
   try {
-    const b = await req.json();
-    minutes = Math.max(1, Number(b?.minutes ?? 30));
-  } catch {
-    // fallback do 30 minut
-  }
+    const body = await req.json().catch(() => ({}));
+    const id = String(body?.id ?? "").trim();
+    if (!id) return NextResponse.json({ error: "Missing order id" }, { status: 400 });
 
-  const etaISO = new Date(Date.now() + minutes * 60_000).toISOString();
+    const m = Number(body?.minutes);
+    const minutes = Number.isFinite(m) ? Math.max(5, Math.min(180, m)) : 30;
+    const etaISO = new Date(Date.now() + minutes * 60_000).toISOString();
 
-  // update zamówienia
-  const { data: updated, error: updErr } = await supabaseAdmin
-    .from("orders")
-    .update({
-      status: "accepted",
-      accepted_at: new Date().toISOString(),
-      // accepted_by: <jeśli kiedyś dodasz kolumnę z id użytkownika>,
-      deliveryTime: etaISO, // nazwa zgodna z Twoją tabelą
-    })
-    .eq("id", id)
-    .select("id, status, deliveryTime")
-    .single();
+    const { data: order, error: selErr } = await supabaseAdmin
+      .from("orders")
+      .select("id, contact_email, phone, name, selected_option, restaurant_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (selErr) throw selErr;
+    if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
-  if (updErr || !updated) {
-    return NextResponse.json({ error: updErr?.message || "update_failed" }, { status: 400 });
-  }
+    const { data: updated, error: updErr } = await supabaseAdmin
+      .from("orders")
+      .update({ status: "accepted", deliveryTime: etaISO, delivery_time: etaISO })
+      .eq("id", id)
+      .select("id, status, deliveryTime, delivery_time")
+      .maybeSingle();
+    if (updErr) throw updErr;
 
-  // e-mail do klienta, jeśli jest adres
-  if (ord.contact_email) {
-    void sendOrderAcceptedEmail(ord.contact_email, {
-      name: ord.name || "Kliencie",
-      minutes,
-      timeStr: fmtPL(etaISO),
-      mode: ord.selected_option || "takeaway",
-    }).catch(() => {
-      // celowo ignorujemy błąd maila – zamówienie jest już zaakceptowane
+    if (order.contact_email) {
+      await sendOrderAcceptedEmail(order.contact_email, {
+        name: order.name || "Kliencie",
+        minutes,
+        timeStr: fmtPL(etaISO),
+        mode: order.selected_option || "takeaway",
+      });
+    }
+
+    try {
+      if (order.phone) {
+        const msg = `Sushi Tutaj: Zamówienie #${order.id} zaakceptowane. Planowany czas: ${fmtPL(etaISO)}. Dziękujemy!`;
+        await sendSms(order.phone, msg);
+      }
+    } catch (e) {
+      console.error("[orders.accept] sms error", (e as any)?.message || e);
+    }
+
+    return NextResponse.json({
+      id: updated?.id,
+      status: updated?.status,
+      deliveryTime: updated?.deliveryTime || updated?.delivery_time || etaISO,
     });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
-
-  return NextResponse.json({
-    id: updated.id,
-    status: updated.status,
-    deliveryTime: updated.deliveryTime ?? etaISO,
-  });
 }

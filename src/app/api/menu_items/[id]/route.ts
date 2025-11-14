@@ -1,18 +1,15 @@
 // src/app/api/menu_items/[id]/route.ts
-import type { RouteContext } from "next";
 import { NextResponse } from "next/server";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import { cookies } from "next/headers";
 import type { Database } from "@/types/supabase";
 import { getSessionAndRole } from "@/lib/serverAuth";
 
-type Route = "/api/menu_items/[id]";
-
 export async function PATCH(
   request: Request,
-  ctx: RouteContext<Route>
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await ctx.params;
+  const { id } = await params;
 
   const { session, role } = await getSessionAndRole();
   if (!session || role !== "admin") {
@@ -27,7 +24,7 @@ export async function PATCH(
       name: body.name,
       price: body.price,
       category_id: body.category_id,
-      subcategory: body.subcategory || null,
+      subcategory: body.subcategory ?? null,
       available: body.available,
       order: body.order,
     })
@@ -41,9 +38,9 @@ export async function PATCH(
 
 export async function DELETE(
   _request: Request,
-  ctx: RouteContext<Route>
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await ctx.params;
+  const { id } = await params;
 
   const { session, role } = await getSessionAndRole();
   if (!session || role !== "admin") {
@@ -51,10 +48,7 @@ export async function DELETE(
   }
 
   const supabase = createRouteHandlerClient<Database>({ cookies });
-  const { error } = await supabase
-    .from("menu_items")
-    .delete()
-    .eq("id", id);
+  const { error } = await supabase.from("menu_items").delete().eq("id", id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
