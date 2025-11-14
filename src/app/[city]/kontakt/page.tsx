@@ -1,9 +1,16 @@
+// src/app/[city]/kontakt/page.tsx
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getRestaurantBySlug } from "@/lib/tenant";
 import { MapPin, Phone, Mail, Clock, Instagram, Facebook, ExternalLink, Music } from "lucide-react";
 
 type Params = { city: string };
+
+type OpeningHours = {
+  mon_thu?: { open: string; close: string } | null;
+  fri_sat?: { open: string; close: string } | null;
+  sun?: { open: string; close: string } | null;
+} | null;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const r = await getRestaurantBySlug(params.city);
@@ -18,13 +25,15 @@ export default async function Page({ params }: { params: Params }) {
   const r = await getRestaurantBySlug(params.city);
   if (!r) return <main className="px-6 py-24 text-center">Lokal nieaktywny.</main>;
 
-  const oh = r.opening_hours as any | null;
+  const oh = r.opening_hours as OpeningHours;
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-24">
       <header className="text-center">
         <h1 className="font-display text-4xl sm:text-6xl">Kontakt — {r.city}</h1>
-        <p className="mt-3 text-white/80">Telefon, adres, godziny i nasze profile. Dane zmieniają się automatycznie dla każdego miasta.</p>
+        <p className="mt-3 text-white/80">
+          Telefon, adres, godziny i nasze profile. Dane zmieniają się automatycznie dla każdego miasta.
+        </p>
       </header>
 
       <section className="mt-10 grid gap-6 md:grid-cols-2">
@@ -109,7 +118,7 @@ export default async function Page({ params }: { params: Params }) {
               target={r.tiktok_url ? "_blank" : undefined}
               className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 hover:bg-white/10"
             >
-              <Tiktok className="h-5 w-5" /> TikTok
+              <Music className="h-5 w-5" /> TikTok
             </Link>
           </div>
         </div>
