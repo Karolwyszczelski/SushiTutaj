@@ -1,25 +1,37 @@
 // src/app/admin/layout.tsx
 import type { ReactNode } from "react";
-import Sidebar from "@/components/sidebar";
-import CookieBanner from "@/components/CookieBanner";
-import type { Metadata } from "next";
+import { Suspense } from "react";
+import Sidebar from "@/components/admin/sidebar";
 
-export const metadata: Metadata = {
-  robots: { index: false, follow: false, nocache: true },
-};
+// Admin może być spokojnie zawsze dynamiczny
+export const dynamic = "force-dynamic";
 
-type AdminLayoutProps = {
-  children: ReactNode;
-};
-
-export default function AdminLayout({ children }: AdminLayoutProps) {
+function AdminShell({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen">
-      <Sidebar />
-      <CookieBanner />
-      <main className="flex-1 bg-gray-50 p-6 overflow-auto">
+    <div className="flex min-h-screen bg-slate-50">
+      {/* Sidebar (ma useSearchParams) pod Suspense */}
+      <aside className="flex-none">
+        <Sidebar />
+      </aside>
+
+      {/* Główna treść */}
+      <main className="flex-1 overflow-y-auto">
         {children}
       </main>
     </div>
+  );
+}
+
+export default function AdminLayout({ children }: { children: ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500 text-sm">
+          Ładowanie panelu administracyjnego…
+        </div>
+      }
+    >
+      <AdminShell>{children}</AdminShell>
+    </Suspense>
   );
 }

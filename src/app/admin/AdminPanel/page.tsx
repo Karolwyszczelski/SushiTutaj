@@ -1,12 +1,19 @@
 // src/app/admin/AdminPanel/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Settings, TrendingUp, PieChart, Clock, RefreshCw, Download } from "lucide-react";
+import {
+  Settings,
+  TrendingUp,
+  PieChart,
+  Clock,
+  RefreshCw,
+  Download,
+} from "lucide-react";
 import "react-calendar/dist/Calendar.css";
 import { RadialIcon } from "../dashboard/RadialIcon";
 
@@ -60,7 +67,10 @@ const getCookie = (k: string): string | null => {
   const row =
     document.cookie
       .split("; ")
-      .find((r) => r.startsWith(`${k}=`) || r.startsWith(`${encodeURIComponent(k)}=`)) || null;
+      .find(
+        (r) =>
+          r.startsWith(`${k}=`) || r.startsWith(`${encodeURIComponent(k)}=`)
+      ) || null;
   if (!row) return null;
   const value = row.substring(row.indexOf("=") + 1);
   try {
@@ -89,48 +99,59 @@ function aggregateStats(list: StatsResponse[]): StatsResponse {
     },
   };
 
-  // sumy
   for (const s of list) {
     for (const [d, v] of Object.entries(s.ordersPerDay ?? {})) {
       out.ordersPerDay![d] = (out.ordersPerDay![d] ?? 0) + (v || 0);
     }
     for (const [d, v] of Object.entries(s.avgFulfillmentTime ?? {})) {
-      // średnia z dostępnych (bez ważenia)
       if (!(d in out.avgFulfillmentTime!)) out.avgFulfillmentTime![d] = 0;
-      // tymczasowo sumujemy; policzymy średnią niżej
-      out.avgFulfillmentTime![d] = (out.avgFulfillmentTime![d] as number) + (v || 0) + 1e-9; // +epsilon by odróżnić "zliczone"
+      out.avgFulfillmentTime![d] =
+        (out.avgFulfillmentTime![d] as number) + (v || 0) + 1e-9;
     }
     for (const [n, c] of Object.entries(s.popularProducts ?? {})) {
       out.popularProducts![n] = (out.popularProducts![n] ?? 0) + (c || 0);
     }
 
     const k = s.kpis ?? {};
-    out.kpis!.todayOrders = (out.kpis!.todayOrders ?? 0) + (k.todayOrders || 0);
-    out.kpis!.todayRevenue = (out.kpis!.todayRevenue ?? 0) + (k.todayRevenue || 0);
-    out.kpis!.todayReservations = (out.kpis!.todayReservations ?? 0) + (k.todayReservations || 0);
-    out.kpis!.monthOrders = (out.kpis!.monthOrders ?? 0) + (k.monthOrders || 0);
-    out.kpis!.monthRevenue = (out.kpis!.monthRevenue ?? 0) + (k.monthRevenue || 0);
+    out.kpis!.todayOrders =
+      (out.kpis!.todayOrders ?? 0) + (k.todayOrders || 0);
+    out.kpis!.todayRevenue =
+      (out.kpis!.todayRevenue ?? 0) + (k.todayRevenue || 0);
+    out.kpis!.todayReservations =
+      (out.kpis!.todayReservations ?? 0) + (k.todayReservations || 0);
+    out.kpis!.monthOrders =
+      (out.kpis!.monthOrders ?? 0) + (k.monthOrders || 0);
+    out.kpis!.monthRevenue =
+      (out.kpis!.monthRevenue ?? 0) + (k.monthRevenue || 0);
     out.kpis!.newOrders = (out.kpis!.newOrders ?? 0) + (k.newOrders || 0);
-    out.kpis!.currentOrders = (out.kpis!.currentOrders ?? 0) + (k.currentOrders || 0);
-    out.kpis!.reservations = (out.kpis!.reservations ?? 0) + (k.reservations || 0);
+    out.kpis!.currentOrders =
+      (out.kpis!.currentOrders ?? 0) + (k.currentOrders || 0);
+    out.kpis!.reservations =
+      (out.kpis!.reservations ?? 0) + (k.reservations || 0);
   }
 
-  // uśrednienie avgFulfillmentTime i monthAvgFulfillment
-  // (proste średnie z dostępnych; bez ważenia)
   const sources = Math.max(1, list.length);
   for (const [d, sumPlusEps] of Object.entries(out.avgFulfillmentTime!)) {
-    out.avgFulfillmentTime![d] = Math.round((Number(sumPlusEps) - 1e-9) / sources);
+    out.avgFulfillmentTime![d] = Math.round(
+      (Number(sumPlusEps) - 1e-9) / sources
+    );
   }
   const monthAvgs = list
     .map((s) => s.kpis?.monthAvgFulfillment)
     .filter((x): x is number => Number.isFinite(x as number));
-  out.kpis!.monthAvgFulfillment =
-    monthAvgs.length ? Math.round(monthAvgs.reduce((a, b) => a + b, 0) / monthAvgs.length) : undefined;
+  out.kpis!.monthAvgFulfillment = monthAvgs.length
+    ? Math.round(
+        monthAvgs.reduce((a, b) => a + b, 0) / monthAvgs.length
+      )
+    : undefined;
 
   return out;
 }
 
-export default function AdminPanel() {
+// ROUTE USTAWIAMY JAKO DYNAMICZNĄ (zero prób SSG)
+export const dynamic = "force-dynamic";
+
+function AdminPanel() {
   const router = useRouter();
   const supabase = createClientComponentClient();
 
@@ -139,7 +160,11 @@ export default function AdminPanel() {
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [live, setLive] = useState({ newOrders: 0, currentOrders: 0, reservations: 0 });
+  const [live, setLive] = useState({
+    newOrders: 0,
+    currentOrders: 0,
+    reservations: 0,
+  });
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [booted, setBooted] = useState(false);
@@ -148,13 +173,17 @@ export default function AdminPanel() {
   useEffect(() => {
     const init = async () => {
       try {
-        const r = await fetch("/api/restaurants/ensure-cookie", { cache: "no-store" });
+        const r = await fetch("/api/restaurants/ensure-cookie", {
+          cache: "no-store",
+        });
         const j = await r.json().catch(() => ({}));
         const slug = j?.restaurant_slug as string | undefined;
-        if (slug && CITIES.some((c) => c.slug === slug)) setCity(slug as CityPick);
+        if (slug && CITIES.some((c) => c.slug === slug))
+          setCity(slug as CityPick);
       } catch {
         const slug = getCookie("restaurant_slug");
-        if (slug && CITIES.some((c) => c.slug === slug)) setCity(slug as CityPick);
+        if (slug && CITIES.some((c) => c.slug === slug))
+          setCity(slug as CityPick);
       } finally {
         setBooted(true);
       }
@@ -168,9 +197,12 @@ export default function AdminPanel() {
     let stop = false;
 
     const fetchCityStats = async (slug: CitySlug): Promise<StatsResponse> => {
-      const res = await fetch(`/api/orders/stats?restaurant=${slug}&days=${days}&t=${Date.now()}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(
+        `/api/orders/stats?restaurant=${slug}&days=${days}&t=${Date.now()}`,
+        {
+          cache: "no-store",
+        }
+      );
       return (await res.json()) as StatsResponse;
     };
 
@@ -181,8 +213,15 @@ export default function AdminPanel() {
       );
       const j = await r.json();
       const arr: any[] = Array.isArray(j?.orders) ? j.orders : [];
-      const newOrders = arr.filter((o) => o.status === "new" || o.status === "placed" || o.status === "pending").length;
-      const currentOrders = arr.filter((o) => o.status === "accepted").length;
+      const newOrders = arr.filter(
+        (o) =>
+          o.status === "new" ||
+          o.status === "placed" ||
+          o.status === "pending"
+      ).length;
+      const currentOrders = arr.filter(
+        (o) => o.status === "accepted"
+      ).length;
       return { newOrders, currentOrders, reservations: 0 };
     };
 
@@ -208,7 +247,10 @@ export default function AdminPanel() {
             )
           );
         } else {
-          const [s, l] = await Promise.all([fetchCityStats(city), fetchCurrent(city)]);
+          const [s, l] = await Promise.all([
+            fetchCityStats(city),
+            fetchCurrent(city),
+          ]);
           if (stop) return;
           setStats(s ?? {});
           setLive(l);
@@ -240,26 +282,38 @@ export default function AdminPanel() {
     if (!booted || city === "all") return;
     const chan = supabase
       .channel("orders-realtime-dashboard")
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
-        if (document.visibilityState === "visible") {
-          // miękkie odświeżenie
-          (async () => {
-            try {
-              const r = await fetch(
-                `/api/orders/current?restaurant=${city}&limit=200&offset=0&t=${Date.now()}`,
-                { cache: "no-store" }
-              );
-              const j = await r.json();
-              const arr: any[] = Array.isArray(j?.orders) ? j.orders : [];
-              const newOrders = arr.filter(
-                (o) => o.status === "new" || o.status === "placed" || o.status === "pending"
-              ).length;
-              const currentOrders = arr.filter((o) => o.status === "accepted").length;
-              setLive({ newOrders, currentOrders, reservations: live.reservations });
-            } catch {}
-          })();
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        () => {
+          if (document.visibilityState === "visible") {
+            (async () => {
+              try {
+                const r = await fetch(
+                  `/api/orders/current?restaurant=${city}&limit=200&offset=0&t=${Date.now()}`,
+                  { cache: "no-store" }
+                );
+                const j = await r.json();
+                const arr: any[] = Array.isArray(j?.orders) ? j.orders : [];
+                const newOrders = arr.filter(
+                  (o) =>
+                    o.status === "new" ||
+                    o.status === "placed" ||
+                    o.status === "pending"
+                ).length;
+                const currentOrders = arr.filter(
+                  (o) => o.status === "accepted"
+                ).length;
+                setLive({
+                  newOrders,
+                  currentOrders,
+                  reservations: live.reservations,
+                });
+              } catch {}
+            })();
+          }
         }
-      })
+      )
       .subscribe();
     return () => {
       void supabase.removeChannel(chan);
@@ -267,7 +321,8 @@ export default function AdminPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [city, booted]);
 
-  const safeEntries = (o?: Record<string, number>) => Object.entries(o ?? {});
+  const safeEntries = (o?: Record<string, number>) =>
+    Object.entries(o ?? {});
   const dailyOrdersData = useMemo(
     () =>
       safeEntries(stats?.ordersPerDay)
@@ -316,9 +371,18 @@ export default function AdminPanel() {
   };
 
   const exportTopCSV = () => {
-    const rows = [["Pozycja", "Zamówienia"], ...topDishesData.map((r) => [r.dish, String(r.orders)])];
-    const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const rows = [
+      ["Pozycja", "Zamówienia"],
+      ...topDishesData.map((r) => [r.dish, String(r.orders)]),
+    ];
+    const csv = rows
+      .map((r) =>
+        r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")
+      )
+      .join("\n");
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8",
+    });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -332,8 +396,12 @@ export default function AdminPanel() {
       {/* Header */}
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Panel administracyjny</h1>
-          <p className="text-sm text-slate-600">Podgląd bieżących wyników i trendów.</p>
+          <h1 className="text-3xl font-bold text-slate-900">
+            Panel administracyjny
+          </h1>
+          <p className="text-sm text-slate-600">
+            Podgląd bieżących wyników i trendów.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -344,7 +412,9 @@ export default function AdminPanel() {
                 key={c.slug}
                 onClick={() => setCity(c.slug)}
                 className={`px-3 py-1.5 text-sm ${
-                  city === c.slug ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
+                  city === c.slug
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-700 hover:bg-slate-100"
                 }`}
               >
                 {c.label}
@@ -359,7 +429,9 @@ export default function AdminPanel() {
                 key={d}
                 onClick={() => setDays(d as 7 | 30 | 90)}
                 className={`px-3 py-1.5 text-sm ${
-                  days === d ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
+                  days === d
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-700 hover:bg-slate-100"
                 }`}
               >
                 {d} dni
@@ -397,21 +469,37 @@ export default function AdminPanel() {
             <span className="text-sm font-medium text-slate-600">Nowe</span>
             <RadialIcon percentage={pct(newOrders)} size={38} />
           </div>
-          <div className="mt-1 text-3xl font-bold text-slate-900">{newOrders}</div>
-          <div className="mt-1 text-xs text-slate-500">Zgłoszone dziś: {todayOrders}</div>
-          <button onClick={goOrders} className="mt-3 text-sm font-medium text-sky-700 underline">
+          <div className="mt-1 text-3xl font-bold text-slate-900">
+            {newOrders}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Zgłoszone dziś: {todayOrders}
+          </div>
+          <button
+            onClick={goOrders}
+            className="mt-3 text-sm font-medium text-sky-700 underline"
+          >
             Przejdź do zamówień
           </button>
         </div>
 
         <div className="rounded-2xl border bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-slate-600">W realizacji</span>
+            <span className="text-sm font-medium text-slate-600">
+              W realizacji
+            </span>
             <RadialIcon percentage={pct(currentOrders)} size={38} />
           </div>
-          <div className="mt-1 text-3xl font-bold text-slate-900">{currentOrders}</div>
-          <div className="mt-1 text-xs text-slate-500">Śr. czas mies.: {monthAvgFulfillment ?? "—"} min</div>
-          <button onClick={goOrders} className="mt-3 text-sm font-medium text-sky-700 underline">
+          <div className="mt-1 text-3xl font-bold text-slate-900">
+            {currentOrders}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Śr. czas mies.: {monthAvgFulfillment ?? "—"} min
+          </div>
+          <button
+            onClick={goOrders}
+            className="mt-3 text-sm font-medium text-sky-700 underline"
+          >
             Zarządzaj
           </button>
         </div>
@@ -422,8 +510,12 @@ export default function AdminPanel() {
               <TrendingUp size={16} /> Obrót
             </span>
           </div>
-          <div className="mt-1 text-3xl font-bold text-slate-900">{toPln(monthRevenue)}</div>
-          <div className="mt-1 text-xs text-slate-500">Dziś: {toPln(todayRevenue)}</div>
+          <div className="mt-1 text-3xl font-bold text-slate-900">
+            {toPln(monthRevenue)}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Dziś: {toPln(todayRevenue)}
+          </div>
         </div>
 
         <div className="rounded-2xl border bg-white p-5 shadow-sm">
@@ -445,16 +537,25 @@ export default function AdminPanel() {
       <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <div className="rounded-2xl border bg-white p-5 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-800">Zamówienia dzienne</h2>
+            <h2 className="text-lg font-semibold text-slate-800">
+              Zamówienia dzienne
+            </h2>
             <span className="text-xs text-slate-500">
-              {days} dni • {city === "all" ? "Wszystkie" : CITY_OPTIONS.find((c) => c.slug === city)?.label}
+              {days} dni •{" "}
+              {city === "all"
+                ? "Wszystkie"
+                : CITY_OPTIONS.find((c) => c.slug === city)?.label}
             </span>
           </div>
           <div className="rounded border border-slate-100 p-2">
             {loading ? (
-              <p className="py-10 text-center text-sm text-slate-400">Ładowanie…</p>
+              <p className="py-10 text-center text-sm text-slate-400">
+                Ładowanie…
+              </p>
             ) : dailyOrdersData.length === 0 ? (
-              <p className="py-10 text-center text-sm text-slate-400">Brak danych</p>
+              <p className="py-10 text-center text-sm text-slate-400">
+                Brak danych
+              </p>
             ) : (
               <Chart type="line" data={dailyOrdersData} />
             )}
@@ -470,9 +571,13 @@ export default function AdminPanel() {
           </div>
           <div className="rounded border border-slate-100 p-2">
             {loading ? (
-              <p className="py-10 text-center text-sm text-slate-400">Ładowanie…</p>
+              <p className="py-10 text-center text-sm text-slate-400">
+                Ładowanie…
+              </p>
             ) : fulfillmentTimeData.length === 0 ? (
-              <p className="py-10 text-center text-sm text-slate-400">Brak danych</p>
+              <p className="py-10 text-center text-sm text-slate-400">
+                Brak danych
+              </p>
             ) : (
               <Chart type="bar" data={fulfillmentTimeData} />
             )}
@@ -485,7 +590,9 @@ export default function AdminPanel() {
         <div className="lg:col-span-3 rounded-2xl border bg-white p-5 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-slate-800">Najczęściej zamawiane</h2>
+              <h2 className="text-lg font-semibold text-slate-800">
+                Najczęściej zamawiane
+              </h2>
               <p className="text-xs text-slate-500">Top 20 pozycji</p>
             </div>
             <button
@@ -504,11 +611,16 @@ export default function AdminPanel() {
           ) : (
             <ul className="divide-y divide-slate-100 text-sm">
               {topDishesData.map((d, i) => (
-                <li key={i} className="flex items-center justify-between py-2">
+                <li
+                  key={i}
+                  className="flex items-center justify-between py-2"
+                >
                   <span className="truncate pr-4">
                     {i + 1}. {d.dish}
                   </span>
-                  <span className="font-medium text-slate-800">{d.orders} zam.</span>
+                  <span className="font-medium text-slate-800">
+                    {d.orders} zam.
+                  </span>
                 </li>
               ))}
             </ul>
@@ -516,7 +628,9 @@ export default function AdminPanel() {
         </div>
 
         <div className="flex flex-col gap-3 rounded-2xl border bg-white p-5 shadow-sm">
-          <h2 className="mb-1 text-lg font-semibold text-slate-800">Szybkie akcje</h2>
+          <h2 className="mb-1 text-lg font-semibold text-slate-800">
+            Szybkie akcje
+          </h2>
           <button
             onClick={goOrders}
             className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
@@ -543,8 +657,13 @@ export default function AdminPanel() {
       {showCalendar && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <h3 className="mb-3 text-lg font-bold text-slate-900">Wybierz datę rezerwacji</h3>
-            <Calendar onChange={(date) => setSelectedDate(date as Date)} value={selectedDate} />
+            <h3 className="mb-3 text-lg font-bold text-slate-900">
+              Wybierz datę rezerwacji
+            </h3>
+            <Calendar
+              onChange={(date) => setSelectedDate(date as Date)}
+              value={selectedDate}
+            />
             <div className="mt-4 flex justify-between">
               <button
                 onClick={() => setShowCalendar(false)}
@@ -574,5 +693,20 @@ export default function AdminPanel() {
         </div>
       )}
     </div>
+  );
+}
+
+// WRAPPER Z SUSPENSE – tu jest to, czego chce Next
+export default function AdminPanelPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500 text-sm">
+          Ładowanie panelu…
+        </div>
+      }
+    >
+      <AdminPanel />
+    </Suspense>
   );
 }
