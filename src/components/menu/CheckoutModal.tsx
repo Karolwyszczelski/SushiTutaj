@@ -37,6 +37,16 @@ const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
 const THANKS_QR_URL =
   process.env.NEXT_PUBLIC_REVIEW_QR_URL || "https://g.co/kgs/47NSDMH";
 
+/** QR do opinii Google per miasto (fallback: THANKS_QR_URL) */
+const CITY_REVIEW_QR_URLS: Record<string, string> = {
+  ciechanow: process.env.NEXT_PUBLIC_REVIEW_QR_CIECHANOW || THANKS_QR_URL,
+  przasnysz: process.env.NEXT_PUBLIC_REVIEW_QR_PRZASNYSZ || THANKS_QR_URL,
+  szczytno: process.env.NEXT_PUBLIC_REVIEW_QR_SZCZYTNO || THANKS_QR_URL,
+  plonsk: process.env.NEXT_PUBLIC_REVIEW_QR_PLONSK || THANKS_QR_URL,
+  mlawa: process.env.NEXT_PUBLIC_REVIEW_QR_MLAWA || THANKS_QR_URL,
+  pultusk: process.env.NEXT_PUBLIC_REVIEW_QR_PULTUSK || THANKS_QR_URL,
+};
+
 /** WYMÓG: adres musi być wybrany z Autocomplete (posiadamy współrzędne) */
 const REQUIRE_AUTOCOMPLETE = true;
 
@@ -616,6 +626,7 @@ export default function CheckoutModal() {
   const validEmail = emailRegex.test(effectiveEmail);
 
   const { slug: restaurantSlug, label: restaurantCityLabel } = getRestaurantCityFromPath();
+  const thanksQrUrl = CITY_REVIEW_QR_URLS[restaurantSlug] || THANKS_QR_URL;
 
   // Godziny dla miasta + min/max time input
   const openInfo = useMemo(() => isOpenFor(restaurantSlug), [restaurantSlug]);
@@ -869,6 +880,8 @@ export default function CheckoutModal() {
   const totalWithDelivery = Math.max(0, subtotal + (deliveryInfo?.cost || 0) - discount);
   const shouldHideOrderActions = Boolean(TURNSTILE_SITE_KEY && turnstileError);
 
+  const [submitting, setSubmitting] = useState(false);
+
   const closeCheckoutModal = () => {
     originalCloseCheckoutModal();
     setPromo(null);
@@ -877,6 +890,7 @@ export default function CheckoutModal() {
     setErrorMessage(null);
     setConfirmCityOk(false);
     setLegalAccepted(false);
+    setSubmitting(false);
     goToStep(1);
     removeTurnstile();
   };
@@ -972,24 +986,36 @@ export default function CheckoutModal() {
   const [chopsticksQty, setChopsticksQty] = useState<number>(0);
 
   const handleSubmitOrder = async () => {
+    if (submitting) return;
     setErrorMessage(null);
-    if (!selectedOption) return setErrorMessage("Wybierz sposób odbioru.");
-    if (!legalAccepted)
-      return setErrorMessage("Zaznacz akceptację regulaminu i polityki prywatności.");
-    if (!confirmCityOk)
-      return setErrorMessage("Potwierdź miasto restauracji przed złożeniem zamówienia.");
+
+    if (!selectedOption) {
+      setErrorMessage("Wybierz sposób odbioru.");
+      return;
+    }
+    if (!legalAccepted) {
+      setErrorMessage("Zaznacz akceptację regulaminu i polityki prywatności.");
+      return;
+    }
+    if (!confirmCityOk) {
+      setErrorMessage("Potwierdź miasto restauracji przed złożeniem zamówienia.");
+      return;
+    }
 
     const chk = isOpenFor(restaurantSlug);
-    if (!chk.open)
-      return setErrorMessage(
+    if (!chk.open) {
+      setErrorMessage(
         `Zamówienia dla ${restaurantCityLabel} przyjmujemy dziś ${chk.label}.`
       );
+      return;
+    }
 
     // walidacja czasu przy "na godzinę" – minimum 60 minut od teraz
     if (selectedOption === "delivery" && deliveryTimeOption === "schedule") {
       const [h, m] = scheduledTime.split(":").map(Number);
       if (!Number.isFinite(h) || !Number.isFinite(m)) {
-        return setErrorMessage("Podaj prawidłową godzinę dostawy.");
+        setErrorMessage("Podaj prawidłową godzinę dostawy.");
+        return;
       }
       const nowZoned = toZonedTime(new Date(), tz);
       const dt = new Date(nowZoned);
@@ -999,30 +1025,39 @@ export default function CheckoutModal() {
       }
       const diffMinutes = (dt.getTime() - nowZoned.getTime()) / 60000;
       if (diffMinutes < MIN_SCHEDULE_MINUTES) {
-        return setErrorMessage(
+        setErrorMessage(
           `Przy wyborze dostawy „na godzinę” minimalny czas to ${MIN_SCHEDULE_MINUTES} minut od teraz.`
         );
+        return;
       }
     }
 
     if (!guardEmail()) return;
     if (TURNSTILE_SITE_KEY && !(await ensureFreshToken())) {
-      return setErrorMessage("Weryfikacja formularza nie powiodła się.");
+      setErrorMessage("Weryfikacja formularza nie powiodła się.");
+      return;
     }
 
     if (selectedOption === "delivery") {
       if (REQUIRE_AUTOCOMPLETE && !custCoords) {
-        return setErrorMessage(
+        setErrorMessage(
           "Wybierz adres z listy (podpowiedzi Google), aby potwierdzić dostawę."
         );
+        return;
       }
-      if (outOfRange) return setErrorMessage("Adres jest poza zasięgiem dostawy.");
-      if (!deliveryMinOk)
-        return setErrorMessage(
+      if (outOfRange) {
+        setErrorMessage("Adres jest poza zasięgiem dostawy.");
+        return;
+      }
+      if (!deliveryMinOk) {
+        setErrorMessage(
           `Minimalna wartość zamówienia dla tej strefy to ${deliveryMinRequired.toFixed(2)} zł.`
         );
+        return;
+      }
     }
 
+    setSubmitting(true);
     try {
       const client_delivery_time = buildClientDeliveryTime(
         selectedOption,
@@ -1107,6 +1142,8 @@ export default function CheckoutModal() {
       try {
         if (window.turnstile && tsIdRef.current) window.turnstile.reset(tsIdRef.current);
       } catch {}
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -1189,20 +1226,25 @@ export default function CheckoutModal() {
               {/* MAIN */}
               <div>
                 {orderSent ? (
-                  <div className="text-center space-y-4">
-                    <div className="w-full flex justify-center">
-                      <div className="bg-white p-3 rounded-xl shadow">
-                        <QRCode value={THANKS_QR_URL} size={160} />
+                  <div className="min-h-[320px] flex flex-col items-center justify-center text-center space-y-5 px-4">
+                    <div className="bg-white p-4 rounded-2xl shadow flex flex-col items-center gap-2">
+                      <div className="bg-white p-3 rounded-xl">
+                        <QRCode value={thanksQrUrl} size={170} />
                       </div>
+                      <p className="text-xs text-black/60 max-w-xs">
+                        Zeskanuj kod lub kliknij poniższy przycisk, aby ocenić lokal w Google.
+                      </p>
                     </div>
                     <h3 className="text-2xl font-bold">Dziękujemy za zamówienie!</h3>
-                    <p className="text-black/70">Potwierdzenie wysłaliśmy na adres e-mail.</p>
+                    <p className="text-black/70">
+                      Potwierdzenie i link do śledzenia wysłaliśmy na Twój adres e-mail.
+                    </p>
                     <div className="flex justify-center gap-3 flex-wrap">
                       <button
-                        onClick={() => window.open(THANKS_QR_URL, "_blank")}
+                        onClick={() => window.open(thanksQrUrl, "_blank")}
                         className={`px-4 py-2 rounded-xl ${accentBtn}`}
                       >
-                        Zostaw opinię
+                        Zostaw opinię w Google
                       </button>
                       <button
                         onClick={closeCheckoutModal}
@@ -1267,10 +1309,7 @@ export default function CheckoutModal() {
                         </div>
 
                         {/* Ilość pałeczek – pod zamianami (mobile) */}
-                        <ChopsticksControl
-                          value={chopsticksQty}
-                          onChange={setChopsticksQty}
-                        />
+                        <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
                       </div>
                     )}
 
@@ -1552,13 +1591,21 @@ export default function CheckoutModal() {
                               <button
                                 onClick={handleSubmitOrder}
                                 disabled={
+                                  submitting ||
                                   !legalAccepted ||
                                   !confirmCityOk ||
                                   (TURNSTILE_SITE_KEY ? !turnstileToken : false)
                                 }
                                 className={`w-full mt-2 py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
                               >
-                                ✅ Zamawiam
+                                {submitting ? (
+                                  <span className="flex items-center justify-center gap-2">
+                                    <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                                    Przetwarzanie...
+                                  </span>
+                                ) : (
+                                  "✅ Zamawiam"
+                                )}
                               </button>
                             )}
                           </div>
@@ -1609,10 +1656,7 @@ export default function CheckoutModal() {
                         </div>
 
                         {/* Ilość pałeczek – pod zamianami (desktop, krok 3) */}
-                        <ChopsticksControl
-                          value={chopsticksQty}
-                          onChange={setChopsticksQty}
-                        />
+                        <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
                       </div>
                     )}
                   </>
@@ -1723,13 +1767,21 @@ export default function CheckoutModal() {
                         <button
                           onClick={handleSubmitOrder}
                           disabled={
+                            submitting ||
                             !legalAccepted ||
                             !confirmCityOk ||
                             (TURNSTILE_SITE_KEY ? !turnstileToken : false)
                           }
                           className={`w-full mt-2 py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
                         >
-                          ✅ Zamawiam
+                          {submitting ? (
+                            <span className="flex items-center justify-center gap-2">
+                              <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                              Przetwarzanie...
+                            </span>
+                          ) : (
+                            "✅ Zamawiam"
+                          )}
                         </button>
                       )}
                     </div>
