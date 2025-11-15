@@ -61,8 +61,14 @@ export default function Footer() {
   const ig = r?.instagram_url ?? "#";
   const tt = r?.tiktok_url ?? "#";
 
-  const baseToMenu = city ? `/${city}#menu` : "/#menu";
-  const baseToContact = city ? `/${city}#kontakt` : "/#kontakt";
+  // używamy UrlObject zamiast stringów, żeby dogodzić typed routes
+  const baseToHome = city ? { pathname: `/${city}` } : { pathname: "/" };
+  const baseToMenu = city
+    ? { pathname: `/${city}`, hash: "menu" }
+    : { pathname: "/", hash: "menu" };
+  const baseToContact = city
+    ? { pathname: `/${city}`, hash: "kontakt" }
+    : { pathname: "/", hash: "kontakt" };
 
   const openCookieSettings = () => {
     try {
@@ -78,24 +84,64 @@ export default function Footer() {
         <nav className="flex flex-col items-center md:items-start">
           <h4 className="font-bold text-lg mb-4">Nawigacja</h4>
           <ul className="space-y-2">
-            <li><Link href={city ? `/${city}` : "/"} className="hover:text-[var(--accent-red)]">Strona główna</Link></li>
-            <li><Link href={baseToMenu} className="hover:text-[var(--accent-red)]">Menu</Link></li>
-            <li><Link href={baseToContact} className="hover:text-[var(--accent-red)]">Kontakt</Link></li>
-            <li><Link href="/regulamin" className="hover:text-[var(--accent-red)]">Regulamin</Link></li>
+            <li>
+              <Link
+                href={baseToHome}
+                className="hover:text-[var(--accent-red)]"
+              >
+                Strona główna
+              </Link>
+            </li>
+            <li>
+              <Link
+                href={baseToMenu}
+                className="hover:text-[var(--accent-red)]"
+              >
+                Menu
+              </Link>
+            </li>
+            <li>
+              <Link
+                href={baseToContact}
+                className="hover:text-[var(--accent-red)]"
+              >
+                Kontakt
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/regulamin"
+                className="hover:text-[var(--accent-red)]"
+              >
+                Regulamin
+              </Link>
+            </li>
           </ul>
         </nav>
 
         {/* 2. Kontakt / Dane – per miasto */}
         <div className="flex flex-col items-center md:items-start">
-          <h4 className="font-bold text-lg mb-4">Kontakt {r?.city ? `— ${r.city}` : ""}</h4>
+          <h4 className="font-bold text-lg mb-4">
+            Kontakt {r?.city ? `— ${r.city}` : ""}
+          </h4>
           <ul className="space-y-2">
             <li className="flex items-center justify-center md:justify-start">
               <Mail className="w-5 h-5 mr-2" aria-hidden="true" />
-              <a href={`mailto:${email}`} className="hover:text-[var(--accent-red)]">{email}</a>
+              <a
+                href={`mailto:${email}`}
+                className="hover:text-[var(--accent-red)]"
+              >
+                {email}
+              </a>
             </li>
             <li className="flex items-center justify-center md:justify-start">
               <Phone className="w-5 h-5 mr-2" aria-hidden="true" />
-              <a href={`tel:${phone.replace(/\s+/g, "")}`} className="hover:text-[var(--accent-red)]">{phone}</a>
+              <a
+                href={`tel:${phone.replace(/\s+/g, "")}`}
+                className="hover:text-[var(--accent-red)]"
+              >
+                {phone}
+              </a>
             </li>
             <li className="flex items-start justify-center md:justify-start">
               <MapPin className="w-5 h-5 mr-2 mt-0.5" aria-hidden="true" />
@@ -159,7 +205,6 @@ export default function Footer() {
             >
               <Instagram className="w-4 h-4" />
             </a>
-            {/* TikTok opcjonalnie – pokaż tylko gdy jest */}
             {tt !== "#" && (
               <a
                 href={tt}
@@ -168,7 +213,6 @@ export default function Footer() {
                 className="w-9 h-9 flex items-center justify-center rounded-full border border-white/20 hover:bg-white/10 transition"
                 aria-label="TikTok"
               >
-                {/* prosty znak muzyczny jako fallback */}
                 <svg viewBox="0 0 48 48" className="w-4 h-4 fill-current">
                   <path d="M33 10.5a9 9 0 0 0 6 2v6.2a14.2 14.2 0 0 1-6-1.6V29A9.7 9.7 0 1 1 23.3 19V25.3a3.7 3.7 0 1 0 3.7 3.7V6h6v4.5z" />
                 </svg>
@@ -183,19 +227,28 @@ export default function Footer() {
           <ul className="space-y-2">
             <li className="flex items-center justify-center md:justify-start">
               <FileText className="w-5 h-5 mr-2" aria-hidden="true" />
-              <Link href="/regulamin" className="hover:text-[var(--accent-red)]">
+              <Link
+                href="/regulamin"
+                className="hover:text-[var(--accent-red)]"
+              >
                 Regulamin (v{TERMS_VERSION})
               </Link>
             </li>
             <li className="flex items-center justify-center md:justify-start">
               <ShieldCheck className="w-5 h-5 mr-2" aria-hidden="true" />
-              <Link href="/polityka-prywatnosci" className="hover:text-[var(--accent-red)]">
+              <Link
+                href="/polityka-prywatnosci"
+                className="hover:text-[var(--accent-red)]"
+              >
                 Polityka prywatności
               </Link>
             </li>
             <li className="flex items-center justify-center md:justify-start">
               <ShieldCheck className="w-5 h-5 mr-2" aria-hidden="true" />
-              <Link href="/cookies" className="hover:text-[var(--accent-red)]">
+              <Link
+                href="/cookies"
+                className="hover:text-[var(--accent-red)]"
+              >
                 Polityka cookies
               </Link>
             </li>

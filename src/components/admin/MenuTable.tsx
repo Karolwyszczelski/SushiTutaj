@@ -2,17 +2,28 @@
 "use client";
 
 import { useState } from "react";
-import { Dialog } from "@headlessui/react";
-import { type Database } from "@/types/supabase";
+import { Dialog, Switch } from "@headlessui/react";
 import EditMenuItemModal from "./EditMenuItemModal";
-import { Switch } from "@headlessui/react";
 
-type Item = Database["public"]["Tables"]["menu_items"]["Row"] & {
-  category: { id: string; name: string };
+// lokalne typy zamiast bazowania na Database["public"]["Tables"]
+type Category = {
+  id: string;
+  name: string;
+};
+
+type Item = {
+  id: string;
+  name: string;
+  price: number;
+  prep_time: number | null;
+  active: boolean;
+  order: number | null;
+  image_url?: string | null;
+  category: Category;
 };
 
 interface MenuTableProps {
-  categories: Database["public"]["Tables"]["menu_categories"]["Row"][];
+  categories: Category[];
   items: Item[];
 }
 
@@ -31,9 +42,7 @@ export default function MenuTable({ categories, items }: MenuTableProps) {
           <label>Kategoria:&nbsp;</label>
           <select
             value={filterCat || ""}
-            onChange={(e) =>
-              setFilterCat(e.target.value || null)
-            }
+            onChange={(e) => setFilterCat(e.target.value || null)}
             className="border px-2 py-1 rounded"
           >
             <option value="">Wszystkie</option>
@@ -45,7 +54,7 @@ export default function MenuTable({ categories, items }: MenuTableProps) {
           </select>
         </div>
         <button
-          onClick={() => setEditItem({} as any /* pusty nowy item */)}
+          onClick={() => setEditItem({} as Item /* pusty nowy item */)}
           className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-500"
         >
           + Dodaj pozycję
@@ -71,14 +80,22 @@ export default function MenuTable({ categories, items }: MenuTableProps) {
               <td className="px-4 py-2">{i + 1}</td>
               <td className="px-4 py-2">
                 {it.image_url ? (
-                  <img src={it.image_url} className="w-16 h-12 object-cover" />
+                  <img
+                    src={it.image_url}
+                    className="w-16 h-12 object-cover"
+                    alt={it.name}
+                  />
                 ) : (
                   <span className="text-gray-400">brak</span>
                 )}
               </td>
               <td className="px-4 py-2">{it.name}</td>
-              <td className="px-4 py-2">{it.price.toFixed(2)} zł</td>
-              <td className="px-4 py-2">{it.prep_time} min</td>
+              <td className="px-4 py-2">
+                {Number(it.price).toFixed(2)} zł
+              </td>
+              <td className="px-4 py-2">
+                {it.prep_time != null ? `${it.prep_time} min` : "—"}
+              </td>
               <td className="px-4 py-2">
                 <Switch
                   checked={it.active}
@@ -88,7 +105,7 @@ export default function MenuTable({ categories, items }: MenuTableProps) {
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({ active: v }),
                     });
-                    // odśwież stronę lub local state
+                    // TODO: odśwież dane z serwera albo lokalny stan po PATCH
                   }}
                   className={`${
                     it.active ? "bg-green-500" : "bg-gray-300"
@@ -101,7 +118,7 @@ export default function MenuTable({ categories, items }: MenuTableProps) {
                   />
                 </Switch>
               </td>
-              <td className="px-4 py-2">{it.order}</td>
+              <td className="px-4 py-2">{it.order ?? "—"}</td>
               <td className="px-4 py-2">
                 <button
                   onClick={() => setEditItem(it)}
@@ -123,14 +140,17 @@ export default function MenuTable({ categories, items }: MenuTableProps) {
       >
         <div className="fixed inset-0 bg-black opacity-30" />
         {editItem && (
-          <EditMenuItemModal
-            item={editItem!}
-            categories={categories}
-            onSaved={() => {
-              setEditItem(null);
-              // opcjonalnie: odśwież dane serwera
-            }}
-          />
+          <div className="relative">
+            {/* UWAGA: dostosuj propsy do faktycznego EditMenuItemModal */}
+            <EditMenuItemModal
+              item={editItem as any}
+              onClose={() => setEditItem(null)}
+              onSave={() => {
+                setEditItem(null);
+                // opcjonalnie: odśwież dane serwera
+              }}
+            />
+          </div>
         )}
       </Dialog>
     </>

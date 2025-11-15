@@ -1,10 +1,22 @@
 // src/components/admin/AddMenuItemModal.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import productsData from "@/data/product.json";
-import type { MenuItem } from "@/app/admin/menu/page";
+
+// minimalny typ tego, co zwraca /api/menu_items
+type MenuItem = {
+  id: string;
+  name: string;
+  price: number;
+  category: string;
+  subcategory?: string | null;
+  description?: string | null;
+  ingredients?: string[];
+  // jeśli w przyszłości Supabase zwraca więcej pól, można dodać:
+  // [key: string]: any;
+};
 
 interface FormValues {
   name: string;
@@ -31,6 +43,7 @@ export default function AddMenuItemModal({ onClose, onSave }: Props) {
       ingredients: [{ value: "" }],
     },
   });
+
   const { fields, append, remove } = useFieldArray({
     control,
     name: "ingredients",
@@ -40,8 +53,9 @@ export default function AddMenuItemModal({ onClose, onSave }: Props) {
   const allCats = productsData.map((c) => c.category);
   const selCat = watch("category");
   const subcats =
-    productsData.find((c) => c.category === selCat)?.subcategories?.map((s) => s.name) ??
-    [];
+    productsData
+      .find((c) => c.category === selCat)
+      ?.subcategories?.map((s) => s.name) ?? [];
 
   const onSubmit = async (data: FormValues) => {
     const payload = {
@@ -52,16 +66,19 @@ export default function AddMenuItemModal({ onClose, onSave }: Props) {
       description: data.description || null,
       ingredients: data.ingredients.map((i) => i.value),
     };
+
     const res = await fetch("/api/menu_items", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+
     if (!res.ok) {
-      const err = await res.json();
-      alert("Błąd zapisu: " + err.error);
+      const err = await res.json().catch(() => ({}));
+      alert("Błąd zapisu: " + (err?.error || res.statusText));
       return;
     }
+
     const created: MenuItem = await res.json();
     onSave(created);
     onClose();
@@ -125,6 +142,7 @@ export default function AddMenuItemModal({ onClose, onSave }: Props) {
               className="mt-1 w-full border rounded px-3 py-2"
             />
           </div>
+
           <div>
             <label className="block text-sm">Cena (zł)</label>
             <input
@@ -134,6 +152,7 @@ export default function AddMenuItemModal({ onClose, onSave }: Props) {
               className="mt-1 w-full border rounded px-3 py-2"
             />
           </div>
+
           <div>
             <label className="block text-sm">Kategoria</label>
             <input
@@ -148,13 +167,18 @@ export default function AddMenuItemModal({ onClose, onSave }: Props) {
               ))}
             </datalist>
           </div>
+
           <div>
             <label className="block text-sm">Podkategoria</label>
             <input
               list="subcat-list"
               {...register("subcategory")}
               className="mt-1 w-full border rounded px-3 py-2"
-              placeholder={subcats.length ? "Wybierz lub wpisz nową" : "Brak podkategorii"}
+              placeholder={
+                subcats.length
+                  ? "Wybierz lub wpisz nową"
+                  : "Brak podkategorii"
+              }
               disabled={!selCat}
             />
             <datalist id="subcat-list">
@@ -163,6 +187,7 @@ export default function AddMenuItemModal({ onClose, onSave }: Props) {
               ))}
             </datalist>
           </div>
+
           <div>
             <label className="block text-sm">Opis</label>
             <textarea
@@ -175,10 +200,17 @@ export default function AddMenuItemModal({ onClose, onSave }: Props) {
 
         {/* FOOTER */}
         <div className="md:col-span-2 flex justify-end gap-2 pt-4 border-t">
-          <button type="button" onClick={onClose} className="px-4 py-2 border rounded">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 border rounded"
+          >
             Anuluj
           </button>
-          <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded">
+          <button
+            type="submit"
+            className="px-4 py-2 bg-indigo-600 text-white rounded"
+          >
             Zapisz
           </button>
         </div>

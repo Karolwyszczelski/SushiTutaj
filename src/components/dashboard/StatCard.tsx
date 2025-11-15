@@ -1,9 +1,15 @@
+// src/components/dashboard/StatCard.tsx
 "use client";
 
 import React from "react";
 import dynamic from "next/dynamic";
 
-const Chart = dynamic(() => import("./admin/dashboard/Chart"), { ssr: false });
+// poprawiona ścieżka do komponentu Chart
+// jeśli masz alias "@/components" -> to jest najbezpieczniejsze:
+const Chart = dynamic(
+  () => import("@/app/admin/dashboard/Chart"),
+  { ssr: false }
+);
 
 interface StatCardProps {
   title: string;              // np. "Zamówienia dziennie"
@@ -14,7 +20,7 @@ interface StatCardProps {
   dataKey?: string;           // klucz dla wartości (np. "value")
   nameKey?: string;           // klucz dla etykiety (np. "date")
   footer?: string;            // np. "Więcej szczegółów w statystykach"
-  onClickMore?: () => void;   // funkcja wywoływana przy kliknięciu "Zobacz więcej" (opcjonalnie)
+  onClickMore?: () => void;   // funkcja wywoływana przy kliknięciu "Zobacz więcej"
 }
 
 export default function StatCard({
@@ -53,7 +59,7 @@ export default function StatCard({
         />
       </div>
 
-      {/* Stopka (np. link "Zobacz więcej") */}
+      {/* Stopka */}
       {footer && (
         <div className="mt-3 border-t border-gray-700 pt-2 text-sm flex justify-between items-center text-gray-300">
           <span>{footer}</span>

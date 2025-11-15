@@ -1,3 +1,6 @@
+// supabase/functions/migrate-order-items/index.ts
+// @ts-nocheck
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 console.log("Starting migration function...");
@@ -22,8 +25,7 @@ interface NewOrderItem {
   unit_price: number;
 }
 
-
-Deno.serve(async (req) => {
+Deno.serve(async (_req) => {
   try {
     // Utwórz klienta Supabase, który ma uprawnienia administratora
     const supabaseAdmin = createClient(
@@ -38,12 +40,12 @@ Deno.serve(async (req) => {
 
     if (productsError) throw productsError;
 
-    const productMap: ProductMap = products.reduce((acc, product) => {
+    const productMap: ProductMap = (products ?? []).reduce((acc, product) => {
       acc[product.name] = { id: product.id, price: product.price };
       return acc;
-    }, {});
-    
-    console.log(`Loaded ${products.length} products into map.`);
+    }, {} as ProductMap);
+
+    console.log(`Loaded ${(products ?? []).length} products into map.`);
 
     // 2. Pobierz wszystkie zamówienia, które mają dane w kolumnie "items"
     const { data: orders, error: ordersError } = await supabaseAdmin
@@ -52,17 +54,17 @@ Deno.serve(async (req) => {
       .neq('items', null); // Pobieramy tylko te, gdzie 'items' nie jest puste
 
     if (ordersError) throw ordersError;
-    
-    console.log(`Found ${orders.length} orders to migrate.`);
+
+    console.log(`Found ${(orders ?? []).length} orders to migrate.`);
 
     // 3. Przygotuj nowe dane do wstawienia
     const itemsToInsert: NewOrderItem[] = [];
 
-    for (const order of orders) {
-      // Bezpiecznie parsowanie JSON-a
+    for (const order of orders ?? []) {
+      // Bezpieczne parsowanie JSON-a
       let oldItems: OldOrderItem[] = [];
       try {
-        oldItems = JSON.parse(order.items);
+        oldItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items ?? [];
       } catch (e) {
         console.error(`Could not parse items for order ${order.id}. Skipping.`, e);
         continue; // Pomiń to zamówienie, jeśli JSON jest uszkodzony
@@ -79,7 +81,9 @@ Deno.serve(async (req) => {
             unit_price: item.price, // Używamy ceny z momentu zamówienia
           });
         } else {
-          console.warn(`Product "${item.name}" from order ${order.id} not found in product map. Skipping this item.`);
+          console.warn(
+            `Product "${item.name}" from order ${order.id} not found in product map. Skipping this item.`
+          );
         }
       }
     }
@@ -101,14 +105,17 @@ Deno.serve(async (req) => {
     if (insertError) throw insertError;
 
     // 5. Zwróć sukces
-    return new Response(JSON.stringify({ message: `Successfully migrated ${itemsToInsert.length} items.` }), {
-      headers: { 'Content-Type': 'application/json' },
-      status: 200,
-    });
+    return new Response(
+      JSON.stringify({ message: `Successfully migrated ${itemsToInsert.length} items.` }),
+      {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      }
+    );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error during migration:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: error?.message ?? String(error) }), {
       headers: { 'Content-Type': 'application/json' },
       status: 500,
     });

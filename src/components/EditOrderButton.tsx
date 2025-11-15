@@ -1,9 +1,12 @@
+// src/components/EditOrderButton.tsx
 "use client";
 
 import React, { useState, useEffect } from "react";
 import productsData from "@/data/product.json";
 
 // --- pomocnicze typy ---
+export type OrderOption = "local" | "takeaway" | "delivery";
+
 export interface Product {
   name: string;
   price: number;
@@ -17,7 +20,7 @@ export interface Product {
 interface EditOrderButtonProps {
   orderId: string;
   currentProducts: Product[];
-  currentSelectedOption: "takeaway" | "takeaway" | "delivery";
+  currentSelectedOption: OrderOption;
   onOrderUpdated: (orderId: string, updatedData?: Partial<any>) => void;
   onEditStart?: () => void;
   onEditEnd?: () => void;
@@ -80,8 +83,8 @@ function normalizeName(str?: string): string {
     .replace(/-/g, "");
 }
 
-function getOptionLabel(option: "takeaway" | "takeaway" | "delivery") {
-  if (option === "takeaway") return "NA WYNOS";
+function getOptionLabel(option: OrderOption) {
+  if (option === "local") return "NA MIEJSCU";
   if (option === "takeaway") return "NA WYNOS";
   if (option === "delivery") return "DOSTAWA";
   return "";
@@ -97,9 +100,8 @@ export default function EditOrderButton({
 }: EditOrderButtonProps) {
   const [showModal, setShowModal] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
-  const [selectedOption, setSelectedOption] = useState<"takeaway" | "takeaway" | "delivery">(
-    currentSelectedOption
-  );
+  const [selectedOption, setSelectedOption] =
+    useState<OrderOption>(currentSelectedOption);
   const [showAddProduct, setShowAddProduct] = useState(false);
 
   // inicjalizacja lokalnego stanu przy otwarciu
@@ -117,7 +119,8 @@ export default function EditOrderButton({
           name: item.name,
           price: found?.price ?? item.price ?? 0,
           quantity: item.quantity !== undefined ? item.quantity : 1,
-          extraMeatCount: item.extraMeatCount !== undefined ? item.extraMeatCount : 0,
+          extraMeatCount:
+            item.extraMeatCount !== undefined ? item.extraMeatCount : 0,
           addons: item.addons ? [...item.addons] : [],
           meatType: item.meatType || "wołowina",
           note: item.note || "",
@@ -190,7 +193,9 @@ export default function EditOrderButton({
   };
 
   const getPackagingCost = () => {
-    return selectedOption === "takeaway" || selectedOption === "delivery" ? 2 : 0;
+    return selectedOption === "takeaway" || selectedOption === "delivery"
+      ? 2
+      : 0;
   };
 
   const calculateTotalWithPackaging = () => {
@@ -288,7 +293,7 @@ export default function EditOrderButton({
                   className={`border text-xs px-2 py-1 rounded-full flex-shrink-0 min-w-[60px] ${
                     hasAddon
                       ? "bg-gray-800 text-white"
-                      : "bg-white text-black"
+                      : "bg-white text:black"
                   }`}
                 >
                   {hasAddon ? `✓ ${addon}` : `+ ${addon}`}
@@ -300,14 +305,16 @@ export default function EditOrderButton({
 
         <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
           <div className="flex items-center gap-2 flex-1">
-            <label className="text-sm min-w-[120px]">Dodatkowe mięso:</label>
+            <label className="text-sm min-w-[120px]">
+              Dodatkowe mięso:
+            </label>
             <div className="flex items-center">
               <button
                 type="button"
                 onClick={() =>
                   handleExtraMeatChange(
                     index,
-                    String(Math.max(product.extraMeatCount! - 1, 0))
+                    String(Math.max((product.extraMeatCount || 0) - 1, 0))
                   )
                 }
                 disabled={(product.extraMeatCount || 0) <= 0}
@@ -334,7 +341,7 @@ export default function EditOrderButton({
 
           <div className="flex items-center gap-2 flex-1">
             <label className="text-sm min-w-[120px]">Ilość burgera:</label>
-            <div className="flex items-center">
+            <div className="flex items:center">
               <button
                 type="button"
                 onClick={() =>
@@ -352,7 +359,10 @@ export default function EditOrderButton({
               <button
                 type="button"
                 onClick={() =>
-                  handleQuantityChange(index, String(product.quantity + 1))
+                  handleQuantityChange(
+                    index,
+                    String(product.quantity + 1)
+                  )
                 }
                 className="px-2 py-1 bg-gray-200 hover:bg-gray-300 text-black rounded-full"
               >
@@ -392,7 +402,9 @@ export default function EditOrderButton({
                 <h3 className="text-xl font-bold leading-tight truncate">
                   Zamówienie: {getOptionLabel(selectedOption)}
                 </h3>
-                <h4 className="text-base font-semibold mt-1">Edytuj zamówienie</h4>
+                <h4 className="text-base font-semibold mt-1">
+                  Edytuj zamówienie
+                </h4>
               </div>
               <button
                 type="button"
@@ -419,24 +431,26 @@ export default function EditOrderButton({
 
             <div className="p-4 overflow-y-auto flex-1 flex flex-col space-y-4">
               <div className="flex flex-wrap gap-2">
-                {(["takeaway", "takeaway", "delivery"] as const).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setSelectedOption(option)}
-                    className={`px-3 py-2 rounded-full text-xs font-medium flex-1 min-w-[90px] ${
-                      selectedOption === option
-                        ? "bg-yellow-400 font-bold"
-                        : "bg-gray-200"
-                    }`}
-                  >
-                    {option === "takeaway"
-                      ? "NA WYNOS"
-                      : option === "takeaway"
-                      ? "Na wynos"
-                      : "Dostawa"}
-                  </button>
-                ))}
+                {(["local", "takeaway", "delivery"] as OrderOption[]).map(
+                  (option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setSelectedOption(option)}
+                      className={`px-3 py-2 rounded-full text-xs font-medium flex-1 min-w-[90px] ${
+                        selectedOption === option
+                          ? "bg-yellow-400 font-bold"
+                          : "bg-gray-200"
+                      }`}
+                    >
+                      {option === "local"
+                        ? "NA MIEJSCU"
+                        : option === "takeaway"
+                        ? "NA WYNOS"
+                        : "DOSTAWA"}
+                    </button>
+                  )
+                )}
               </div>
 
               {products.map((product, index) => (

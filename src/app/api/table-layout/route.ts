@@ -1,4 +1,4 @@
-// /src/app/api/table-layout/route.ts
+// src/app/api/table-layout/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -14,20 +14,32 @@ const supabaseAdmin = createClient(
 
 // pobiera restaurant_id z cookie ustawianego przez /api/restaurants/ensure-cookie
 async function getRestaurantId(): Promise<string | null> {
-  const jar = cookies();
+  const jar = await cookies(); // <-- kluczowa zmiana
+
   const rid = jar.get("restaurant_id")?.value || null;
   if (rid) return rid;
 
   const slug = jar.get("restaurant_slug")?.value || null;
   if (!slug) return null;
-  const { data } = await supabaseAdmin.from("restaurants").select("id").eq("slug", slug).maybeSingle();
+
+  const { data } = await supabaseAdmin
+    .from("restaurants")
+    .select("id")
+    .eq("slug", slug)
+    .maybeSingle();
+
   return data?.id ?? null;
 }
 
 export async function GET() {
   try {
     const restaurant_id = await getRestaurantId();
-    if (!restaurant_id) return NextResponse.json({ error: "Brak restauracji w cookie" }, { status: 400 });
+    if (!restaurant_id) {
+      return NextResponse.json(
+        { error: "Brak restauracji w cookie" },
+        { status: 400 }
+      );
+    }
 
     // bierzemy „default”, jeśli brak – utwórz pusty szkic
     const { data } = await supabaseAdmin
@@ -39,24 +51,46 @@ export async function GET() {
 
     if (data) return NextResponse.json({ layout: data });
 
-    const empty = { restaurant_id, name: "default", active: true, plan: [] };
-    const ins = await supabaseAdmin.from("table_layouts").insert(empty).select("*").single();
+    const empty = {
+      restaurant_id,
+      name: "default",
+      active: true,
+      plan: [] as any[],
+    };
+
+    const ins = await supabaseAdmin
+      .from("table_layouts")
+      .insert(empty)
+      .select("*")
+      .single();
+
     if (ins.error) throw ins.error;
     return NextResponse.json({ layout: ins.data });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message || "Server error" },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(req: Request) {
   try {
     const restaurant_id = await getRestaurantId();
-    if (!restaurant_id) return NextResponse.json({ error: "Brak restauracji w cookie" }, { status: 400 });
+    if (!restaurant_id) {
+      return NextResponse.json(
+        { error: "Brak restauracji w cookie" },
+        { status: 400 }
+      );
+    }
 
     const body = await req.json().catch(() => ({}));
     const planIn = Array.isArray(body?.plan) ? body.plan : [];
     const active = Boolean(body?.active ?? true);
-    const name = typeof body?.name === "string" && body.name.trim() ? body.name.trim() : "default";
+    const name =
+      typeof body?.name === "string" && body.name.trim()
+        ? body.name.trim()
+        : "default";
 
     // sanity – tylko potrzebne pola
     const plan = planIn.map((t: any) => ({
@@ -83,6 +117,9 @@ export async function POST(req: Request) {
     if (up.error) throw up.error;
     return NextResponse.json({ ok: true, layout: up.data });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message || "Server error" },
+      { status: 500 }
+    );
   }
 }

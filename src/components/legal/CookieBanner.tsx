@@ -1,3 +1,4 @@
+// src/components/legal/CookieBanner.tsx
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -12,14 +13,20 @@ type Consent = {
 
 export default function CookieBanner() {
   const [open, setOpen] = useState(false);
-  const [consent, setConsent] = useState<Consent>({ necessary: true, analytics: false, marketing: false });
+  const [consent, setConsent] = useState<Consent>({
+    necessary: true,
+    analytics: false,
+    marketing: false,
+  });
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(KEY);
       if (!raw) setOpen(true);
       else setOpen(false);
-    } catch { setOpen(true); }
+    } catch {
+      setOpen(true);
+    }
   }, []);
 
   const save = (c: Consent) => {
@@ -44,9 +51,14 @@ export default function CookieBanner() {
         <p className="text-sm">
           Używamy plików cookie niezbędnych do działania strony oraz – za Twoją zgodą – analitycznych i marketingowych.
           Szczegóły w{" "}
-          <Link href="/legal/cookies" className="underline">Polityce cookies</Link>{" "}
+          <Link href="/cookies" className="underline">
+            Polityce cookies
+          </Link>{" "}
           i{" "}
-          <Link href="/legal/polityka-prywatnosci" className="underline">Polityce prywatności</Link>.
+          <Link href="/polityka-prywatnosci" className="underline">
+            Polityce prywatności
+          </Link>
+          .
         </p>
 
         <div className="mt-3 grid gap-2 sm:grid-cols-3 items-center">
@@ -58,7 +70,9 @@ export default function CookieBanner() {
             <input
               type="checkbox"
               checked={consent.analytics}
-              onChange={(e) => setConsent((c) => ({ ...c, analytics: e.target.checked }))}
+              onChange={(e) =>
+                setConsent((c) => ({ ...c, analytics: e.target.checked }))
+              }
             />
             Analityczne
           </label>
@@ -66,7 +80,9 @@ export default function CookieBanner() {
             <input
               type="checkbox"
               checked={consent.marketing}
-              onChange={(e) => setConsent((c) => ({ ...c, marketing: e.target.checked }))}
+              onChange={(e) =>
+                setConsent((c) => ({ ...c, marketing: e.target.checked }))
+              }
             />
             Marketingowe
           </label>
@@ -74,13 +90,17 @@ export default function CookieBanner() {
 
         <div className="mt-3 flex gap-2 justify-end">
           <button
-            onClick={() => save({ necessary: true, analytics: false, marketing: false })}
+            onClick={() =>
+              save({ necessary: true, analytics: false, marketing: false })
+            }
             className="px-3 py-2 rounded border"
           >
             Odrzuć zbędne
           </button>
           <button
-            onClick={() => save({ necessary: true, analytics: true, marketing: true })}
+            onClick={() =>
+              save({ necessary: true, analytics: true, marketing: true })
+            }
             className="px-3 py-2 rounded bg-black text-white"
           >
             Akceptuję wszystko

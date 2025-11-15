@@ -1,3 +1,4 @@
+// src/components/admin/ReservationsTable.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -26,7 +27,7 @@ export default function ReservationsTable({ limit }: { limit?: number }) {
         if (error) {
           console.error("Błąd pobierania rezerwacji:", error.message);
         } else {
-          setReservations(data);
+          setReservations((data as Reservation[]) || []);
         }
       });
   }, [supabase, limit]);
@@ -46,13 +47,19 @@ export default function ReservationsTable({ limit }: { limit?: number }) {
         {reservations.map((r) => (
           <tr key={r.id} className="border-t hover:bg-gray-50">
             <td className="px-2 py-1">
-              <Link href={`/admin/reservations/${r.id}`} className="text-blue-600 hover:underline">
+              <Link
+                href={{
+                  pathname: "/admin/reservations/[id]",
+                  query: { id: r.id },
+                }}
+                className="text-blue-600 hover:underline"
+              >
                 {r.id}
               </Link>
             </td>
             <td className="px-2 py-1">{r.customer_name}</td>
             <td className="px-2 py-1">
-              {new Date(r.reservation_time).toLocaleString()}
+              {new Date(r.reservation_time).toLocaleString("pl-PL")}
             </td>
             <td className="px-2 py-1">{r.party_size}</td>
             <td className="px-2 py-1 capitalize">{r.status}</td>

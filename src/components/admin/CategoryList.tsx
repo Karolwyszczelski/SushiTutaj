@@ -2,10 +2,14 @@
 "use client";
 
 import { useState } from "react";
-import { type Database } from "@/types/supabase";
+
+type Category = {
+  id: string;
+  name: string;
+};
 
 interface CategoryListProps {
-  categories: Database["public"]["Tables"]["menu_categories"]["Row"][];
+  categories: Category[];
 }
 
 export default function CategoryList({ categories }: CategoryListProps) {

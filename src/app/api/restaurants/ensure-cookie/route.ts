@@ -27,12 +27,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const slugParam = url.searchParams.get("restaurant")?.toLowerCase() || null;
 
-  // Next 15: cookies() jest async – MUSI być await
-  const cookieStore = await cookies();
-
-  const supabase = createRouteHandlerClient<Database>({
-    cookies: () => cookieStore,
-  });
+  const supabase = createRouteHandlerClient<Database>({ cookies });
 
   const { data: u, error: userErr } = await supabase.auth.getUser();
   if (userErr) {
@@ -57,35 +52,39 @@ export async function GET(req: Request) {
 
   // Jeśli podano slug → zweryfikuj uprawnienia do TEGO lokalu
   if (slugParam) {
-    const { data: ra, error: raErr } = await supabase
-      .from("restaurant_admins")
+    const { data: ra, error: raErr } = await (supabase
+      .from("restaurant_admins") as any)
       .select("restaurant_id, restaurants!inner(slug)")
       .eq("user_id", userId)
       .eq("restaurants.slug", slugParam)
       .maybeSingle();
 
-    if (raErr) return makeRes({ error: raErr.message }, 500);
-    if (!ra?.restaurant_id) return makeRes({ error: "forbidden" }, 403);
+    const row = ra as any;
 
-    rid = String(ra.restaurant_id);
-    slug = (ra as any).restaurants?.slug ?? slugParam;
+    if (raErr) return makeRes({ error: raErr.message }, 500);
+    if (!row?.restaurant_id) return makeRes({ error: "forbidden" }, 403);
+
+    rid = String(row.restaurant_id);
+    slug = row.restaurants?.slug ?? slugParam;
   }
 
   // Domyślnie: ostatnio przypisany lokal użytkownika
   if (!rid) {
-    const { data: ra, error } = await supabase
-      .from("restaurant_admins")
+    const { data: ra, error } = await (supabase
+      .from("restaurant_admins") as any)
       .select("restaurant_id, restaurants!inner(slug)")
       .eq("user_id", userId)
       .order("added_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (error) return makeRes({ error: error.message }, 500);
-    if (!ra?.restaurant_id) return makeRes({ error: "no_restaurant" }, 404);
+    const row = ra as any;
 
-    rid = String(ra.restaurant_id);
-    slug = (ra as any).restaurants?.slug ?? null;
+    if (error) return makeRes({ error: error.message }, 500);
+    if (!row?.restaurant_id) return makeRes({ error: "no_restaurant" }, 404);
+
+    rid = String(row.restaurant_id);
+    slug = row.restaurants?.slug ?? null;
   }
 
   // zawsze nadpisz cookie

@@ -1,8 +1,8 @@
 // src/components/ZestawMiesiaca.tsx
 "use client";
 
+import React, { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
 import useCartStore from "@/store/cartStore";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
@@ -15,7 +15,7 @@ type SomRow = {
   promo_price_cents: number | null;
   restaurant_id: string;
   starts_on: string;
-  ends_on: string;
+  ends_on: string | null;
   is_active?: boolean | null;
 };
 
@@ -26,6 +26,11 @@ type ProductRow = {
   price_cents?: number | null;
   description?: string | null;
   image_url?: string | null;
+};
+
+type RestaurantIdRow = {
+  id: string;
+  slug?: string | null;
 };
 
 const GUTTER = "170px";
@@ -119,32 +124,48 @@ export default function ZestawMiesiaca() {
           .from("restaurants")
           .select("id,slug")
           .eq("slug", slug)
-          .maybeSingle();
+          .maybeSingle<RestaurantIdRow>();
         restaurantId = r?.id ?? null;
       }
+
       if (!restaurantId) {
         const { data: rFirst } = await supabase
           .from("restaurants")
           .select("id")
           .limit(1)
-          .maybeSingle();
+          .maybeSingle<RestaurantIdRow>();
         restaurantId = rFirst?.id ?? null;
       }
+
+      // jeśli dalej brak restauracji – kończymy bez błędu
+      if (!restaurantId) {
+        if (!cancelled) {
+          console.warn(
+            "ZestawMiesiaca: nie udało się ustalić restaurantId – brak danych."
+          );
+          setLoading(false);
+        }
+        return;
+      }
+
+      const rid = restaurantId as string;
 
       const { data: som, error: somErr } = await supabase
         .from("sushi_of_month")
         .select(
           "id,name,description,product_id,image_url,promo_price_cents,restaurant_id,starts_on,ends_on,is_active"
         )
-        .eq("restaurant_id", restaurantId)
+        .eq("restaurant_id", rid)
         .eq("is_active", true)
         .lte("starts_on", today)
-        .gte("ends_on", today)
+        // ends_on >= today LUB ends_on IS NULL (open-ended)
+        .or(`ends_on.gte.${today},ends_on.is.null`)
         .order("starts_on", { ascending: false })
         .limit(1)
         .maybeSingle<SomRow>();
 
       if (cancelled) return;
+
       if (somErr) {
         console.error(somErr.message);
         setLoading(false);
@@ -178,6 +199,7 @@ export default function ZestawMiesiaca() {
         const m = s.match(/(\d+)\s*(?:szt|sztuki|szt\.)/i);
         return m ? parseInt(m[1], 10) : null;
       };
+
       setPieces(
         extractPieces(row?.description) ??
           extractPieces(row?.name) ??
@@ -187,9 +209,11 @@ export default function ZestawMiesiaca() {
       );
 
       let finalPrice: number | null = null;
-      if (row?.promo_price_cents != null) finalPrice = row.promo_price_cents / 100;
+      if (row?.promo_price_cents != null)
+        finalPrice = row.promo_price_cents / 100;
       if (finalPrice == null && pRow) {
-        if (typeof pRow.price_cents === "number") finalPrice = pRow.price_cents / 100;
+        if (typeof pRow.price_cents === "number")
+          finalPrice = pRow.price_cents / 100;
         else if (pRow.price != null) {
           const num = parseFloat(String(pRow.price).replace(",", "."));
           if (Number.isFinite(num)) finalPrice = num;
@@ -207,8 +231,8 @@ export default function ZestawMiesiaca() {
 
   const handleAdd = () => {
     if (price === null) return;
+    // CartItem nie ma `id` – zostawiamy nazwę, cenę i ilość
     addItem({
-      id: productId ?? undefined,
       name: `Zestaw Miesiąca – ${productName || title}`,
       price,
       quantity: 1,
@@ -233,16 +257,24 @@ export default function ZestawMiesiaca() {
           ["--som-h" as any]: SOM_CORNER.h,
           ["--som-x" as any]: SOM_CORNER.x,
           ["--som-y" as any]: SOM_CORNER.y,
-          ["--som-z" as any]: SOM_CORNER.z as unknown as number,
-          ["--som-opacity" as any]: SOM_CORNER.opacity as unknown as number,
+          ["--som-z" as any]: (SOM_CORNER.z as unknown as number),
+          ["--som-opacity" as any]: (SOM_CORNER.opacity as unknown as number),
           ["--som-scale" as any]: SOM_CORNER.scale,
           ["--som-rot" as any]: SOM_CORNER.rot,
         } as React.CSSProperties
       }
     >
       {/* boczne pasy tylko desktop */}
-      <div aria-hidden className="hidden md:block pointer-events-none absolute inset-y-0 left-0" style={{ width: "50px", background: "#0b0b0b" }} />
-      <div aria-hidden className="hidden md:block pointer-events-none absolute inset-y-0 right-0" style={{ width: "50px", background: "#0b0b0b" }} />
+      <div
+        aria-hidden
+        className="hidden md:block pointer-events-none absolute inset-y-0 left-0"
+        style={{ width: "50px", background: "#0b0b0b" }}
+      />
+      <div
+        aria-hidden
+        className="hidden md:block pointer-events-none absolute inset-y-0 right-0"
+        style={{ width: "50px", background: "#0b0b0b" }}
+      />
 
       {/* PNG róg — tylko desktop */}
       <div
@@ -271,13 +303,17 @@ export default function ZestawMiesiaca() {
 
       {/* ------- MOBILE ------- */}
       <div className="md:hidden mx-auto w-full max-w-7xl px-6">
-        <p className="text-xs tracking-[0.2em] text-white/70 mb-2 text-center">ZESTAW MIESIĄCA</p>
-        <h2 className="text-3xl font-bold leading-tight text-center">{loading ? "…" : monthLabel}</h2>
+        <p className="text-xs tracking-[0.2em] text-white/70 mb-2 text-center">
+          ZESTAW MIESIĄCA
+        </p>
+        <h2 className="text-3xl font-bold leading-tight text-center">
+          {loading ? "…" : monthLabel}
+        </h2>
         <p className="mt-1 text-lg font-semibold italic text-center">
-          {loading ? "Ładowanie…" : (productName || title || "Zestaw specjalny")}
+          {loading ? "Ładowanie…" : productName || title || "Zestaw specjalny"}
         </p>
 
-        {/* obraz + badge w relatywnym kontenerze, bez dużych dolnych marginesów */}
+        {/* obraz + badge w relatywnym kontenerze */}
         <div className="relative mt-6 mx-auto w-full max-w-sm">
           <Image
             src={img || "/assets/miesiaca2.png"}
@@ -289,23 +325,30 @@ export default function ZestawMiesiaca() {
           />
 
           {/* cena */}
-          <div className={`absolute bottom-2 right-2 w-16 h-16 rounded-full ${STYLE.badge}`} aria-hidden>
+          <div
+            className={`absolute bottom-2 right-2 w-16 h-16 rounded-full ${STYLE.badge}`}
+            aria-hidden
+          >
             <span className="leading-tight text-sm">
               {price !== null ? `${price.toFixed(2)}\nzł` : "—"}
             </span>
           </div>
 
           {/* sztuki */}
-          <div className={`absolute bottom-2 left-2 w-14 h-14 rounded-full ${STYLE.badge}`} aria-hidden>
+          <div
+            className={`absolute bottom-2 left-2 w-14 h-14 rounded-full ${STYLE.badge}`}
+            aria-hidden
+          >
             <span className="leading-tight text-xs">
               {pieces ?? 34}
-              <br />szt.
+              <br />
+              szt.
             </span>
           </div>
         </div>
 
         {/* opis */}
-        {(!loading && desc) ? (
+        {!loading && desc ? (
           <p className="mt-4 text-sm text-white/80 text-center whitespace-pre-line">
             {desc}
           </p>
@@ -313,34 +356,70 @@ export default function ZestawMiesiaca() {
 
         {/* akcje */}
         <div className="mt-6 flex flex-col items-center gap-3">
-          <button onClick={handleAdd} disabled={loading || price === null} className={`${STYLE.btn} w-full max-w-sm`}>
+          <button
+            onClick={handleAdd}
+            disabled={loading || price === null}
+            className={`${STYLE.btn} w-full max-w-sm`}
+          >
             {added ? "Dodano" : "Dodaj do koszyka"}
           </button>
           <span className="text-white/80 text-sm">
-            {price !== null ? `Cena: ${price.toFixed(2)} zł` : loading ? "" : "Niedostępne"}
+            {price !== null
+              ? `Cena: ${price.toFixed(2)} zł`
+              : loading
+              ? ""
+              : "Niedostępne"}
           </span>
         </div>
       </div>
 
       {/* ------- DESKTOP ------- */}
-      <div className="hidden md:block mx-auto w-full max-w-7xl" style={{ paddingLeft: "var(--gutter)", paddingRight: "var(--gutter)" }}>
+      <div
+        className="hidden md:block mx-auto w-full max-w-7xl"
+        style={{ paddingLeft: "var(--gutter)", paddingRight: "var(--gutter)" }}
+      >
         <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-8 md:gap-12">
           {/* lewo — treść */}
-          <div style={{ transform: "translate(var(--text-x), var(--text-y))" }}>
-            <p className="text-xs tracking-[0.2em] text-white/70 mb-2">ZESTAW MIESIĄCA</p>
+          <div
+            style={{
+              transform: "translate(var(--text-x), var(--text-y))",
+            }}
+          >
+            <p className="text-xs tracking-[0.2em] text-white/70 mb-2">
+              ZESTAW MIESIĄCA
+            </p>
             <h2 className={STYLE.h2}>{loading ? "…" : monthLabel}</h2>
             <p className={STYLE.subtitle}>
-              {loading ? "Ładowanie…" : (productName || title || "Zestaw specjalny")}
+              {loading
+                ? "Ładowanie…"
+                : productName || title || "Zestaw specjalny"}
             </p>
             <p className={STYLE.body}>
-              {loading ? "" : (desc || "").split("\n").map((l, i) => (<span key={i}>{l}<br/></span>))}
+              {loading
+                ? ""
+                : (desc || "")
+                    .split("\n")
+                    .map((l, i) => (
+                      <span key={i}>
+                        {l}
+                        <br />
+                      </span>
+                    ))}
             </p>
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              <button onClick={handleAdd} disabled={loading || price === null} className={STYLE.btn}>
+              <button
+                onClick={handleAdd}
+                disabled={loading || price === null}
+                className={STYLE.btn}
+              >
                 {added ? "Dodano" : "Dodaj do koszyka"}
               </button>
               <span className="text-white/80 text-sm md:text-base">
-                {price !== null ? `Cena: ${price.toFixed(2)} zł` : loading ? "" : "Niedostępne"}
+                {price !== null
+                  ? `Cena: ${price.toFixed(2)} zł`
+                  : loading
+                  ? ""
+                  : "Niedostępne"}
               </span>
             </div>
           </div>
@@ -349,7 +428,11 @@ export default function ZestawMiesiaca() {
           <div className="relative">
             <div
               className="relative w-full max-w-[640px] mx-auto"
-              style={{ transform: "translate(var(--img-x), var(--img-y)) scale(var(--img-scale))", transformOrigin: "center" }}
+              style={{
+                transform:
+                  "translate(var(--img-x), var(--img-y)) scale(var(--img-scale))",
+                transformOrigin: "center",
+              }}
             >
               <Image
                 src={img || "/assets/miesiaca2.png"}
@@ -360,19 +443,29 @@ export default function ZestawMiesiaca() {
                 className="w-full h-auto object-contain"
               />
 
-              <div className={`absolute -top-[-160px] right-2 w-24 h-24 rounded-full ${STYLE.badge}`} aria-hidden>
+              <div
+                className={`absolute -top-[-160px] right-2 w-24 h-24 rounded-full ${STYLE.badge}`}
+                aria-hidden
+              >
                 {price !== null ? (
                   <span className="leading-tight text-lg">
-                    {price.toFixed(2)}<br />zł
+                    {price.toFixed(2)}
+                    <br />
+                    zł
                   </span>
                 ) : (
                   <span className="leading-tight text-lg">—</span>
                 )}
               </div>
 
-              <div className={`absolute top-[0px] right-28 w-20 h-20 rounded-full ${STYLE.badge}`} aria-hidden>
+              <div
+                className={`absolute top-[0px] right-28 w-20 h-20 rounded-full ${STYLE.badge}`}
+                aria-hidden
+              >
                 <span className="leading-tight text-base">
-                  {pieces ?? 34}<br />szt.
+                  {pieces ?? 34}
+                  <br />
+                  szt.
                 </span>
               </div>
             </div>

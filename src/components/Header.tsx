@@ -7,11 +7,13 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { Menu, X, ChevronDown } from "lucide-react";
 import clsx from "clsx";
+import type { UrlObject } from "url";
+import type { Route } from "next";
 
 const CITIES = [
   { slug: "ciechanow", label: "Ciechanów" },
   { slug: "przasnysz", label: "Przasnysz" },
-  { slug: "szczytno",  label: "Szczytno"  },
+  { slug: "szczytno", label: "Szczytno" },
 ];
 
 const SPECIAL = new Set(["admin", "api", "intra"]);
@@ -22,15 +24,33 @@ const ACCENT_BTN =
 function getCityFromPath(path: string) {
   const seg = path.split("/").filter(Boolean);
   const s0 = seg[0] || "";
-  return CITIES.find(c => c.slug === s0) ? s0 : "";
+  return CITIES.find((c) => c.slug === s0) ? s0 : "";
 }
+
 function replaceCity(path: string, next: string) {
   const seg = path.split("/").filter(Boolean);
-  if (seg.length === 0 || SPECIAL.has(seg[0]) || !CITIES.find(c => c.slug === seg[0])) {
+  if (
+    seg.length === 0 ||
+    SPECIAL.has(seg[0]) ||
+    !CITIES.find((c) => c.slug === seg[0])
+  ) {
     return `/${next}`;
   }
   seg[0] = next;
   return "/" + seg.join("/");
+}
+
+// helper: ścieżka jako string (do porównań aktywności)
+function mkPath(city: string, p?: string) {
+  if (p) {
+    return city ? `/${city}/${p}` : `/${p}`;
+  }
+  return city ? `/${city}` : "/";
+}
+
+// helper: obiekt UrlObject dla Link (żeby zadowolić typed routes)
+function mkHref(city: string, p?: string): UrlObject {
+  return { pathname: mkPath(city, p) };
 }
 
 export default function Header() {
@@ -39,7 +59,7 @@ export default function Header() {
 
   const city = getCityFromPath(pathname);
   const cityLabel = useMemo(
-    () => (CITIES.find(c => c.slug === city)?.label ?? "Wybierz miasto"),
+    () => CITIES.find((c) => c.slug === city)?.label ?? "Wybierz miasto",
     [city]
   );
 
@@ -51,7 +71,9 @@ export default function Header() {
 
   useEffect(() => {
     document.body.style.overflow = open ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [open]);
 
   useEffect(() => {
@@ -59,11 +81,14 @@ export default function Header() {
       if (!citiesOpen) return;
       const t = e.target as Node;
       const inDesk = ddRefDesktop.current?.contains(t);
-      const inMob  = ddRefMobile.current?.contains(t);
+      const inMob = ddRefMobile.current?.contains(t);
       if (!inDesk && !inMob) setCitiesOpen(false);
     };
     const onEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setCitiesOpen(false); setOpen(false); }
+      if (e.key === "Escape") {
+        setCitiesOpen(false);
+        setOpen(false);
+      }
     };
     document.addEventListener("mousedown", onDocClick);
     document.addEventListener("keydown", onEsc);
@@ -74,14 +99,16 @@ export default function Header() {
   }, [citiesOpen]);
 
   const links = [
-    { label: "MENU",      path: "menu" },
-    { label: "KONTAKT",   path: "kontakt" },
+    { label: "MENU", path: "menu" },
+    { label: "KONTAKT", path: "kontakt" },
     { label: "REGULAMIN", path: "regulamin" },
     { label: "PRYWATNOŚĆ", path: "polityka-prywatnosci" },
   ];
 
-  const mkHref = (p?: string) => (p ? (city ? `/${city}/${p}` : `/${p}`) : city ? `/${city}` : "/");
-  const isActive = (href: string) => pathname === href || pathname.startsWith(href + "/");
+  const isActive = (p?: string) => {
+    const path = mkPath(city, p);
+    return pathname === path || pathname.startsWith(path + "/");
+  };
 
   return (
     <header className="fixed inset-x-0 top-4 z-50">
@@ -90,7 +117,11 @@ export default function Header() {
         <div className="grid grid-cols-[auto_1fr_auto] md:grid-cols-[1fr_auto_1fr] items-center h-14 md:h-16">
           {/* left: logo */}
           <div className="flex items-center">
-            <Link href={mkHref()} aria-label="Strona główna" className="flex items-center gap-2">
+            <Link
+              href={mkHref(city)}
+              aria-label="Strona główna"
+              className="flex items-center gap-2"
+            >
               <Image
                 src="/assets/logo.png"
                 alt="Logo"
@@ -112,15 +143,16 @@ export default function Header() {
 
           {/* center: desktop nav */}
           <nav className="hidden md:flex items-center justify-center gap-8 text-sm">
-            {links.map(l => {
-              const href = mkHref(l.path);
+            {links.map((l) => {
+              const hrefObj = mkHref(city, l.path);
+              const active = isActive(l.path);
               return (
                 <Link
                   key={l.path}
-                  href={href}
+                  href={hrefObj}
                   className={clsx(
                     "relative tracking-wide hover:opacity-90",
-                    isActive(href) &&
+                    active &&
                       "after:absolute after:-bottom-1 after:left-0 after:h-[2px] after:w-full after:bg-gradient-to-r after:from-[#b31217] after:to-[#7a0b0b]"
                   )}
                 >
@@ -131,11 +163,14 @@ export default function Header() {
           </nav>
 
           {/* center (MOBILE): selektor miasta */}
-          <div className="md:hidden flex items-center justify-center" ref={ddRefMobile}>
+          <div
+            className="md:hidden flex items-center justify-center"
+            ref={ddRefMobile}
+          >
             <div className="relative">
               <button
                 type="button"
-                onClick={() => setCitiesOpen(v => !v)}
+                onClick={() => setCitiesOpen((v) => !v)}
                 aria-haspopup="listbox"
                 aria-expanded={citiesOpen}
                 className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold ${ACCENT_BTN}`}
@@ -149,14 +184,16 @@ export default function Header() {
                   role="listbox"
                   className="absolute left-1/2 -translate-x-1/2 mt-2 min-w-44 rounded-xl border border-black/30 bg-[#0b0b0b] shadow-[0_10px_22px_rgba(0,0,0,.40)] z-50"
                 >
-                  {CITIES.map(c => (
+                  {CITIES.map((c) => (
                     <li key={c.slug}>
                       <button
                         role="option"
                         aria-selected={city === c.slug}
                         onClick={() => {
                           setCitiesOpen(false);
-                          router.push(replaceCity(pathname, c.slug));
+                          router.push(
+                            replaceCity(pathname, c.slug) as Route
+                          );
                         }}
                         className={clsx(
                           "w-full text-left px-4 py-2 text-sm hover:bg-white/10",
@@ -177,7 +214,7 @@ export default function Header() {
             <div className="relative">
               <button
                 type="button"
-                onClick={() => setCitiesOpen(v => !v)}
+                onClick={() => setCitiesOpen((v) => !v)}
                 aria-haspopup="listbox"
                 aria-expanded={citiesOpen}
                 className={`inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-semibold ${ACCENT_BTN}`}
@@ -191,14 +228,16 @@ export default function Header() {
                   role="listbox"
                   className="absolute right-0 mt-2 min-w-48 rounded-xl border border-black/30 bg-[#0b0b0b] shadow-[0_10px_22px_rgba(0,0,0,.40)]"
                 >
-                  {CITIES.map(c => (
+                  {CITIES.map((c) => (
                     <li key={c.slug}>
                       <button
                         role="option"
                         aria-selected={city === c.slug}
                         onClick={() => {
                           setCitiesOpen(false);
-                          router.push(replaceCity(pathname, c.slug));
+                          router.push(
+                            replaceCity(pathname, c.slug) as Route
+                          );
                         }}
                         className={clsx(
                           "w-full text-left px-4 py-2 text-sm hover:bg-white/10",
@@ -231,7 +270,11 @@ export default function Header() {
 
       {/* Mobile FULLSCREEN modal */}
       {open && (
-        <div className="md:hidden fixed inset-0 z-[70]" role="dialog" aria-modal="true">
+        <div
+          className="md:hidden fixed inset-0 z-[70]"
+          role="dialog"
+          aria-modal="true"
+        >
           <div className="absolute inset-0 bg-[#0b0b0b] z-0" />
           <button
             type="button"
@@ -243,15 +286,25 @@ export default function Header() {
           </button>
 
           <div className="relative z-10 h-full w-full flex flex-col items-center justify-center gap-10 px-8">
-            <Link href={mkHref()} onClick={() => setOpen(false)} aria-label="Strona główna">
-              <Image src="/assets/logo.png" alt="Logo" width={110} height={110} priority />
+            <Link
+              href={mkHref(city)}
+              onClick={() => setOpen(false)}
+              aria-label="Strona główna"
+            >
+              <Image
+                src="/assets/logo.png"
+                alt="Logo"
+                width={110}
+                height={110}
+                priority
+              />
             </Link>
 
             <nav className="flex flex-col items-center gap-6 text-2xl">
-              {links.map(l => (
+              {links.map((l) => (
                 <Link
                   key={l.path}
-                  href={mkHref(l.path)}
+                  href={mkHref(city, l.path)}
                   onClick={() => setOpen(false)}
                   className="tracking-wide"
                 >

@@ -1,8 +1,10 @@
+// src/app/verify/Client.tsx
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Route } from "next";
 
 export default function VerifyClient() {
   const supabase = createClientComponentClient(); // PKCE domyślnie
@@ -15,7 +17,13 @@ export default function VerifyClient() {
         const url = new URL(window.location.href);
         const sp = url.searchParams;
         const hp = new URLSearchParams(url.hash.replace(/^#/, ""));
-        const next = sp.get("next") || "/?verified=1";
+
+        // next param z URL – tylko ścieżki zaczynające się od "/" są akceptowane
+        const rawNext = sp.get("next");
+        const next: Route =
+          rawNext && rawNext.startsWith("/")
+            ? (rawNext as Route)
+            : "/?verified=1";
 
         // Komunikaty błędu z URL
         const err = sp.get("error") || sp.get("error_code");
@@ -45,7 +53,10 @@ export default function VerifyClient() {
         const access_token = hp.get("access_token");
         const refresh_token = hp.get("refresh_token");
         if (access_token && refresh_token) {
-          const { error } = await supabase.auth.setSession({ access_token, refresh_token });
+          const { error } = await supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          });
           if (error) throw error;
           window.history.replaceState({}, document.title, url.origin + url.pathname);
           setMsg("Adres e-mail potwierdzony. Loguję…");
@@ -55,7 +66,12 @@ export default function VerifyClient() {
 
         // 3) Starsze linki OTP
         const token_hash = sp.get("token_hash");
-        const type = sp.get("type") as "signup" | "magiclink" | "recovery" | "email_change" | null;
+        const type = sp.get("type") as
+          | "signup"
+          | "magiclink"
+          | "recovery"
+          | "email_change"
+          | null;
         if (token_hash && type) {
           const { error } = await supabase.auth.verifyOtp({ token_hash, type });
           if (error) throw error;

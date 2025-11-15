@@ -1,9 +1,9 @@
 // src/components/ContactSection.tsx
 "use client";
 
+import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { MapPin, Phone, Mail, Clock, Instagram, Facebook } from "lucide-react";
 
 /** TikTok jako prosty inline SVG */
@@ -43,8 +43,12 @@ function toEmbed(url?: string | null) {
   try {
     const u = new URL(url);
     if (u.hostname.includes("google.")) {
-      if (!u.pathname.includes("/embed")) u.pathname = u.pathname.replace("/maps", "/maps/embed");
-      if (!u.searchParams.has("output")) u.searchParams.set("output", "embed");
+      if (!u.pathname.includes("/embed")) {
+        u.pathname = u.pathname.replace("/maps", "/maps/embed");
+      }
+      if (!u.searchParams.has("output")) {
+        u.searchParams.set("output", "embed");
+      }
       return u.toString();
     }
     return `https://www.google.com/maps?q=${encodeURIComponent(url)}&output=embed`;
@@ -86,7 +90,11 @@ export default function ContactSection() {
       {/* --- MOBILE --- */}
       <div className="md:hidden relative z-10 px-6 py-10">
         <p className="text-[11px] uppercase tracking-[0.28em] text-white/60">kontakt</p>
-        <h2 id="contact-heading" className="mt-2 text-3xl font-thin tracking-tight leading-tight" style={{ textWrap: "balance" as any }}>
+        <h2
+          id="contact-heading"
+          className="mt-2 text-3xl font-thin tracking-tight leading-tight"
+          style={{ textWrap: "balance" as any }}
+        >
           Kontakt — {CityLabel || "—"}
         </h2>
 
@@ -97,12 +105,21 @@ export default function ContactSection() {
             <div>
               <div className="uppercase text-[11px] tracking-wide text-white/60">Adres</div>
               <div className="mt-1 text-white/90">
-                {loading ? <span className="inline-block h-4 w-44 animate-pulse bg-white/10 rounded" /> : (data?.address ?? "—")}
+                {loading ? (
+                  <span className="inline-block h-4 w-44 animate-pulse bg-white/10 rounded" />
+                ) : (
+                  data?.address ?? "—"
+                )}
               </div>
               {data?.maps_url && (
-                <Link href={data.maps_url} target="_blank" className="mt-1 inline-block text-white/70 underline hover:text-white">
+                <a
+                  href={data.maps_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 inline-block text-white/70 underline hover:text-white"
+                >
                   Pokaż w Google Maps
-                </Link>
+                </a>
               )}
             </div>
           </div>
@@ -116,15 +133,21 @@ export default function ContactSection() {
                 {loading ? (
                   <span className="inline-block h-4 w-36 animate-pulse bg-white/10 rounded" />
                 ) : data?.phone ? (
-                  <Link href={`tel:${data.phone}`} className="hover:underline">{data.phone}</Link>
-                ) : "—"}
+                  <a href={`tel:${data.phone}`} className="hover:underline">
+                    {data.phone}
+                  </a>
+                ) : (
+                  "—"
+                )}
               </div>
               <div className="mt-1 flex items-center gap-2 text-white/80">
                 <Mail className="h-4 w-4" />
                 {loading ? (
                   <span className="inline-block h-4 w-48 animate-pulse bg-white/10 rounded" />
                 ) : data?.email ? (
-                  <Link href={`mailto:${data.email}`} className="hover:underline">{data.email}</Link>
+                  <a href={`mailto:${data.email}`} className="hover:underline">
+                    {data.email}
+                  </a>
                 ) : (
                   <span className="text-white/60">—</span>
                 )}
@@ -156,15 +179,33 @@ export default function ContactSection() {
           {/* Social */}
           <div className="flex items-center gap-4 pt-2">
             <span className="uppercase text-[11px] tracking-wide text-white/60 mr-1">Social</span>
-            <Link aria-label="Instagram" href={data?.instagram_url || "#"} target={data?.instagram_url ? "_blank" : undefined} className="text-white/80 hover:text-white">
+            <a
+              aria-label="Instagram"
+              href={data?.instagram_url || "#"}
+              target={data?.instagram_url ? "_blank" : undefined}
+              rel={data?.instagram_url ? "noreferrer" : undefined}
+              className="text-white/80 hover:text-white"
+            >
               <Instagram className="h-5 w-5" />
-            </Link>
-            <Link aria-label="Facebook" href={data?.facebook_url || "#"} target={data?.facebook_url ? "_blank" : undefined} className="text-white/80 hover:text-white">
+            </a>
+            <a
+              aria-label="Facebook"
+              href={data?.facebook_url || "#"}
+              target={data?.facebook_url ? "_blank" : undefined}
+              rel={data?.facebook_url ? "noreferrer" : undefined}
+              className="text-white/80 hover:text-white"
+            >
               <Facebook className="h-5 w-5" />
-            </Link>
-            <Link aria-label="TikTok" href={data?.tiktok_url || "#"} target={data?.tiktok_url ? "_blank" : undefined} className="text-white/80 hover:text-white">
+            </a>
+            <a
+              aria-label="TikTok"
+              href={data?.tiktok_url || "#"}
+              target={data?.tiktok_url ? "_blank" : undefined}
+              rel={data?.tiktok_url ? "noreferrer" : undefined}
+              className="text-white/80 hover:text-white"
+            >
               <TikTokIcon className="h-5 w-5" />
-            </Link>
+            </a>
           </div>
         </div>
 
@@ -180,13 +221,17 @@ export default function ContactSection() {
         </div>
       </div>
 
-      {/* --- DESKTOP (bez zmian) --- */}
+      {/* --- DESKTOP --- */}
       <div
         className="hidden md:block relative z-10 mx-auto w-full max-w-7xl py-14 md:py-20"
         style={{ paddingLeft: "var(--gutter)", paddingRight: "var(--gutter)" }}
       >
         <p className="text-[11px] uppercase tracking-[0.28em] text-white/60">kontakt</p>
-        <h2 id="contact-heading" className="mt-2 text-3xl sm:text-5xl font-thin tracking-tight" style={{ textWrap: "balance" as any }}>
+        <h2
+          id="contact-heading"
+          className="mt-2 text-3xl sm:text-5xl font-thin tracking-tight"
+          style={{ textWrap: "balance" as any }}
+        >
           Kontakt — {CityLabel || "—"}
         </h2>
 
@@ -197,12 +242,21 @@ export default function ContactSection() {
               <div>
                 <div className="uppercase text-[11px] tracking-wide text-white/60">Adres</div>
                 <div className="mt-1 text-white/90">
-                  {loading ? <span className="inline-block h-4 w-44 animate-pulse bg-white/10 rounded" /> : (data?.address ?? "—")}
+                  {loading ? (
+                    <span className="inline-block h-4 w-44 animate-pulse bg-white/10 rounded" />
+                  ) : (
+                    data?.address ?? "—"
+                  )}
                 </div>
                 {data?.maps_url && (
-                  <Link href={data.maps_url} target="_blank" className="mt-1 inline-block text-white/70 underline hover:text-white">
+                  <a
+                    href={data.maps_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-block text-white/70 underline hover:text-white"
+                  >
                     Pokaż w Google Maps
-                  </Link>
+                  </a>
                 )}
               </div>
             </div>
@@ -215,15 +269,21 @@ export default function ContactSection() {
                   {loading ? (
                     <span className="inline-block h-4 w-36 animate-pulse bg-white/10 rounded" />
                   ) : data?.phone ? (
-                    <Link href={`tel:${data.phone}`} className="hover:underline">{data.phone}</Link>
-                  ) : "—"}
+                    <a href={`tel:${data.phone}`} className="hover:underline">
+                      {data.phone}
+                    </a>
+                  ) : (
+                    "—"
+                  )}
                 </div>
                 <div className="mt-1 flex items-center gap-2 text-white/80">
                   <Mail className="h-4 w-4" />
                   {loading ? (
                     <span className="inline-block h-4 w-48 animate-pulse bg-white/10 rounded" />
                   ) : data?.email ? (
-                    <Link href={`mailto:${data.email}`} className="hover:underline">{data.email}</Link>
+                    <a href={`mailto:${data.email}`} className="hover:underline">
+                      {data.email}
+                    </a>
                   ) : (
                     <span className="text-white/60">—</span>
                   )}
@@ -238,8 +298,8 @@ export default function ContactSection() {
                 {loading ? (
                   <div className="mt-2 space-y-2">
                     <div className="h-3 w-52 animate-pulse rounded bg-white/10" />
-                    <div className="h-3 w-48 animate-pulse rounded bg:white/10" />
-                    <div className="h-3 w-44 animate-pulse rounded bg:white/10" />
+                    <div className="h-3 w-48 animate-pulse rounded bg-white/10" />
+                    <div className="h-3 w-44 animate-pulse rounded bg-white/10" />
                   </div>
                 ) : (
                   <ul className="mt-1 space-y-0.5 text-white/85">
@@ -253,15 +313,33 @@ export default function ContactSection() {
 
             <div className="flex items-center gap-4 pt-2">
               <span className="uppercase text-[11px] tracking-wide text-white/60 mr-1">Social</span>
-              <Link aria-label="Instagram" href={data?.instagram_url || "#"} target={data?.instagram_url ? "_blank" : undefined} className="text-white/80 hover:text-white">
+              <a
+                aria-label="Instagram"
+                href={data?.instagram_url || "#"}
+                target={data?.instagram_url ? "_blank" : undefined}
+                rel={data?.instagram_url ? "noreferrer" : undefined}
+                className="text-white/80 hover:text-white"
+              >
                 <Instagram className="h-5 w-5" />
-              </Link>
-              <Link aria-label="Facebook" href={data?.facebook_url || "#"} target={data?.facebook_url ? "_blank" : undefined} className="text-white/80 hover:text-white">
+              </a>
+              <a
+                aria-label="Facebook"
+                href={data?.facebook_url || "#"}
+                target={data?.facebook_url ? "_blank" : undefined}
+                rel={data?.facebook_url ? "noreferrer" : undefined}
+                className="text-white/80 hover:text-white"
+              >
                 <Facebook className="h-5 w-5" />
-              </Link>
-              <Link aria-label="TikTok" href={data?.tiktok_url || "#"} target={data?.tiktok_url ? "_blank" : undefined} className="text-white/80 hover:text-white">
+              </a>
+              <a
+                aria-label="TikTok"
+                href={data?.tiktok_url || "#"}
+                target={data?.tiktok_url ? "_blank" : undefined}
+                rel={data?.tiktok_url ? "noreferrer" : undefined}
+                className="text-white/80 hover:text-white"
+              >
                 <TikTokIcon className="h-5 w-5" />
-              </Link>
+              </a>
             </div>
           </div>
 
