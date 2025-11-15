@@ -2,7 +2,7 @@
 "use client";
 
 import React, { Suspense, useEffect, useMemo, useState } from "react";
-import dynamic from "next/dynamic";
+import NextDynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -17,8 +17,8 @@ import {
 import "react-calendar/dist/Calendar.css";
 import { RadialIcon } from "../dashboard/RadialIcon";
 
-const Calendar = dynamic(() => import("react-calendar"), { ssr: false });
-const Chart = dynamic(() => import("../dashboard/Chart"), { ssr: false });
+const Calendar = NextDynamic(() => import("react-calendar"), { ssr: false });
+const Chart = NextDynamic(() => import("../dashboard/Chart"), { ssr: false });
 
 type StatsResponse = {
   ordersPerDay?: Record<string, number>;
