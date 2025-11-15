@@ -64,7 +64,7 @@ export default async function Page() {
       </section>
 
       {/* przyciski miast */}
-      <section className="mt-8 px-5">
+      <section className="mt-12 px-5">
         <div className="mx-auto grid max-w-3xl grid-cols-1 sm:grid-cols-3 gap-3">
           {picked.slice(0, 3).map((r) => {
             const label = r.city_name || r.name || r.slug;
@@ -74,7 +74,7 @@ export default async function Page() {
                 key={slug}
                 href={`/${encodeURIComponent(slug)}?slug=${encodeURIComponent(slug)}`}
                 prefetch={false}
-                className={`block rounded-full px-4 py-2.5 text-center text-sm sm:text-base ${ACCENT}`}
+                className={`block rounded-3xl px-3 py-2.5 text-center text-sm sm:text-base ${ACCENT}`}
                 aria-label={`Przejdź do restauracji SUSHI Tutaj w mieście ${label} – menu i zamówienia online`}
               >
                 <span className="block text-base sm:text-lg font-semibold">
