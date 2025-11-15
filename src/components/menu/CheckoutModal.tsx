@@ -16,7 +16,6 @@ import QRCode from "react-qr-code";
 import { useSession } from "@supabase/auth-helpers-react";
 import { createClient } from "@supabase/supabase-js";
 import { toZonedTime } from "date-fns-tz";
-import { useSearchParams } from "next/navigation";
 
 import useIsClient from "@/lib/useIsClient";
 import useCartStore from "@/store/cartStore";
@@ -722,7 +721,7 @@ function ChopsticksControl({
     <div className="mt-4 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-black">Ilość pałeczek</span>
-        <span className="text-[11px] text-black/60">0 = nie potrzebuję</span>
+        <span className="text-[11px] text.black/60">0 = nie potrzebuję</span>
       </div>
       <div className="flex items-center justify-center gap-4">
         <button
@@ -736,7 +735,7 @@ function ChopsticksControl({
         <button
           type="button"
           onClick={inc}
-          className="h-11 w-11 rounded-full border border-black/20 bg-black text-white text-xl flex items-center justify-center"
+          className="h-11 w-11 rounded-full border border-black/20 bg.black text-white text-xl flex items-center justify-center"
         >
           +
         </button>
@@ -768,8 +767,14 @@ export default function CheckoutModal() {
 
   const isMobile = useIsMobile();
 
-  const searchParams = useSearchParams();
-  const reservationId = searchParams?.get("reservation");
+  // zamiast useSearchParams – czytamy query przez window.location.search
+  const [reservationId, setReservationId] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const r = params.get("reservation");
+    setReservationId(r);
+  }, []);
 
   const [notes, setNotes] = useState<{ [key: number]: string }>({});
   const [name, setName] = useState("");
@@ -914,11 +919,7 @@ export default function CheckoutModal() {
     setSubmitting(false);
     goToStep(1);
     removeTurnstile();
-  }, [
-    originalCloseCheckoutModal,
-    goToStep,
-    removeTurnstile,
-  ]);
+  }, [originalCloseCheckoutModal, goToStep, removeTurnstile]);
 
   // ESC zamyka modal + blokada scrolla body
   useEffect(() => {
@@ -1401,7 +1402,7 @@ export default function CheckoutModal() {
               <div>
                 {orderSent ? (
                   <div className="min-h-[320px] flex flex-col items-center justify-center text-center space-y-5 px-4">
-                    <div className="bg-white p-4 rounded-2xl shadow flex flex-col items-center gap-2">
+                    <div className="bg-white p-4 rounded-2xl shadow flex flex-col items.center gap-2">
                       <div className="bg-white p-3 rounded-xl">
                         <QRCode value={thanksQrUrl} size={170} />
                       </div>
@@ -1608,7 +1609,7 @@ export default function CheckoutModal() {
                                 <input
                                   type="text"
                                   placeholder="Numer mieszkania (opcjonalnie)"
-                                  className="flex-1 px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
+                                  className="flex-1 px-3 py-2 border border-black/15 rounded-xl bg.white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
                                   value={flatNumber}
                                   onChange={(e) => setFlatNumber(e.target.value)}
                                   disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
@@ -1616,7 +1617,7 @@ export default function CheckoutModal() {
                                 <input
                                   type="text"
                                   placeholder="Kod pocztowy"
-                                  className="flex-1 px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
+                                  className="flex-1 px-3 py-2 border border-black/15 rounded-xl bg.white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
                                   value={postalCode}
                                   onChange={(e) => setPostalCode(e.target.value)}
                                   disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
@@ -1625,7 +1626,7 @@ export default function CheckoutModal() {
                               <input
                                 type="text"
                                 placeholder="Miasto"
-                                className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
+                                className="w-full px-3 py-2 border border-black/15 rounded-xl bg.white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
                                 value={city}
                                 onChange={(e) => setCity(e.target.value)}
                                 disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
@@ -1650,14 +1651,14 @@ export default function CheckoutModal() {
                           <input
                             type="text"
                             placeholder="Imię"
-                            className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
+                            className="w-full px-3 py-2 border border-black/15 rounded-xl bg.white"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                           />
                           <input
                             type="tel"
                             placeholder="Telefon"
-                            className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
+                            className="w-full px-3 py-2 border border-black/15 rounded-xl bg.white"
                             value={phone}
                             onChange={(e) => setPhone(e.target.value)}
                           />
@@ -1665,7 +1666,7 @@ export default function CheckoutModal() {
                             <input
                               type="text"
                               placeholder="Uwagi do odbioru (opcjonalnie)"
-                              className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
+                              className="w-full px-3 py-2 border border-black/15 rounded-xl bg.white"
                               value={optionalAddress}
                               onChange={(e) => setOptionalAddress(e.target.value)}
                             />
@@ -1673,7 +1674,7 @@ export default function CheckoutModal() {
                           <input
                             type="email"
                             placeholder="Email (wymagany do potwierdzenia)"
-                            className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
+                            className="w-full px-3 py-2 border border-black/15 rounded-xl bg.white"
                             value={contactEmail}
                             onChange={(e) => setContactEmail(e.target.value)}
                           />
@@ -1714,7 +1715,7 @@ export default function CheckoutModal() {
                             <h4 className="text-lg font-semibold">Potwierdzenia</h4>
                             <div className="space-y-3">
                               {LegalConsent}
-                              <label className="flex items-start gap-2 text-xs leading-5 text-black">
+                              <label className="flex items-start gap-2 text-xs leading-5 text.black">
                                 <input
                                   type="checkbox"
                                   checked={confirmCityOk}
@@ -1798,7 +1799,7 @@ export default function CheckoutModal() {
                                   helpers={productHelpers}
                                 />
                                 <textarea
-                                  className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
+                                  className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg.white"
                                   placeholder="Notatka do produktu"
                                   value={notes[idx] || ""}
                                   onChange={(e) => setNotes({ ...notes, [idx]: e.target.value })}
@@ -1877,7 +1878,7 @@ export default function CheckoutModal() {
 
                     <div className="space-y-2">
                       {LegalConsent}
-                      <label className="flex items-start gap-2 text-xs leading-5 text-black">
+                      <label className="flex items-start gap-2 text-xs leading-5 text.black">
                         <input
                           type="checkbox"
                           checked={confirmCityOk}
