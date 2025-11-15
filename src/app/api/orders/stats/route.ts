@@ -1,8 +1,8 @@
-// /app/api/orders/stats/route.ts
+// src/app/api/orders/stats/route.ts
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
@@ -27,7 +27,9 @@ const dayKeyPL = (d: Date) =>
 
 const startOfTodayPLISO = () => {
   const now = new Date();
-  const pl = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Warsaw" }));
+  const pl = new Date(
+    now.toLocaleString("en-US", { timeZone: "Europe/Warsaw" })
+  );
   pl.setHours(0, 0, 0, 0);
   // ISO w UTC bez przesunięcia logiki dnia PL
   return new Date(pl.getTime() - pl.getTimezoneOffset() * 60_000).toISOString();
@@ -38,10 +40,21 @@ function collectStrings(val: any): string[] {
   if (typeof val === "string") return [val];
   if (Array.isArray(val)) return val.flatMap(collectStrings).filter(Boolean);
   if (typeof val === "object") {
-    const prefer = ["name","title","label","product_name","menu_item_name","item_name","nazwa","nazwa_pl"];
+    const prefer = [
+      "name",
+      "title",
+      "label",
+      "product_name",
+      "menu_item_name",
+      "item_name",
+      "nazwa",
+      "nazwa_pl",
+    ];
     const out: string[] = [];
-    for (const k of prefer) if (typeof (val as any)[k] === "string") out.push((val as any)[k]);
-    for (const v of Object.values(val)) if (typeof v === "object") out.push(...collectStrings(v));
+    for (const k of prefer)
+      if (typeof (val as any)[k] === "string") out.push((val as any)[k]);
+    for (const v of Object.values(val))
+      if (typeof v === "object") out.push(...collectStrings(v));
     return out;
   }
   return [];
@@ -52,10 +65,15 @@ function extractProductNames(items: any): string[] {
     const data = typeof items === "string" ? JSON.parse(items) : items;
     const arr = Array.isArray(data) ? data : [data];
     const names = new Set<string>();
-    for (const it of arr) for (const s of collectStrings(it)) if (s && s.length <= 80) names.add(s);
+    for (const it of arr)
+      for (const s of collectStrings(it)) if (s && s.length <= 80) names.add(s);
     return Array.from(names);
   } catch {
-    if (typeof items === "string") return items.split(",").map((s) => s.trim()).filter(Boolean);
+    if (typeof items === "string")
+      return items
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
     return [];
   }
 }
@@ -99,15 +117,21 @@ async function resolveRestaurantId({
   throw new Error("Brak przypisanej restauracji.");
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   const { session, role } = await getSessionAndRole(request);
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (role !== "admin" && role !== "employee") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!session)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (role !== "admin" && role !== "employee")
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
-    const cookieStore = cookies();
-    const { searchParams } = new URL(request.url);
-    const days = Math.max(1, parseInt(searchParams.get("days") || "30", 10));
+    const cookieStore = await cookies();
+    const { searchParams } = request.nextUrl;
+
+    const days = Math.max(
+      1,
+      parseInt(searchParams.get("days") || "30", 10)
+    );
     const slugParam = searchParams.get("restaurant")?.toLowerCase() || null;
     const cookieRid = cookieStore.get("restaurant_id")?.value ?? null;
 
@@ -147,7 +171,11 @@ export async function GET(request: Request) {
     const todayKey = dayKeyPL(now);
     const ym = todayKey.slice(0, 7);
 
-    for (const o of rows as (Row & { delivery_time?: string | null; deliveryTime?: string | null; client_delivery_time?: string | null })[]) {
+    for (const o of rows as (Row & {
+      delivery_time?: string | null;
+      deliveryTime?: string | null;
+      client_delivery_time?: string | null;
+    })[]) {
       const created = new Date(o.created_at!);
       const day = dayKeyPL(created);
       ordersPerDay[day] = (ordersPerDay[day] ?? 0) + 1;
@@ -159,9 +187,14 @@ export async function GET(request: Request) {
         null;
 
       if (String(o.status).toLowerCase() === "completed" && planned) {
-        const minutes = Math.max(0, Math.round((+new Date(planned) - +created) / 60000));
+        const minutes = Math.max(
+          0,
+          Math.round((+new Date(planned) - +created) / 60000)
+        );
         const a = avgAcc[day] ?? { sum: 0, cnt: 0 };
-        a.sum += minutes; a.cnt += 1; avgAcc[day] = a;
+        a.sum += minutes;
+        a.cnt += 1;
+        avgAcc[day] = a;
       }
 
       for (const n of extractProductNames((o as any).items)) {
@@ -170,7 +203,11 @@ export async function GET(request: Request) {
 
       const st = String(o.status || "").toLowerCase();
       const ps = String(o.payment_status || "").toLowerCase();
-      const paidish = ps === "paid" || ps === "succeeded" || ps === "success" || st === "completed";
+      const paidish =
+        ps === "paid" ||
+        ps === "succeeded" ||
+        ps === "success" ||
+        st === "completed";
       const price = Number(o.total_price) || 0;
 
       if (day === todayKey) {
@@ -187,7 +224,8 @@ export async function GET(request: Request) {
     }
 
     const avgFulfillmentTime: Record<string, number> = {};
-    for (const [d, { sum, cnt }] of Object.entries(avgAcc)) if (cnt > 0) avgFulfillmentTime[d] = Math.round(sum / cnt);
+    for (const [d, { sum, cnt }] of Object.entries(avgAcc))
+      if (cnt > 0) avgFulfillmentTime[d] = Math.round(sum / cnt);
 
     // Rezerwacje dziś — obsłuż obie kolumny czasu (created_at | inserted_at)
     let todayReservations = 0;
@@ -214,9 +252,15 @@ export async function GET(request: Request) {
       // ignoruj
     }
 
-    const monthAvgs = Object.entries(avgFulfillmentTime).filter(([d]) => d.startsWith(ym));
-    const monthAvgFulfillment =
-      monthAvgs.length ? Math.round(monthAvgs.reduce((s, [, v]) => s + (v || 0), 0) / monthAvgs.length) : undefined;
+    const monthAvgs = Object.entries(avgFulfillmentTime).filter(([d]) =>
+      d.startsWith(ym)
+    );
+    const monthAvgFulfillment = monthAvgs.length
+      ? Math.round(
+          monthAvgs.reduce((s, [, v]) => s + (v || 0), 0) /
+            monthAvgs.length
+        )
+      : undefined;
 
     const kpis = {
       todayOrders,
@@ -232,7 +276,13 @@ export async function GET(request: Request) {
 
     return new NextResponse(
       JSON.stringify({ ordersPerDay, avgFulfillmentTime, popularProducts, kpis }),
-      { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } }
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        },
+      }
     );
   } catch (err: any) {
     console.error("GET /api/orders/stats error:", err?.message || err);

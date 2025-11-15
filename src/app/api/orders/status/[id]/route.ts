@@ -1,146 +1,83 @@
-// src/app/api/orders/stats/route.ts
+// src/app/api/admin/[id]/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@/types/supabase";
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { createClient } from "@supabase/supabase-js";
+import { getSessionAndRole } from "@/lib/serverAuth";
 
-/* === utils === */
-function normalizeUuid(v?: string | null) {
-  if (!v) return null;
-  const x = v.replace(/[<>\s'"]/g, "").trim();
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(x) ? x : null;
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false } }
+);
+
+const PatchSchema = z.object({
+  min_distance_km: z.number().nonnegative().optional(),
+  max_distance_km: z.number().nonnegative().optional(),
+  min_order_value: z.number().nonnegative().optional(),
+  cost: z.number().nonnegative().optional(),
+  free_over: z.number().nonnegative().nullable().optional(),
+  eta_min_minutes: z.number().int().nonnegative().optional(),
+  eta_max_minutes: z.number().int().nonnegative().optional(),
+  cost_fixed: z.number().nonnegative().optional(),
+  cost_per_km: z.number().nonnegative().optional(),
+});
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const { id } = params;
+
+  const { session, role } = await getSessionAndRole();
+  if (!session || (role !== "admin" && role !== "employee")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await req.json();
+  const parsed = PatchSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.message },
+      { status: 400 }
+    );
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("delivery_zones")
+    .update(parsed.data)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ zone: data });
 }
-const toInt = (v: string | null, d: number) => {
-  const n = Number.parseInt(String(v ?? ""), 10);
-  return Number.isFinite(n) ? n : d;
-};
-const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 
-type OrderRow = {
-  id: string;
-  created_at: string;
-  status: string;
-  total_price: number | null;
-};
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const { id } = params;
 
-export async function GET(req: Request) {
-  const supabase = createRouteHandlerClient<Database>({ cookies });
-
-  // auth (panel admina / employee)
-  const { data: u } = await supabase.auth.getUser();
-  const userId = u?.user?.id || null;
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const url = new URL(req.url);
-  const searchParams = url.searchParams;
-
-  const days = Math.max(1, toInt(searchParams.get("days"), 30));
-  const slugParam = (searchParams.get("restaurant") || "").toLowerCase() || null;
-
-  // cookies: do odczytu wartości MUSI być await
-  const cookieStore = await cookies();
-  let rid = normalizeUuid(cookieStore.get("restaurant_id")?.value || null);
-
-  // jeśli podano slug restauracji → przelicz na id
-  if (slugParam) {
-    const { data: rows, error } = await supabase
-      .from("restaurants")
-      .select("id")
-      .eq("slug", slugParam)
-      .returns<{ id: string }[]>() // jawny typ, żeby uniknąć `never`
-      .limit(1);
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    const restId = rows?.[0]?.id || null;
-    rid = normalizeUuid(restId);
+  const { session, role } = await getSessionAndRole();
+  if (!session || (role !== "admin" && role !== "employee")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // fallback: ostatnia restauracja przypisana użytkownikowi (restaurant_admins)
-  if (!rid) {
-    const { data: last, error } = await supabase
-      .from("restaurant_admins")
-      .select("restaurant_id, added_at")
-      .eq("user_id", userId)
-      .order("added_at", { ascending: false })
-      .returns<{ restaurant_id: string; added_at: string }[]>();
+  const { error } = await supabaseAdmin
+    .from("delivery_zones")
+    .delete()
+    .eq("id", id);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-    const lastId = (last?.[0]?.restaurant_id as string) || null;
-    rid = normalizeUuid(lastId);
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  if (!rid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  // zakres czasu
-  const now = new Date();
-  const since = new Date(now.getTime() - days * 864e5);
-  const sinceISO = since.toISOString();
-  const nowISO = now.toISOString();
-
-  // pobranie zamówień do statystyk (tylko to, co potrzebne)
-  const { data, error } = await supabase
-    .from("orders")
-    .select("id, created_at, status, total_price")
-    .eq("restaurant_id", rid)
-    .gte("created_at", sinceISO)
-    .lte("created_at", nowISO)
-    .order("created_at", { ascending: true })
-    .returns<OrderRow[]>();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const rows = data ?? [];
-
-  // agregaty
-  const byStatus: Record<string, number> = {};
-  let revenue = 0;
-  let count = 0;
-
-  for (const o of rows) {
-    byStatus[o.status] = (byStatus[o.status] ?? 0) + 1;
-    count += 1;
-
-    // przychód: ignorujemy anulowane; jeśli masz inną definicję – dostosuj
-    if (o.status !== "cancelled") {
-      revenue += Number(o.total_price ?? 0);
-    }
-  }
-
-  const avgTicket = count ? revenue / count : 0;
-
-  // dzienna seria
-  const daysMap = new Map<string, { orders: number; revenue: number }>();
-  for (let i = 0; i < days; i++) {
-    const d = new Date(since.getTime() + i * 864e5);
-    daysMap.set(isoDay(d), { orders: 0, revenue: 0 });
-  }
-  for (const o of rows) {
-    const day = isoDay(new Date(o.created_at));
-    const bucket = daysMap.get(day);
-    if (bucket) {
-      bucket.orders += 1;
-      if (o.status !== "cancelled") bucket.revenue += Number(o.total_price ?? 0);
-    }
-  }
-  const daily = Array.from(daysMap.entries()).map(([date, v]) => ({
-    date,
-    orders: v.orders,
-    revenue: v.revenue,
-  }));
-
-  return NextResponse.json({
-    restaurant_id: rid,
-    range: { from: sinceISO, to: nowISO, days },
-    totals: {
-      orders: count,
-      revenue,
-      avgTicket,
-    },
-    byStatus,
-    daily,
-  });
+  return NextResponse.json({ ok: true });
 }
