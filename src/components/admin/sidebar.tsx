@@ -102,6 +102,7 @@ function SidebarInner() {
   const supabase = createClientComponentClient<Database>();
   const pathname = usePathname() || "";
   const params = useSearchParams();
+  const searchKey = params?.toString();
   const router = useRouter();
 
   const [role, setRole] = useState<Role>("employee");
@@ -121,10 +122,21 @@ function SidebarInner() {
     return true;
   });
 
-  // źródło prawdy dla sluga
+  // slug restauracji – inicjalnie: URL → cookie → localStorage
   const [slug, setSlug] = useState<string | null>(() => {
     const urlSlug = params?.get("restaurant")?.toLowerCase() || null;
-    return urlSlug || getCookie("restaurant_slug");
+    const cookieSlug = getCookie("restaurant_slug");
+    let lsSlug: string | null = null;
+    if (typeof window !== "undefined") {
+      try {
+        lsSlug =
+          window.localStorage.getItem("restaurant_slug") ||
+          window.localStorage.getItem("citySlug");
+      } catch {
+        // ignore
+      }
+    }
+    return urlSlug || cookieSlug || lsSlug || null;
   });
 
   // rola
@@ -151,7 +163,7 @@ function SidebarInner() {
           r === "owner" || r === "manager" ? "admin" : "employee";
         if (live) setRole(ui);
       } catch {
-        // ewentualnie można logować
+        // można logować
       }
     };
 
@@ -176,42 +188,109 @@ function SidebarInner() {
     }
   }, [collapsed]);
 
-  // upewnij cookie + dolep slug do bieżącego URL jeśli go brak
+  // Ustal slug restauracji (jedno źródło prawdy) + zsynchronizuj URL / localStorage / cookie
   useEffect(() => {
+    let cancelled = false;
+
     const ensure = async () => {
-      const urlSlug = params?.get("restaurant")?.toLowerCase() || null;
-      const cookieSlug = getCookie("restaurant_slug");
-      const finalSlug = urlSlug || slug || cookieSlug || null;
-
       try {
-        const q = finalSlug
-          ? `?restaurant=${encodeURIComponent(finalSlug)}`
-          : "";
-        const r = await fetch(`/api/restaurants/ensure-cookie${q}`, {
-          cache: "no-store",
-          credentials: "include",
-        });
-        const j = await r.json().catch(() => ({}));
-        const s = (j as any)?.restaurant_slug || finalSlug || null;
+        const urlSlug = params?.get("restaurant")?.toLowerCase() || null;
+        const cookieSlug = getCookie("restaurant_slug") || null;
 
-        if (s && !urlSlug) {
-          // dopnij slug do aktualnej ścieżki
-          router.replace(
-            {
-              pathname,
-              query: { restaurant: s },
-            } as any
-          );
+        let lsSlug: string | null = null;
+        if (typeof window !== "undefined") {
+          try {
+            lsSlug =
+              window.localStorage.getItem("restaurant_slug") ||
+              window.localStorage.getItem("citySlug");
+          } catch {
+            // ignore
+          }
         }
-        if (s && s !== slug) setSlug(s);
-      } catch {
-        // ignore
+
+        // kandydat do przekazania w zapytaniu
+        const seedSlug = urlSlug || cookieSlug || lsSlug || slug || null;
+
+        // spróbuj ustalić slug po stronie serwera (na bazie zalogowanego admina)
+        let srvSlug: string | null = null;
+        const res = await fetch(
+          `/api/restaurants/ensure-cookie${
+            seedSlug ? `?restaurant=${encodeURIComponent(seedSlug)}` : ""
+          }`,
+          {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+          }
+        );
+
+        if (res.ok) {
+          const json = (await res.json()) as {
+            restaurant_slug?: string | null;
+          };
+          if (json.restaurant_slug) {
+            srvSlug = json.restaurant_slug.toLowerCase();
+          }
+        }
+
+        const finalSlug =
+          (srvSlug ||
+            urlSlug ||
+            slug ||
+            cookieSlug ||
+            lsSlug ||
+            null)?.toLowerCase() || null;
+
+        if (cancelled || !finalSlug) return;
+
+        // stan Reacta
+        if (finalSlug !== slug) {
+          setSlug(finalSlug);
+        }
+
+        // localStorage
+        if (typeof window !== "undefined") {
+          try {
+            const currentLs =
+              window.localStorage.getItem("restaurant_slug") || null;
+            if (currentLs !== finalSlug) {
+              window.localStorage.setItem("restaurant_slug", finalSlug);
+              window.localStorage.setItem("citySlug", finalSlug);
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        // cookie (dla API routes)
+        if (typeof document !== "undefined") {
+          const currentCookie = getCookie("restaurant_slug");
+          if (currentCookie !== finalSlug) {
+            document.cookie = `restaurant_slug=${encodeURIComponent(
+              finalSlug
+            )}; Path=/; Max-Age=${60 * 60 * 24 * 365}; SameSite=Lax`;
+          }
+        }
+
+        // URL – dopnij / popraw ?restaurant=...
+        const currentParams = new URLSearchParams(params?.toString() || "");
+        if (currentParams.get("restaurant") !== finalSlug) {
+          currentParams.set("restaurant", finalSlug);
+          const qs = currentParams.toString();
+          const href = qs ? `${pathname}?${qs}` : pathname;
+          router.replace(href as any, { scroll: false });
+        }
+      } catch (err) {
+        console.error("[admin sidebar] ensure restaurant slug failed", err);
       }
     };
 
     void ensure();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]); // zmiana podstrony → sprawdź slug
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, searchKey, slug, router, params]);
 
   // Zwracamy UrlObject zamiast stringa, żeby Link był zadowolony, a TS się nie czepiał
   const withQs = useMemo(

@@ -161,7 +161,7 @@ export default function MenuSection() {
   const [catsCanLeft, setCatsCanLeft] = useState(false);
   const [catsCanRight, setCatsCanRight] = useState(false);
 
-  // zapobieganie globalnym handlerom dotyku: pozwól na poziomy scroll (pan-x)
+  // zapobieganie globalnym handlerom dotyku
   const stopProp = (e: any) => e.stopPropagation();
 
   useEffect(() => {
@@ -383,7 +383,7 @@ export default function MenuSection() {
         tabIndex={0}
         className="group relative bg-transparent outline-none"
       >
-        <div className="relative aspect-square bg-black group-hover:bg-white group-focus:bg-white">
+        <div className="relative aspect-square bg-black">
           <ProductImg p={p} sizes="50vw" />
           {p.available === false && (
             <div className="absolute top-2 right-2 px-2 py-0.5 text-[10px] font-medium bg-[var(--accent,#de1d13)] text-white">
@@ -393,12 +393,12 @@ export default function MenuSection() {
         </div>
 
         <div className="p-3">
-          <h4 className="text-sm font-medium leading-snug text-white group-hover:text-black group-focus:text-black">
+          <h4 className="text-sm font-medium leading-snug text-white">
             {p.name}
           </h4>
 
           {p.description && (
-            <div className="mt-1 text-xs font-light text-white/70 group-hover:text-black/70 group-focus:text-black/70">
+            <div className="mt-1 text-xs font-light text-white/70">
               <p>{brief}</p>
               {hasLong && (
                 <button
@@ -420,7 +420,7 @@ export default function MenuSection() {
           )}
 
           <div className="mt-3 flex items-center justify-between">
-            <span className="text-sm font-medium text-white group-hover:text-black group-focus:text-black">
+            <span className="text-sm font-medium text-white">
               {priceLabel(p)}
             </span>
 
@@ -465,9 +465,9 @@ export default function MenuSection() {
         key={p.id}
         tabIndex={0}
         onClick={() => handleAdd(p)}
-        className="group relative bg-transparent transition hover:bg-white focus:bg-white outline-none cursor-pointer"
+        className="group relative bg-transparent transition hover:bg-white/5 focus:bg-white/5 outline-none cursor-pointer"
       >
-        <div className="relative aspect-square bg-black group-hover:bg-white group-focus:bg-white">
+        <div className="relative aspect-square bg-black">
           <ProductImg p={p} sizes="33vw" />
           {p.available === false && (
             <div className="absolute top-3 right-3 px-3 py-1 text-xs font-medium bg-[var(--accent,#de1d13)] text-white">
@@ -477,12 +477,12 @@ export default function MenuSection() {
         </div>
 
         <div className="p-4">
-          <h4 className="text-base font-medium leading-snug text-white group-hover:text-black group-focus:text-black">
+          <h4 className="text-base font-medium leading-snug text-white">
             {p.name}
           </h4>
 
           {p.description && (
-            <div className="mt-1 text-sm font-light text-white/70 group-hover:text-black/70 group-focus:text-black/70">
+            <div className="mt-1 text-sm font-light text-white/70">
               <p>{brief}</p>
               {hasLong && (
                 <button
@@ -504,7 +504,7 @@ export default function MenuSection() {
           )}
 
           <div className="mt-4 flex items-center justify-between">
-            <span className="text-sm font-medium text-white group-hover:text-black group-focus:text-black">
+            <span className="text-sm font-medium text-white">
               {priceLabel(p)}
             </span>
 
@@ -685,7 +685,6 @@ export default function MenuSection() {
               scrollbarWidth: "none",
               msOverflowStyle: "none",
               WebkitOverflowScrolling: "touch" as any,
-              touchAction: "pan-x pinch-zoom",
             }}
             onTouchStartCapture={stopProp}
             onTouchMoveCapture={stopProp}
@@ -753,7 +752,6 @@ export default function MenuSection() {
                   scrollbarWidth: "none",
                   msOverflowStyle: "none",
                   WebkitOverflowScrolling: "touch" as any,
-                  touchAction: "pan-x pinch-zoom",
                 }}
                 onTouchStartCapture={stopProp}
                 onTouchMoveCapture={stopProp}
@@ -783,7 +781,6 @@ export default function MenuSection() {
                   scrollbarWidth: "none",
                   msOverflowStyle: "none",
                   WebkitOverflowScrolling: "touch" as any,
-                  touchAction: "pan-x pinch-zoom",
                 }}
                 onTouchStartCapture={stopProp}
                 onTouchMoveCapture={stopProp}

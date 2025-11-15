@@ -18,9 +18,9 @@ type Props = { isOpen: boolean; onClose: () => void; id?: string };
 
 /** Sloty 11:30–22:00 co 90 min, max 5 rezerwacji na slot */
 const SLOT_DURATION_MIN = 90;
-const START_HOUR = 11;
+const START_HOUR = 12;
 const START_MIN = 30;
-const END_HOUR = 22;
+const END_HOUR = 20;
 const SLOT_COUNT =
   Math.floor(((END_HOUR * 60) - (START_HOUR * 60 + START_MIN)) / SLOT_DURATION_MIN) + 1;
 const MAX_PER_SLOT = 5;
