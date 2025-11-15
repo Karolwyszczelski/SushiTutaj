@@ -17,9 +17,9 @@ export default function PrivacyPage() {
 
           <p>
             Administratorem danych osobowych jest <b>{LEGAL.legalName}</b>, NIP {LEGAL.nip}, REGON {LEGAL.regon}, adres rejestrowy: {LEGAL.registeredAddress}.
-            Kontakt: <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a>, tel. <a href={`tel:${LEGAL.phone.replace(/\s/g,"")}`}>{LEGAL.phone}</a>.
+            Kontakt: <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a>.       
           </p>
-
+    
           <h2>1) Podstawy prawne i cele przetwarzania</h2>
           <ul>
             <li><b>Realizacja zamówień</b> – art. 6 ust. 1 lit. b RODO (umowa); dane: imię, telefon, e-mail, adres dostawy, treść zamówienia.</li>
