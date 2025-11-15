@@ -6,8 +6,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { getSessionAndRole } from "@/lib/serverAuth";
+import type { Database } from "@/types/supabase";
 
-const supabaseAdmin = createClient(
+const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
   { auth: { persistSession: false } }
@@ -25,18 +26,24 @@ const PatchSchema = z.object({
   cost_per_km: z.number().nonnegative().optional(),
 });
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  const { id } = params;
+function getIdFromRequest(request: NextRequest): string | null {
+  const segments = request.nextUrl.pathname.split("/");
+  const last = segments[segments.length - 1];
+  return last || null;
+}
+
+export async function PATCH(request: NextRequest) {
+  const id = getIdFromRequest(request);
+  if (!id) {
+    return NextResponse.json({ error: "Brak ID strefy dostawy" }, { status: 400 });
+  }
 
   const { session, role } = await getSessionAndRole();
   if (!session || (role !== "admin" && role !== "employee")) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await req.json();
+  const body = await request.json();
   const parsed = PatchSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
@@ -59,11 +66,11 @@ export async function PATCH(
   return NextResponse.json({ zone: data });
 }
 
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  const { id } = params;
+export async function DELETE(request: NextRequest) {
+  const id = getIdFromRequest(request);
+  if (!id) {
+    return NextResponse.json({ error: "Brak ID strefy dostawy" }, { status: 400 });
+  }
 
   const { session, role } = await getSessionAndRole();
   if (!session || (role !== "admin" && role !== "employee")) {
