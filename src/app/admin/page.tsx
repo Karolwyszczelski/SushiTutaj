@@ -33,7 +33,7 @@ export default async function AdminEntry() {
   // 3) Routing wg uprawnień
   if (!adminErr && adminRow) {
     // Admin → panel administracyjny
-    redirect("/admin/adminPanel" as Route);
+    redirect("/admin/login" as Route);
   }
 
   // Zalogowany, ale nie-admin → strona główna

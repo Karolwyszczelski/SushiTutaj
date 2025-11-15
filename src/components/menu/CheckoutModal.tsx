@@ -85,6 +85,46 @@ const SAUCES = [
 const EXTRAS = ["Tempura", "Płatek sojowy", "Tamago", "Ryba pieczona"];
 const SWAP_FEE_NAME = "Zamiana w zestawie";
 
+/* Helper: rozpoznanie specjalnej California z opcją Ryby pieczonej +2 zł */
+function isSpecialCaliforniaBakedFishProduct(
+  name: string,
+  description?: string | null
+): boolean {
+  const text = `${name} ${description || ""}`.toLowerCase();
+  if (!text.includes("california")) return false;
+
+  // Szukamy zestawu słów: łosoś surowy + paluszek krabowy + krewetka
+  return (
+    text.includes("łosoś") &&
+    text.includes("surow") &&
+    text.includes("paluszek krabowy") &&
+    text.includes("krewet")
+  );
+}
+
+/* Spójne liczenie ceny dodatków (także 2 zł dla spec. California) */
+function computeAddonPrice(addon: string, product?: ProductDb | null): number {
+  if (SAUCES.includes(addon)) return 3;
+  if (addon === SWAP_FEE_NAME) return 5;
+
+  // Domyślna cena dodatków typu Tempura / Płatek / Tamago / Ryba pieczona
+  let price = 4;
+
+  if (!product) return price;
+
+  const subcat = (product.subcategory || "").toLowerCase();
+  const isSpecialCalifornia =
+    subcat === "california" &&
+    isSpecialCaliforniaBakedFishProduct(product.name, product.description);
+
+  // Wyjątek: specjalna California – Ryba pieczona +2 zł
+  if (addon === "Ryba pieczona" && isSpecialCalifornia) {
+    return 2;
+  }
+
+  return price;
+}
+
 /* ---------- helpers ---------- */
 const accentBtn =
   "bg-gradient-to-b from-[#b31217] to-[#7a0b0b] text-white shadow-[0_10px_22px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)] ring-1 ring-black/30";
@@ -170,10 +210,7 @@ function getRestaurantCityFromPath(): { slug: string; label: string } {
   const MAP: Record<string, string> = {
     ciechanow: "Ciechanów",
     szczytno: "Szczytno",
-    przasnysz: "Przasnysz",
-    plonsk: "Płońsk",
-    mlawa: "Mława",
-    pultusk: "Pułtusk",
+    przasnysz: "Przasnysz"
   };
   const label =
     MAP[slug] ||
@@ -232,6 +269,9 @@ const ProductItem: React.FC<{
   productCategory: (name: string) => string;
   productsDb: ProductDb[];
   optionsByCat: Record<string, string[]>;
+  restaurantSlug: string;
+  tatarBase?: string;
+  onChangeTatarBase?: (v: string) => void;
   helpers: {
     addAddon: (name: string, addon: string) => void;
     removeAddon: (name: string, addon: string) => void;
@@ -239,7 +279,16 @@ const ProductItem: React.FC<{
     removeItem: (name: string) => void;
     removeWholeItem: (name: string) => void;
   };
-}> = ({ prod, productCategory, productsDb, optionsByCat, helpers }) => {
+}> = ({
+  prod,
+  productCategory,
+  productsDb,
+  optionsByCat,
+  restaurantSlug,
+  tatarBase,
+  onChangeTatarBase,
+  helpers,
+}) => {
   const { addAddon, removeAddon, swapIngredient, removeItem, removeWholeItem } = helpers;
 
   const byName = useMemo(() => {
@@ -252,41 +301,77 @@ const ProductItem: React.FC<{
   const subcat = (prodInfo?.subcategory || "").toLowerCase();
   const isSet = subcat === "zestawy";
   const isSpec = subcat === "specjały";
+  const isAppetizer = subcat === "przystawki";
+  const isTatar = isAppetizer && /tatar/i.test(prod.name);
+  const allowTatarBase =
+    isTatar && (restaurantSlug === "przasnysz" || restaurantSlug === "szczytno");
+
+  const setRows = useMemo(
+    () => (isSet ? parseSetComposition(prodInfo?.description) : []),
+    [isSet, prodInfo?.description]
+  );
 
   const priceNum =
     typeof prod.price === "string" ? parseFloat(prod.price) : prod.price || 0;
   const addonsCost = (prod.addons ?? []).reduce((sum: number, addon: string) => {
-    if (SAUCES.includes(addon)) return sum + 3;
-    if (EXTRAS.includes(addon) || addon === SWAP_FEE_NAME) {
-      // Ryba pieczona/Tempura/Płatek/Tamago i opłata zamiany (5 zł)
-      return sum + (addon === SWAP_FEE_NAME ? 5 : 4);
-    }
-    return sum;
+    const unit = computeAddonPrice(addon, prodInfo || null);
+    return sum + unit;
   }, 0);
   const lineTotal = (priceNum + addonsCost) * (prod.quantity || 1);
 
   const canUseExtra = (extra: string): boolean => {
-    if (subcat === "california") return false; // zakaz dodatków
-    if (subcat === "hosomaki") return extra === "Tempura";
-    if (subcat === "futomaki") {
-      if (extra === "Ryba pieczona") {
-        // tylko rolki surowe
-        return /surowy/i.test(prod.name);
-      }
-      return extra === "Tempura" || extra === "Płatek sojowy" || extra === "Tamago";
-    }
-    if (subcat === "nigiri") return false;
+    // Przystawki – brak dodatków (osobno obsługujemy tylko wybór bazy tatara, nie jako "dodatek")
+    if (isAppetizer) return false;
+
+    // Zestawy – patrzymy na skład
     if (isSet) {
-      // surowy zestaw może mieć opcję pieczoną
-      if (extra === "Ryba pieczona") return /SUROWY/i.test(prodInfo?.description || "");
+      const hasFuto = setRows.some((row) => /futomaki/i.test(row.cat));
+      if (extra === "Tamago" && hasFuto) return true;
+      if (extra === "Ryba pieczona") {
+        // surowy zestaw może mieć opcję pieczoną
+        return /SUROWY/i.test(prodInfo?.description || "");
+      }
       return false;
     }
+
+    // Pojedyncze rolki
+    if (subcat === "california") {
+      // wyjątek – specjalna California z opcją pieczonej ryby
+      if (
+        extra === "Ryba pieczona" &&
+        isSpecialCaliforniaBakedFishProduct(prod.name, prodInfo?.description || "")
+      ) {
+        return true;
+      }
+      // pozostałe California bez dodatków
+      return false;
+    }
+
+    if (subcat === "hosomaki") {
+      // Hoso/Hosomaki – tylko Tempura jako dodatek
+      return extra === "Tempura";
+    }
+
+    if (subcat === "futomaki") {
+      if (extra === "Ryba pieczona") {
+        // tylko rolki surowy
+        return /surowy/i.test(prod.name);
+      }
+      if (extra === "Tamago") return true;
+      return extra === "Tempura" || extra === "Płatek sojowy";
+    }
+
+    if (subcat === "nigiri") return false;
+
     return false;
   };
 
   const toggleAddon = (a: string) => {
+    // W przystawkach nie modyfikujemy dodatków ani sosów
+    if (isAppetizer) return;
+
     const on = (prod.addons ?? []).includes(a);
-    const allowed = EXTRAS.includes(a) ? canUseExtra(a) : true; // sosy zawsze
+    const allowed = EXTRAS.includes(a) ? canUseExtra(a) : !isAppetizer; // sosy także blokowane w przystawkach
     if (!allowed) return;
     if (on) removeAddon(prod.name, a);
     else addAddon(prod.name, a);
@@ -299,26 +384,28 @@ const ProductItem: React.FC<{
   };
 
   const doSwap = (from: string, to: string) => {
+    // W przystawkach nie pozwalamy na zamiany
+    if (isAppetizer) return;
+
     const fromCat = (productCategory(from) || "").toLowerCase();
     const toCat = (productCategory(to) || "").toLowerCase();
+
     const same =
       (fromCat.includes("futomaki") && toCat.includes("futomaki")) ||
       (fromCat.includes("california") && toCat.includes("california")) ||
       (fromCat.includes("hosomaki") && toCat.includes("hosomaki")) ||
       (fromCat.includes("nigiri") && toCat.includes("nigiri"));
+
     if (!same) return;
     if (toCat === "specjały") return; // zakaz wymiany na specjały
+
     swapIngredient(prod.name, from, to);
+
     // opłata za zamianę w zestawie
     if (isSet && !(prod.addons ?? []).includes(SWAP_FEE_NAME)) {
       addAddon(prod.name, SWAP_FEE_NAME);
     }
   };
-
-  const setRows = useMemo(
-    () => (isSet ? parseSetComposition(prodInfo?.description) : []),
-    [isSet, prodInfo?.description]
-  );
 
   return (
     <div className="border border-black/10 bg-white p-3">
@@ -363,84 +450,127 @@ const ProductItem: React.FC<{
               );
             })}
             <p className="text-[11px] text-black/60">
-              Zamiany tylko w obrębie tej samej kategorii. Bez specjałów. Dodajemy pozycję „{SWAP_FEE_NAME}”.
+              Zamiany tylko w obrębie tej samej kategorii (Futomaki ↔ Futomaki, Hosomaki ↔
+              Hosomaki itd.). Bez specjałów. Dodajemy pozycję „{SWAP_FEE_NAME}”.
             </p>
           </div>
         )}
 
-        {/* Uniwersalne sosy */}
-        <div>
-          <div className="font-semibold mb-1">Sosy:</div>
-          <div className="flex flex-wrap gap-2">
-            {SAUCES.map((s) => {
-              const on = prod.addons?.includes(s);
-              return (
+        {/* Podanie tatara – tylko Przasnysz / Szczytno */}
+        {allowTatarBase && onChangeTatarBase && (
+          <div>
+            <div className="font-semibold mb-1">Na czym podajemy tatara?</div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { value: "awokado", label: "Na awokado" },
+                { value: "ryz", label: "Na ryżu" },
+                { value: "chipsy", label: "Na chipsach" },
+              ].map((opt) => (
                 <button
-                  key={s}
-                  onClick={() => toggleAddon(s)}
+                  key={opt.value}
+                  type="button"
+                  onClick={() => onChangeTatarBase(opt.value)}
                   className={clsx(
                     "px-2 py-1 rounded text-xs border",
-                    on
+                    tatarBase === opt.value
                       ? "bg-black text-white border-black"
                       : "bg-white text-black hover:bg-gray-50 border-gray-200"
                   )}
                 >
-                  {on ? `✓ ${s}` : `+ ${s}`}
+                  {tatarBase === opt.value ? `✓ ${opt.label}` : opt.label}
                 </button>
-              );
-            })}
+              ))}
+            </div>
+            <p className="text-[11px] text-black/60 mt-1">
+              Opcja dostępna tylko w Przasnyszu i Szczytnie.
+            </p>
           </div>
-        </div>
+        )}
 
-        {/* Dodatki z ograniczeniami wg kategorii */}
-        <div>
-          <div className="font-semibold mb-1">Dodatki:</div>
-          <div className="flex flex-wrap gap-2">
-            {EXTRAS.map((ex) => {
-              const allowed = canUseExtra(ex);
-              const on = prod.addons?.includes(ex);
-              return (
-                <button
-                  key={ex}
-                  onClick={() => allowed && toggleAddon(ex)}
-                  className={clsx(
-                    "px-2 py-1 rounded text-xs border",
-                    !allowed
-                      ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
-                      : on
-                      ? "bg-black text-white border-black"
-                      : "bg-white text-black hover:bg-gray-50 border-gray-200"
-                  )}
-                >
-                  {on ? `✓ ${ex}` : `+ ${ex}`}
-                </button>
-              );
-            })}
+        {/* Uniwersalne sosy – wyłączone dla przystawek */}
+        {!isAppetizer && (
+          <div>
+            <div className="font-semibold mb-1">Sosy:</div>
+            <div className="flex flex-wrap gap-2">
+              {SAUCES.map((s) => {
+                const on = prod.addons?.includes(s);
+                return (
+                  <button
+                    key={s}
+                    onClick={() => toggleAddon(s)}
+                    className={clsx(
+                      "px-2 py-1 rounded text-xs border",
+                      on
+                        ? "bg-black text-white border-black"
+                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                    )}
+                  >
+                    {on ? `✓ ${s}` : `+ ${s}`}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          {subcat === "california" && (
-            <p className="text-[11px] text-black/60 mt-1">
-              Do California nie dodajemy dodatków.
-            </p>
-          )}
-          {subcat === "hosomaki" && (
-            <p className="text-[11px] text-black/60 mt-1">
-              Do Hosomaki tylko Tempura.
-            </p>
-          )}
-          {subcat === "futomaki" && (
-            <p className="text-[11px] text-black/60 mt-1">
-              Do Futomaki: Tempura, Płatek sojowy, Tamago. „Ryba pieczona” tylko dla surowych rolek.
-            </p>
-          )}
-          {isSet && /SUROWY/i.test(prodInfo?.description || "") && (
-            <p className="text-[11px] text-black/60 mt-1">
-              Zestaw surowy: dostępna opcja „Ryba pieczona”.
-            </p>
-          )}
-        </div>
+        )}
 
-        {/* Zamiana pojedynczej pozycji w obrębie kategorii (dla niezestawów) */}
-        {!isSet && !isSpec && (
+        {/* Dodatki z ograniczeniami wg kategorii – wyłączone dla przystawek */}
+        {!isAppetizer && (
+          <div>
+            <div className="font-semibold mb-1">Dodatki:</div>
+            <div className="flex flex-wrap gap-2">
+              {EXTRAS.map((ex) => {
+                const allowed = canUseExtra(ex);
+                const on = prod.addons?.includes(ex);
+                return (
+                  <button
+                    key={ex}
+                    onClick={() => allowed && toggleAddon(ex)}
+                    className={clsx(
+                      "px-2 py-1 rounded text-xs border",
+                      !allowed
+                        ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
+                        : on
+                        ? "bg-black text-white border-black"
+                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                    )}
+                  >
+                    {on ? `✓ ${ex}` : `+ ${ex}`}
+                  </button>
+                );
+              })}
+            </div>
+            {subcat === "california" && (
+              <p className="text-[11px] text-black/60 mt-1">
+                California = rolki z ryżem na zewnątrz. Standardowo nie dodajemy do nich dodatków –
+                wyjątek stanowi wybrana pozycja z łososiem surowym, paluszkiem krabowym i krewetką
+                obłożoną łososiem, gdzie dostępna jest opcja „Ryba pieczona” (+2 zł).
+              </p>
+            )}
+            {subcat === "hosomaki" && (
+              <p className="text-[11px] text-black/60 mt-1">
+                Hosomaki (Hoso) = cienkie rolki z jednym składnikiem. Można dodać jedynie Tempurę,
+                a w zamianach wybierasz tylko inne Hosomaki.
+              </p>
+            )}
+            {subcat === "futomaki" && (
+              <p className="text-[11px] text-black/60 mt-1">
+                Futomaki (Futo) = grubsze rolki z kilkoma składnikami. Dostępne dodatki: Tempura,
+                Płatek sojowy, Tamago, a przy rolkach surowych także „Ryba pieczona”.
+              </p>
+            )}
+            {isSet && (
+              <p className="text-[11px] text-black/60 mt-1">
+                W zestawach zamieniasz rolki tylko w obrębie kategorii (Futomaki ↔ Futomaki,
+                Hosomaki ↔ Hosomaki, California ↔ California, Nigiri ↔ Nigiri). Jeśli w składzie
+                zestawu są Futomaki, możesz dodać Tamago, a w zestawach surowych dostępna jest też
+                opcja „Ryba pieczona”.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Zamiana pojedynczej pozycji w obrębie kategorii (dla niezestawów, poza przystawkami) */}
+        {!isSet && !isSpec && !isAppetizer && (
           <div>
             <div className="font-semibold mb-1">Zamień na inne w tej kategorii:</div>
             <select
@@ -456,7 +586,9 @@ const ProductItem: React.FC<{
                 )
               )}
             </select>
-            <p className="text-[11px] text-black/60 mt-1">Bez wymiany na Specjały.</p>
+            <p className="text-[11px] text-black/60 mt-1">
+              Zamiana tylko w obrębie tej samej kategorii. Bez wymiany na Specjały.
+            </p>
           </div>
         )}
       </div>
@@ -586,6 +718,7 @@ export default function CheckoutModal() {
   const isMobile = useIsMobile();
 
   const [notes, setNotes] = useState<{ [key: number]: string }>({});
+  const [tatarBases, setTatarBases] = useState<{ [key: number]: string }>({});
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -798,32 +931,31 @@ export default function CheckoutModal() {
     return items.reduce((acc: number, it: any) => {
       const qty = it.quantity || 1;
       const priceNum = typeof it.price === "string" ? parseFloat(it.price) : it.price || 0;
+      const productDb = productsByName.get(it.name);
       const addonsCost = (it.addons ?? []).reduce((sum: number, addon: string) => {
-        if (SAUCES.includes(addon)) return sum + 3;
-        if (EXTRAS.includes(addon) || addon === SWAP_FEE_NAME) {
-          return sum + (addon === SWAP_FEE_NAME ? 5 : 4);
-        }
-        return sum;
+        const unit = computeAddonPrice(addon, productDb || undefined);
+        return sum + unit;
       }, 0);
       return acc + (priceNum + addonsCost) * qty;
     }, 0);
-  }, [items]);
+  }, [items, productsByName]);
 
   const packagingCost = selectedOption ? 2 : 0;
   const subtotal = baseTotal + packagingCost;
 
-  const getItemLineTotal = React.useCallback((it: any) => {
-    const qty = it.quantity || 1;
-    const priceNum = typeof it.price === "string" ? parseFloat(it.price) : it.price || 0;
-    const addonsCost = (it.addons ?? []).reduce((sum: number, addon: string) => {
-      if (SAUCES.includes(addon)) return sum + 3;
-      if (EXTRAS.includes(addon) || addon === SWAP_FEE_NAME) {
-        return sum + (addon === SWAP_FEE_NAME ? 5 : 4);
-      }
-      return sum;
-    }, 0);
-    return (priceNum + addonsCost) * qty;
-  }, []);
+  const getItemLineTotal = React.useCallback(
+    (it: any) => {
+      const qty = it.quantity || 1;
+      const priceNum = typeof it.price === "string" ? parseFloat(it.price) : it.price || 0;
+      const productDb = productsByName.get(it.name);
+      const addonsCost = (it.addons ?? []).reduce((sum: number, addon: string) => {
+        const unit = computeAddonPrice(addon, productDb || undefined);
+        return sum + unit;
+      }, 0);
+      return (priceNum + addonsCost) * qty;
+    },
+    [productsByName]
+  );
 
   const calcDelivery = async (custLat: number, custLng: number) => {
     if (!restLoc) return;
@@ -891,6 +1023,7 @@ export default function CheckoutModal() {
     setConfirmCityOk(false);
     setLegalAccepted(false);
     setSubmitting(false);
+    setTatarBases({});
     goToStep(1);
     removeTurnstile();
   };
@@ -1121,6 +1254,7 @@ export default function CheckoutModal() {
             addons: item.addons,
             swaps: item.swaps,
             note: notes[index] || "",
+            tatar_base: tatarBases[index] || null, // awokado / ryz / chipsy dla tatara (Przasnysz/Szczytno)
           },
         };
       });
@@ -1287,6 +1421,11 @@ export default function CheckoutModal() {
                                 productCategory={productCategory}
                                 productsDb={productsDb}
                                 optionsByCat={optionsByCat}
+                                restaurantSlug={restaurantSlug}
+                                tatarBase={tatarBases[idx] || ""}
+                                onChangeTatarBase={(v) =>
+                                  setTatarBases((prev) => ({ ...prev, [idx]: v }))
+                                }
                                 helpers={{
                                   addAddon,
                                   removeAddon,
@@ -1633,6 +1772,11 @@ export default function CheckoutModal() {
                                   productCategory={productCategory}
                                   productsDb={productsDb}
                                   optionsByCat={optionsByCat}
+                                  restaurantSlug={restaurantSlug}
+                                  tatarBase={tatarBases[idx] || ""}
+                                  onChangeTatarBase={(v) =>
+                                    setTatarBases((prev) => ({ ...prev, [idx]: v }))
+                                  }
                                   helpers={{
                                     addAddon,
                                     removeAddon,

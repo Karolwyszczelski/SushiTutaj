@@ -160,7 +160,7 @@ export default function Hero() {
         {/* górny blok: logo + tytuł Thin */}
         <div className="absolute inset-x-0 top-20 z-10 flex flex-col items-center px-6 text-center mt-10">
           <Image src="/assets/logo.png" alt="Logo" width={84} height={84} priority />
-          <h1 className="mt-10 text-2xl leading-tight font-thin">{copy.title}</h1>
+          <h1 className="mt-10 text-2xl leading-tight font-normal">{copy.title}</h1>
         </div>
 
         {/* dolny blok: przyciski */}
