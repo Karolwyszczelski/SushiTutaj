@@ -20,10 +20,56 @@ export default function FloatingQuickActions() {
   const [showReservation, setShowReservation] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
 
+  // MOBILE drawer state
+  const [mobileExpanded, setMobileExpanded] = useState(true);
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
+  const [touchDeltaY, setTouchDeltaY] = useState(0);
+
   const openCart = () => {
     if (typeof openCheckoutModal === "function") openCheckoutModal();
     else if (typeof toggleCart === "function") toggleCart();
   };
+
+  const handleMobileTouchStart: React.TouchEventHandler<HTMLDivElement> = (e) => {
+    if (!mobileExpanded) return; // gest drag tylko gdy panel jest otwarty
+    const y = e.touches[0]?.clientY;
+    if (typeof y === "number") {
+      setTouchStartY(y);
+      setTouchDeltaY(0);
+    }
+  };
+
+  const handleMobileTouchMove: React.TouchEventHandler<HTMLDivElement> = (e) => {
+    if (!mobileExpanded || touchStartY === null) return;
+    const y = e.touches[0]?.clientY;
+    if (typeof y !== "number") return;
+    const delta = y - touchStartY;
+    // interesuje nas tylko ściąganie w dół
+    if (delta > 0) {
+      setTouchDeltaY(delta);
+    }
+  };
+
+  const handleMobileTouchEnd: React.TouchEventHandler<HTMLDivElement> = () => {
+    if (!mobileExpanded) {
+      setTouchStartY(null);
+      setTouchDeltaY(0);
+      return;
+    }
+    // jeśli ściągnął w dół > 60px – zamykamy panel
+    if (touchDeltaY > 60) {
+      setMobileExpanded(false);
+    }
+    setTouchStartY(null);
+    setTouchDeltaY(0);
+  };
+
+  const mobilePanelTransform = mobileExpanded
+    ? `translateY(${touchDeltaY}px)`
+    : "translateY(120%)";
+
+  const mobilePanelTransition =
+    touchStartY !== null ? "none" : "transform 0.25s ease-out";
 
   return (
     <>
@@ -43,8 +89,10 @@ export default function FloatingQuickActions() {
         >
           <MoreHorizontal className="w-6 h-6" />
           {itemCount > 0 && (
-            <span className="absolute -top-1 -right-1 z-[61] text-[11px] leading-none font-bold text-white
-                             bg-[var(--accent-red,#a61b1b)] rounded-full w-5 h-5 grid place-items-center pointer-events-none">
+            <span
+              className="absolute -top-1 -right-1 z-[61] text-[11px] leading-none font-bold text-white
+                             bg-[var(--accent-red,#a61b1b)] rounded-full w-5 h-5 grid place-items-center pointer-events-none"
+            >
               {itemCount}
             </span>
           )}
@@ -95,10 +143,17 @@ export default function FloatingQuickActions() {
         </div>
       </div>
 
-      {/* MOBILE — kompakt */}
+      {/* MOBILE — dolny panel jako „drawer” */}
       <div
         className="md:hidden fixed inset-x-0 z-[60] flex justify-center"
-        style={{ bottom: "calc(16px + env(safe-area-inset-bottom, 0px))" }}
+        style={{
+          bottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
+          transform: mobilePanelTransform,
+          transition: mobilePanelTransition,
+        }}
+        onTouchStart={handleMobileTouchStart}
+        onTouchMove={handleMobileTouchMove}
+        onTouchEnd={handleMobileTouchEnd}
       >
         <div className="rounded-full bg-white/95 backdrop-blur px-2.5 py-2 shadow-2xl flex items-center gap-3">
           <button
@@ -131,9 +186,36 @@ export default function FloatingQuickActions() {
         </div>
       </div>
 
+      {/* MOBILE — gdy drawer jest zamknięty, pokazujemy sam koszyk w prawym dolnym rogu */}
+      {!mobileExpanded && (
+        <button
+          className="md:hidden fixed z-[61] rounded-full w-14 h-14 grid place-items-center shadow-2xl
+                     bg-gradient-to-br from-[var(--accent-red-dark,#7a0d0d)] via-[var(--accent-red,#a61b1b)] to-[var(--accent-red-dark-2,#b11212)]
+                     text-white"
+          style={{
+            right: "16px",
+            bottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
+          }}
+          aria-label="Otwórz szybkie akcje"
+          onClick={() => setMobileExpanded(true)}
+        >
+          <div className="relative">
+            <ShoppingCart className="w-6 h-6" />
+            {itemCount > 0 && (
+              <span className="absolute -top-2 -right-2 z-[62] text-[11px] leading-none font-bold text-white bg-black/80 rounded-full w-5 h-5 grid place-items-center">
+                {itemCount}
+              </span>
+            )}
+          </div>
+        </button>
+      )}
+
       {/* Modale */}
       {showReservation && (
-        <ReservationModal isOpen={showReservation} onClose={() => setShowReservation(false)} />
+        <ReservationModal
+          isOpen={showReservation}
+          onClose={() => setShowReservation(false)}
+        />
       )}
       <AccountModal open={showAccount} onClose={() => setShowAccount(false)} />
     </>

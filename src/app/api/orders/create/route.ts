@@ -446,6 +446,7 @@ function normalizeBody(raw: any, req: Request) {
     legal_accept,
     itemsArray,
     chopsticks_qty,
+    reservation_id: base?.reservation_id ?? base?.reservationId ?? null,
   };
 }
 
@@ -789,6 +790,7 @@ export async function POST(req: Request) {
         deliveryTime: n.deliveryTime,
         eta: n.eta,
         user: n.user_id ?? null,
+        reservation_id: n.reservation_id ?? null,
         promo_code: n.promo_code
           ? String(n.promo_code).slice(0, 32)
           : null,

@@ -25,23 +25,35 @@ const SLOT_COUNT =
   Math.floor(((END_HOUR * 60) - (START_HOUR * 60 + START_MIN)) / SLOT_DURATION_MIN) + 1;
 const MAX_PER_SLOT = 5;
 
+/** Minimalny czas wyprzedzenia rezerwacji (w minutach) – żeby nie było „za 15 minut” */
+const MIN_LEAD_MIN = 60;
+
 /* ===== helpers ===== */
 const getSlugFromPath = () => {
   if (typeof window === "undefined") return null;
   const seg = window.location.pathname.split("/").filter(Boolean);
-  // dla tras publicznych używamy pierwszego segmentu jako sluga miasta
   const s0 = seg[0] || null;
-  // jeśli jesteśmy w /admin/... – slug bywa w query lub cookie; tu zwracamy null
   if (s0 === "admin" || s0 === "api") return null;
   return s0;
 };
 
 const getCookie = (k: string): string | null => {
   if (typeof document === "undefined") return null;
-  const row = document.cookie.split("; ").find((r) => r.startsWith(`${k}=`) || r.startsWith(`${encodeURIComponent(k)}=`)) || null;
+  const row =
+    document.cookie
+      .split("; ")
+      .find(
+        (r) =>
+          r.startsWith(`${k}=`) ||
+          r.startsWith(`${encodeURIComponent(k)}=`)
+      ) || null;
   if (!row) return null;
   const value = row.substring(row.indexOf("=") + 1);
-  try { return decodeURIComponent(value); } catch { return value; }
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
 };
 
 export default function ReservationModal({ isOpen, onClose, id }: Props) {
@@ -66,7 +78,6 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
     let active = true;
     (async () => {
       try {
-        // priorytet: slug z adresu, potem cookie ustawiane przez ensure-cookie
         const slug =
           getSlugFromPath() ||
           getCookie("restaurant_slug") ||
@@ -82,14 +93,16 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
           .maybeSingle();
         if (error) throw error;
         if (active) setRestaurantId(data?.id ?? null);
-      } catch (e: any) {
+      } catch {
         if (active) setRestaurantId(null);
       }
     })();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, []);
 
-  /* ===== miesięczne obłożenie per restauracja (bez RPC; agregacja lokalna) ===== */
+  /* ===== miesięczne obłożenie per restauracja ===== */
   useEffect(() => {
     if (!currentMonth || !restaurantId) return;
     let stop = false;
@@ -115,7 +128,9 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
         console.error(e?.message || e);
       }
     })();
-    return () => { stop = true; };
+    return () => {
+      stop = true;
+    };
   }, [currentMonth, restaurantId]);
 
   /* ===== obłożenie slotów dnia per restauracja ===== */
@@ -154,25 +169,36 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
         console.error(e?.message || e);
       }
     })();
-    return () => { stop = true; };
+    return () => {
+      stop = true;
+    };
   }, [selectedDate, restaurantId]);
 
-  /** Sloty czasowe (dla „dziś” wycina przeszłe godziny) */
+  /** Sloty czasowe (dla „dziś” wycina przeszłe godziny + te < MIN_LEAD_MIN) */
   const generateSlots = () => {
     if (!selectedDate) return [];
-    const list: string[] = [];
+    const slots: string[] = [];
+
+    const now = new Date();
+    const isToday = isSameDay(now, selectedDate);
+
     let d = new Date(selectedDate);
     d.setHours(START_HOUR, START_MIN, 0, 0);
+
     for (let i = 0; i < SLOT_COUNT; i++) {
-      list.push(format(d, "HH:mm"));
+      const hhmm = format(d, "HH:mm");
+      if (!isToday) {
+        slots.push(hhmm);
+      } else {
+        const diffMinutes = (d.getTime() - now.getTime()) / 60000;
+        if (diffMinutes >= MIN_LEAD_MIN) {
+          slots.push(hhmm);
+        }
+      }
       d = new Date(d.getTime() + SLOT_DURATION_MIN * 60000);
     }
-    const now = new Date();
-    if (isSameDay(now, selectedDate)) {
-      const nowStr = format(now, "HH:mm");
-      return list.filter((t) => t >= nowStr);
-    }
-    return list;
+
+    return slots;
   };
 
   /** Koloryzacja dni (pełny dzień = wszystkie sloty zajęte) */
@@ -194,29 +220,29 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
     customerEmail.trim().length > 3 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim());
   const isValid =
-    Boolean(selectedDate && selectedTime && customerName.trim() && customerPhone.trim() && emailValid && restaurantId);
+    Boolean(
+      selectedDate &&
+        selectedTime &&
+        customerName.trim() &&
+        customerPhone.trim() &&
+        emailValid &&
+        restaurantId
+    );
 
-  async function handleSubmit(e?: React.FormEvent) {
-    e?.preventDefault();
+  /** Wspólna funkcja zapisu – może albo tylko zarezerwować, albo zarezerwować i przejść do zamówień */
+  async function submitReservation(goToOrder: boolean) {
     setErrorMsg(null);
     if (!isValid || loading) return;
     setLoading(true);
     try {
-      // zabezpieczenie pojemności slotu tuż przed zapisem
       const day = format(selectedDate!, "yyyy-MM-dd");
       const hhmm = selectedTime;
-      const { data: chk, error: e1 } = await supabase
-        .from("reservations")
-        .select("id", { count: "exact", head: true })
-        .eq("restaurant_id", restaurantId)
-        .eq("reservation_date", day)
-        .eq("reservation_time", `${hhmm}:00`);
-      if (e1) throw e1;
-      const used = chk?.length ? chk.length : (chk as any) === null ? 0 : 0; // fallback
-      // Supabase przy head: true nie zwraca rows; count zwraca w response.headers – biblioteka nie eksponuje.
-      // Dlatego sprawdzimy dodatkowo lokalny stan:
+
+      // zabezpieczenie pojemności slotu tuż przed zapisem (lokalny stan)
       const localUsed = countsPerSlot[hhmm] || 0;
-      if (localUsed >= MAX_PER_SLOT) throw new Error("Wybrany termin jest już pełny.");
+      if (localUsed >= MAX_PER_SLOT) {
+        throw new Error("Wybrany termin jest już pełny.");
+      }
 
       const res = await fetch("/api/reservations/create", {
         method: "POST",
@@ -229,19 +255,50 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
           guests: guestCount,
           name: customerName,
           phone: customerPhone,
-          email: customerEmail, // wymagany do powiadomień i późniejszej akceptacji
+          email: customerEmail,
           note: notes,
           status: "new",
+          with_order: goToOrder, // informacja dla backendu, że po rezerwacji będzie zamówienie
         }),
       });
-      const jr = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(jr?.error || "Błąd zapisu");
+
+      const jr = await res.json().catch(() => ({} as any));
+      if (!res.ok) {
+        throw new Error(jr?.error || "Błąd zapisu");
+      }
+
+      // jeżeli użytkownik wybrał „Zarezerwuj i przejdź do zamówienia”
+      if (goToOrder) {
+        const reservationId: string | undefined =
+          jr?.id || jr?.reservation_id || jr?.reservationId;
+
+        if (reservationId && restaurantSlug) {
+          // przekierowanie do menu z ID rezerwacji w query – tam możesz spiąć zamówienie z rezerwacją
+          const target = `/${restaurantSlug}/menu?reservation=${encodeURIComponent(
+            reservationId
+          )}`;
+          window.location.href = target;
+          return;
+        }
+      }
+
+      // standardowa ścieżka – tylko rezerwacja, zamknięcie modala
       onClose();
     } catch (err: any) {
       setErrorMsg(err?.message || "Nie udało się zapisać rezerwacji.");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSubmit(e?: React.FormEvent) {
+    e?.preventDefault();
+    await submitReservation(false);
+  }
+
+  async function handleSubmitAndGoToOrder(e: React.MouseEvent) {
+    e.preventDefault();
+    await submitReservation(true);
   }
 
   if (!isOpen) return null;
@@ -281,7 +338,10 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
 
         {/* Scroll area */}
         <div className="overflow-y-auto overscroll-contain">
-          <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-2 gap-0">
+          <form
+            onSubmit={handleSubmit}
+            className="grid grid-cols-1 lg:grid-cols-2 gap-0"
+          >
             {/* Kalendarz */}
             <div className="p-6 border-b lg:border-b-0 lg:border-r border-black/10">
               <DayPicker
@@ -318,7 +378,9 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
               <div>
                 <div className="font-medium mb-2">Godzina</div>
                 {!selectedDate ? (
-                  <p className="text-sm text-black/60">Najpierw wybierz dzień.</p>
+                  <p className="text-sm text-black/60">
+                    Najpierw wybierz dzień.
+                  </p>
                 ) : (
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                     {generateSlots().map((slot) => {
@@ -341,11 +403,19 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
                           title={full ? "Ten termin jest już pełny" : slot}
                         >
                           {slot}
-                          <span className="sr-only">{full ? " (pełny)" : ""}</span>
+                          <span className="sr-only">
+                            {full ? " (pełny)" : ""}
+                          </span>
                         </button>
                       );
                     })}
                   </div>
+                )}
+                {selectedDate && (
+                  <p className="mt-2 text-[11px] text-black/60">
+                    Rezerwacje możliwe najwcześniej{" "}
+                    {MIN_LEAD_MIN} minut przed wybraną godziną.
+                  </p>
                 )}
               </div>
 
@@ -362,7 +432,9 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
                       onChange={(e) => setGuestCount(Number(e.target.value))}
                       className="w-24 rounded-md border border-black/15 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-black/20"
                     />
-                    <span className="text-sm text-black/60">max 10 osób</span>
+                    <span className="text-sm text-black/60">
+                      max 10 osób
+                    </span>
                   </div>
                 </div>
               )}
@@ -392,11 +464,15 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
                       value={customerEmail}
                       onChange={(e) => setCustomerEmail(e.target.value)}
                       className={`w-full rounded-md border bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-black/20 ${
-                        customerEmail && !emailValid ? "border-red-400" : "border-black/15"
+                        customerEmail && !emailValid
+                          ? "border-red-400"
+                          : "border-black/15"
                       }`}
                     />
                     {!emailValid && customerEmail.length > 0 && (
-                      <p className="mt-1 text-xs text-red-600">Podaj prawidłowy adres e-mail.</p>
+                      <p className="mt-1 text-xs text-red-600">
+                        Podaj prawidłowy adres e-mail.
+                      </p>
                     )}
                   </div>
 
@@ -413,19 +489,57 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
                 </>
               )}
 
-              {errorMsg && <div className="text-sm text-red-600">{errorMsg}</div>}
+              {errorMsg && (
+                <div className="text-sm text-red-600">{errorMsg}</div>
+              )}
 
-              {/* CTA */}
-              <div className="sticky bottom-0 pt-3 bg-white">
-                <button
-                  type="submit"
-                  disabled={!isValid || loading}
-                  className="w-full rounded-xl py-3 font-semibold text-white disabled:opacity-50
-                             [background:linear-gradient(180deg,#b31217_0%,#7a0b0b_100%)]
-                             shadow-[0_10px_22px_rgba(0,0,0,.20),inset_0_1px_0_rgba(255,255,255,.15)]"
-                >
-                  {loading ? "Wysyłanie..." : "Zarezerwuj"}
-                </button>
+              {/* PODSUMOWANIE + CTA */}
+              <div className="sticky bottom-0 pt-3 bg-white space-y-3">
+                {selectedDate && selectedTime && (
+                  <div className="rounded-lg border border-black/10 bg-gray-50 px-3 py-2 text-xs text-black/80">
+                    <div>
+                      <span className="font-semibold">Termin: </span>
+                      {format(selectedDate, "dd.MM.yyyy")} o {selectedTime}
+                    </div>
+                    <div>
+                      <span className="font-semibold">Liczba gości: </span>
+                      {guestCount}
+                    </div>
+                    {restaurantSlug && (
+                      <div>
+                        <span className="font-semibold">Lokal: </span>
+                        {restaurantSlug}
+                      </div>
+                    )}
+                    <p className="mt-1 text-[11px] text-black/60">
+                      Możesz zarezerwować stolik, a następnie od razu przejść do
+                      złożenia zamówienia powiązanego z tą rezerwacją.
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="submit"
+                    disabled={!isValid || loading}
+                    className="w-full rounded-xl py-3 font-semibold text-white disabled:opacity-50
+                               [background:linear-gradient(180deg,#b31217_0%,#7a0b0b_100%)]
+                               shadow-[0_10px_22px_rgba(0,0,0,.20),inset_0_1px_0_rgba(255,255,255,.15)]"
+                  >
+                    {loading ? "Wysyłanie..." : "Zarezerwuj stolik"}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!isValid || loading}
+                    onClick={handleSubmitAndGoToOrder}
+                    className="w-full rounded-xl py-3 font-semibold border border-black/15 bg-white text-black disabled:opacity-50"
+                  >
+                    {loading
+                      ? "Wysyłanie..."
+                      : "Zarezerwuj i przejdź do zamówienia"}
+                  </button>
+                </div>
               </div>
             </div>
           </form>
