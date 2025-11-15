@@ -7,8 +7,17 @@ import { listActiveRestaurants } from "@/lib/tenant";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Wybierz restaurację | SUSHI Tutaj",
-  description: "Wybierz miasto SUSHI Tutaj i przejdź do menu oraz zamówień.",
+  title: "Wybierz restaurację SUSHI Tutaj – zamów sushi online",
+  description:
+    "Wybierz restaurację SUSHI Tutaj w swoim mieście i zamów świeże sushi online. Sprawdź menu, godziny otwarcia i dostępność dostawy.",
+  keywords: [
+    "sushi",
+    "sushi online",
+    "zamów sushi",
+    "SUSHI Tutaj",
+    "sushi na wynos",
+    "dostawa sushi",
+  ],
 };
 
 const ACCENT =
@@ -33,15 +42,24 @@ export default async function Page() {
     <main className="relative min-h-[100svh] pt-28 pb-16 text-white">
       {/* tło */}
       <div className="absolute inset-0 -z-10">
-        <Image src="/assets/bg-sushi.jpg" alt="" fill priority className="object-cover" />
+        <Image
+          src="/assets/bg-sushi.jpg"
+          alt="Tło strony wyboru restauracji SUSHI Tutaj – kawałki sushi na talerzu"
+          fill
+          priority
+          className="object-cover"
+        />
         <div className="absolute inset-0 bg-black/65" />
       </div>
 
       {/* nagłówek */}
       <section className="px-5 text-center">
-        <h1 className="text-4xl sm:text-6xl leading-tight">Wybierz restaurację</h1>
-        <p className="mt-3 text-white/80 max-w-xl mx-auto">
-          Wybierz najbliższy lokal i zamów online! Pokażemy menu, godziny i dostępność dostawy.
+        <h1 className="text-4xl sm:text-6xl leading-tight">
+          Wybierz restaurację SUSHI Tutaj
+        </h1>
+        <p className="mt-3 text-white/80 max-w-xl mx-auto text-sm sm:text-base">
+          Wybierz najbliższy lokal i zamów sushi online. Pokażemy aktualne menu,
+          godziny otwarcia oraz dostępność dostawy w Twoim mieście.
         </p>
       </section>
 
@@ -56,10 +74,15 @@ export default async function Page() {
                 key={slug}
                 href={`/${encodeURIComponent(slug)}?slug=${encodeURIComponent(slug)}`}
                 prefetch={false}
-                className={`block rounded-xl px-6 py-4 text-center ${ACCENT}`}
+                className={`block rounded-full px-4 py-2.5 text-center text-sm sm:text-base ${ACCENT}`}
+                aria-label={`Przejdź do restauracji SUSHI Tutaj w mieście ${label} – menu i zamówienia online`}
               >
-                <span className="block text-lg font-semibold">{label}</span>
-                <span className="block text-sm opacity-80">Zobacz menu i zamów online!</span>
+                <span className="block text-base sm:text-lg font-semibold">
+                  {label}
+                </span>
+                <span className="block text-xs sm:text-sm opacity-80 mt-0.5">
+                  Zobacz menu i złóż zamówienie online
+                </span>
               </Link>
             );
           })}
@@ -67,9 +90,14 @@ export default async function Page() {
       </section>
 
       {/* opis SEO */}
-      <p className="mt-8 px-5 text-center text-white/65 text-sm max-w-2xl mx-auto">
-        SUSHI Tutaj — świeże rolki i przystawki. Płatność tylko gotówką przy dostawie.
-      </p>
+      <section className="mt-8 px-5">
+        <p className="text-center text-white/65 text-xs sm:text-sm max-w-2xl mx-auto leading-relaxed">
+          SUSHI Tutaj to sieć restauracji sushi, w której zamówisz świeże futomaki,
+          hosomaki, california i nigiri na wynos lub z dostawą. Wybierz swój lokal,
+          sprawdź menu online i zamów sushi prosto do domu lub do pracy. Płatność
+          odbywa się wygodnie gotówką przy dostawie lub odbiorze.
+        </p>
+      </section>
 
       {/* dekoracja */}
       <RotatingPlate />
