@@ -1,3 +1,4 @@
+// src/components/menu/CheckoutModal.tsx
 "use client";
 
 import React, {
@@ -433,7 +434,7 @@ const ProductItem: React.FC<{
           <div>
             <div className="font-semibold mb-1">Zamień na inne w tej kategorii:</div>
             <select
-              className="border border-black/15 rounded px-2 py-1 bg:white"
+              className="border border-black/15 rounded px-2 py-1 bg-white"
               value={prod.name}
               onChange={(e) => doSwap(prod.name, e.target.value)}
             >
@@ -445,7 +446,7 @@ const ProductItem: React.FC<{
                 )
               )}
             </select>
-            <p className="text-[11px] text:black/60 mt-1">Bez wymiany na Specjały.</p>
+            <p className="text-[11px] text-black/60 mt-1">Bez wymiany na Specjały.</p>
           </div>
         )}
       </div>
@@ -508,6 +509,45 @@ function PromoSection({
           {promo.type === "percent" ? `${promo.value}%` : `${promo.value.toFixed(2)} zł`} rabatu.
         </p>
       )}
+    </div>
+  );
+}
+
+/* Sterowanie ilością pałeczek – minus po lewej, plus po prawej */
+function ChopsticksControl({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const clamp = (n: number) => Math.max(0, Math.min(10, n));
+  const dec = () => onChange(clamp(value - 1));
+  const inc = () => onChange(clamp(value + 1));
+
+  return (
+    <div className="mt-4 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-black">Ilość pałeczek</span>
+        <span className="text-[11px] text-black/60">0 = nie potrzebuję</span>
+      </div>
+      <div className="flex items-center justify-center gap-4">
+        <button
+          type="button"
+          onClick={dec}
+          className="h-11 w-11 rounded-full border border-black/20 bg-black text-white text-xl flex items-center justify-center"
+        >
+          –
+        </button>
+        <div className="min-w-[56px] text-center text-lg font-semibold">{value}</div>
+        <button
+          type="button"
+          onClick={inc}
+          className="h-11 w-11 rounded-full border border-black/20 bg-black text-white text-xl flex items-center justify-center"
+        >
+          +
+        </button>
+      </div>
     </div>
   );
 }
@@ -928,7 +968,7 @@ export default function CheckoutModal() {
   const [orderSent, setOrderSent] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  /* ====== NOWE: ilość pałeczek (ustawiana w podsumowaniu) ====== */
+  /* Ilość pałeczek – globalnie dla zamówienia */
   const [chopsticksQty, setChopsticksQty] = useState<number>(0);
 
   const handleSubmitOrder = async () => {
@@ -1018,7 +1058,7 @@ export default function CheckoutModal() {
         status: "placed",
         notice_payment:
           selectedOption === "delivery" ? "Płatność wyłącznie gotówką u kierowcy" : null,
-        /* ilość pałeczek – ustawiana w podsumowaniu */
+        /* ilość pałeczek – globalnie dla zamówienia */
         chopsticks_qty: Math.max(0, Math.min(10, Number(chopsticksQty) || 0)),
       };
       if (selectedOption === "delivery") {
@@ -1180,7 +1220,7 @@ export default function CheckoutModal() {
                       </div>
                     )}
 
-                    {/* STEP 1 (MOBILE): Koszyk */}
+                    {/* STEP 1 (MOBILE): Koszyk + pałeczki pod zamianami */}
                     {isMobile && checkoutStep === 1 && (
                       <div className="space-y-6">
                         <MobileTopBar>
@@ -1225,6 +1265,12 @@ export default function CheckoutModal() {
                             <p className="text-center text-black/60">Brak produktów w koszyku.</p>
                           )}
                         </div>
+
+                        {/* Ilość pałeczek – pod zamianami (mobile) */}
+                        <ChopsticksControl
+                          value={chopsticksQty}
+                          onChange={setChopsticksQty}
+                        />
                       </div>
                     )}
 
@@ -1460,34 +1506,11 @@ export default function CheckoutModal() {
                           )}
                         </div>
 
-                        {/* mobile: potwierdzenia + Zamawiam (tu przeniesiona ilość pałeczek) */}
+                        {/* mobile: potwierdzenia + Zamawiam (bez pola pałeczek, bo jest w kroku 1) */}
                         {isMobile && (
                           <div className="mt-3 rounded-2xl border border-black/10 bg-gray-50 p-4 space-y-3">
                             <h4 className="text-lg font-semibold">Potwierdzenia</h4>
                             <div className="space-y-3">
-                              {/* Pałeczki – ustawiane w ostatnim kroku na mobile */}
-                              <label className="text-xs text-black/80 flex flex-col gap-1">
-                                Ilość pałeczek
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="number"
-                                    min={0}
-                                    max={10}
-                                    step={1}
-                                    value={chopsticksQty}
-                                    onChange={(e) =>
-                                      setChopsticksQty(
-                                        Math.max(0, Math.min(10, Number(e.target.value) || 0))
-                                      )
-                                    }
-                                    className="w-24 px-3 py-1.5 border border-black/15 rounded-xl bg-white text-sm"
-                                  />
-                                  <span className="text-[11px] text-black/60">
-                                    0 = nie potrzebuję
-                                  </span>
-                                </div>
-                              </label>
-
                               {LegalConsent}
                               <label className="flex items-start gap-2 text-xs leading-5 text-black">
                                 <input
@@ -1543,7 +1566,7 @@ export default function CheckoutModal() {
                       </div>
                     )}
 
-                    {/* STEP 3 DESKTOP — Podsumowanie + edycja pozycji */}
+                    {/* STEP 3 DESKTOP — Podsumowanie + edycja pozycji + pałeczki pod zamianami */}
                     {!isMobile && checkoutStep === 3 && (
                       <div className="space-y-6">
                         <h3 className="text-2xl font-bold text-center">Podsumowanie</h3>
@@ -1584,6 +1607,12 @@ export default function CheckoutModal() {
                             )}
                           </div>
                         </div>
+
+                        {/* Ilość pałeczek – pod zamianami (desktop, krok 3) */}
+                        <ChopsticksControl
+                          value={chopsticksQty}
+                          onChange={setChopsticksQty}
+                        />
                       </div>
                     )}
                   </>
@@ -1628,26 +1657,6 @@ export default function CheckoutModal() {
                         <span>{deliveryInfo.cost.toFixed(2)} zł</span>
                       </div>
                     )}
-                    {/* Pałeczki – sterowanie w ostatnim kroku na desktopie */}
-                    <div className="flex justify-between items-center">
-                      <span>Pałeczki:</span>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min={0}
-                          max={10}
-                          step={1}
-                          value={chopsticksQty}
-                          onChange={(e) =>
-                            setChopsticksQty(
-                              Math.max(0, Math.min(10, Number(e.target.value) || 0))
-                            )
-                          }
-                          className="w-20 px-2 py-1 border border-black/15 rounded-xl bg-white text-sm text-right"
-                        />
-                        <span className="text-[11px] text-black/60">0 = nie potrzebuję</span>
-                      </div>
-                    </div>
 
                     <PromoSection
                       promo={promo}

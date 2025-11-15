@@ -7,7 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 import { toZonedTime } from "date-fns-tz";
 import { trackingUrl } from "@/lib/orderLink";
 import { sendEmail } from "@/lib/e-mail";
-import { sendSms } from "@/lib/sms"; // NEW
+import { sendSms } from "@/lib/sms";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,6 +31,7 @@ type Range = [h: number, m: number, H: number, M: number];
 
 const SCHEDULE: Record<string, Partial<Record<Day, Range>> & { default?: Range }> =
   {
+    // Ciechanów: pon–czw i niedz 12:00–20:30, pt 12:00–21:30, sob 12:00–20:30
     ciechanow: {
       0: [12, 0, 20, 30],
       1: [12, 0, 20, 30],
@@ -38,8 +39,9 @@ const SCHEDULE: Record<string, Partial<Record<Day, Range>> & { default?: Range }
       3: [12, 0, 20, 30],
       4: [12, 0, 20, 30],
       5: [12, 0, 21, 30],
-      6: [12, 0, 21, 30],
+      6: [12, 0, 20, 30],
     },
+    // Przasnysz / Szczytno – domyślnie 12–20:30
     przasnysz: { default: [12, 0, 20, 30] },
     szczytno: { default: [12, 0, 20, 30] },
   };
@@ -427,8 +429,8 @@ function normalizeBody(raw: any, req: Request) {
     city: base?.city ?? null,
     flat_number: base?.flat_number ?? null,
     selected_option: (base?.selected_option as any) ?? "takeaway",
-    payment_method: "Gotówka", // ENFORCED cash only (tylko w normalizacji)
-    payment_status: "unpaid", // ENFORCED unpaid (bez online)
+    payment_method: "Gotówka", // wymuszamy gotówkę
+    payment_status: "unpaid",
     total_price: num(base?.total_price, 0),
     promo_code: base?.promo_code ?? null,
     discount_amount: num(base?.discount_amount, 0) ?? 0,
@@ -443,7 +445,7 @@ function normalizeBody(raw: any, req: Request) {
     user_id: extractUserId(base),
     legal_accept,
     itemsArray,
-    chopsticks_qty, // NEW
+    chopsticks_qty,
   };
 }
 
@@ -505,7 +507,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 1.1) Ustal slug restauracji (z body/query/header)
+    // 1.1) Ustal slug restauracji
     const url = new URL(req.url);
     const restaurantSlug = String(
       raw?.restaurant ||
@@ -540,7 +542,6 @@ export async function POST(req: Request) {
     // 2) Normalizacja
     const n = normalizeBody(raw, req);
 
-    // Wymagane pola
     if (!n.phone) {
       return NextResponse.json(
         { error: "Wymagany jest numer telefonu." },
@@ -560,10 +561,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2.3) restaurant_id z DB po slugu (do blokad + stref + kill-switch)
+    // 2.3) restaurant_id z DB po slugu
     const { data: restRow, error: restErr } = await supabaseAdmin
       .from("restaurants")
-      .select("id, slug, ordering_open, lat, lng")
+      .select("id, slug, lat, lng")
       .eq("slug", restaurantSlug)
       .maybeSingle();
 
@@ -581,20 +582,9 @@ export async function POST(req: Request) {
       );
     }
 
-    // Kill-switch per restauracja
-    if (restRow.ordering_open === false) {
-      return NextResponse.json(
-        {
-          error:
-            "Zamawianie jest tymczasowo wyłączone w tej restauracji. Zapraszamy później!",
-        },
-        { status: 503 }
-      );
-    }
-
     const restaurant_id = restRow.id;
 
-    // 2.4) Blokowane adresy per restauracja (tylko dostawa)
+    // 2.4) blokowane adresy per restauracja (tylko dostawa)
     if (n.selected_option === "delivery") {
       const street = (n.street || n.address || "").toString();
       const flat = (n.flat_number || "").toString();
@@ -638,11 +628,10 @@ export async function POST(req: Request) {
       }
     }
 
-    // 2.5) fulfill (płatność wymuszona na cash)
     const fulfill_method =
       n.selected_option === "delivery" ? "delivery" : "takeaway";
 
-    // 2.6) Strefa dostawy – stała cena w mieście, dalej zł/km, dystans z Google
+    // 2.6) Strefa dostawy – per restauracja
     if (n.selected_option === "delivery") {
       if (n.delivery_lat == null || n.delivery_lng == null) {
         return NextResponse.json(
@@ -697,13 +686,11 @@ export async function POST(req: Request) {
         );
       }
 
-      // kwota koszyka bez dostawy
       const base = Math.max(
         0,
         Number(n.total_price || 0) - Number(n.delivery_cost || 0)
       );
 
-      // minimalna wartość zamówienia dla tej strefy
       if (base < Number(zone.min_order_value || 0)) {
         return NextResponse.json(
           {
@@ -715,14 +702,10 @@ export async function POST(req: Request) {
         );
       }
 
-      // typ liczenia ceny: flat (stała) vs per_km (zł/km)
       const pricingType: string =
         (zone.pricing_type as string) ??
         (Number(zone.min_distance_km) === 0 ? "flat" : "per_km");
 
-      // interpretacja pól z tabeli:
-      // - dla flat: bierzemy cost_fixed, a jak puste – cost
-      // - dla per_km: bierzemy cost_per_km, a jak puste – cost jako stawkę za km
       const flatCostRaw =
         zone.cost_fixed != null
           ? Number(zone.cost_fixed)
@@ -735,7 +718,6 @@ export async function POST(req: Request) {
       let serverCost =
         pricingType === "per_km" ? perKmRateRaw * distance_km : flatCostRaw;
 
-      // darmowa dostawa powyżej progu
       if (zone.free_over != null && base >= Number(zone.free_over)) {
         serverCost = 0;
       }
@@ -762,7 +744,7 @@ export async function POST(req: Request) {
       return buildItemFromDbAndOptions(db, it);
     });
 
-    // 5) Przygotowanie client_delivery_time do kolumny varchar(10)
+    // 5) Przygotowanie client_delivery_time (varchar(10))
     let clientDeliveryForDb: any = n.client_delivery_time;
     if (typeof clientDeliveryForDb === "string") {
       if (clientDeliveryForDb !== "asap") {
@@ -784,6 +766,7 @@ export async function POST(req: Request) {
       .from("orders")
       .insert({
         restaurant_id,
+        restaurant_slug: restaurantSlug,
         name: n.name,
         phone: n.phone,
         contact_email: n.contact_email,
@@ -796,8 +779,8 @@ export async function POST(req: Request) {
         flat_number: n.flat_number,
         selected_option: n.selected_option,
         fulfill_method,
-        payment_method: "cash", // ENFORCED
-        payment_status: "unpaid", // ENFORCED
+        payment_method: "cash",
+        payment_status: "unpaid",
         items: itemsForOrdersColumn,
         total_price: n.total_price,
         delivery_cost: n.delivery_cost,
@@ -811,7 +794,7 @@ export async function POST(req: Request) {
           : null,
         discount_amount: n.discount_amount,
         legal_accept: n.legal_accept,
-        chopsticks_qty: n.chopsticks_qty, // NEW
+        chopsticks_qty: n.chopsticks_qty,
       })
       .select("id, selected_option, total_price, name")
       .single();

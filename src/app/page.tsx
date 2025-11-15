@@ -41,7 +41,7 @@ export default async function Page() {
       <section className="px-5 text-center">
         <h1 className="text-4xl sm:text-6xl leading-tight">Wybierz restaurację</h1>
         <p className="mt-3 text-white/80 max-w-xl mx-auto">
-          Wybierz najbliższy lokal. Pokażemy menu, godziny i dostępność dostawy.
+          Wybierz najbliższy lokal i zamów online! Pokażemy menu, godziny i dostępność dostawy.
         </p>
       </section>
 
@@ -59,7 +59,7 @@ export default async function Page() {
                 className={`block rounded-xl px-6 py-4 text-center ${ACCENT}`}
               >
                 <span className="block text-lg font-semibold">{label}</span>
-                <span className="block text-sm opacity-80">Zobacz menu</span>
+                <span className="block text-sm opacity-80">Zobacz menu i zamów online!</span>
               </Link>
             );
           })}
@@ -68,7 +68,7 @@ export default async function Page() {
 
       {/* opis SEO */}
       <p className="mt-8 px-5 text-center text-white/65 text-sm max-w-2xl mx-auto">
-        SUSHI Tutaj — świeże rolki, bowle i przystawki. Płatność gotówką przy odbiorze lub dostawie.
+        SUSHI Tutaj — świeże rolki i przystawki. Płatność tylko gotówką przy dostawie.
       </p>
 
       {/* dekoracja */}
