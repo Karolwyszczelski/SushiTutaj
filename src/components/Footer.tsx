@@ -53,7 +53,7 @@ export default function Footer() {
     };
   }, [city]);
 
-  const phone = r?.phone ?? "+48 515 433 488";
+  const phone = r?.phone ?? "+48 000 000 000";
   const email = r?.email ?? "kontakt@sushitutaj.pl";
   const address = r?.address ?? "—";
   const maps = r?.maps_url ?? "#";

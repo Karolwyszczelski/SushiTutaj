@@ -2,7 +2,13 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, ShoppingCart, User, MoreHorizontal } from "lucide-react";
+import {
+  Calendar,
+  ShoppingCart,
+  User,
+  MoreHorizontal,
+  ChevronUp, // ⟵ NOWE
+} from "lucide-react";
 import clsx from "clsx";
 import useCartStore from "@/store/cartStore";
 import ReservationModal from "@/components/ReservationModal";
@@ -155,7 +161,17 @@ export default function FloatingQuickActions() {
         onTouchMove={handleMobileTouchMove}
         onTouchEnd={handleMobileTouchEnd}
       >
-        <div className="rounded-full bg-white/95 backdrop-blur px-2.5 py-2 shadow-2xl flex items-center gap-3">
+        <div className="relative rounded-full bg-white/95 backdrop-blur px-2.5 py-2 shadow-2xl flex items-center gap-3">
+          {/* Uchwyt / strzałka do schowania (gdy jest wysunięty) */}
+          <button
+            type="button"
+            aria-label="Schowaj szybkie akcje"
+            onClick={() => setMobileExpanded(false)}
+            className="absolute -top-3 left-1/2 -translate-x-1/2 w-8 h-4 rounded-full bg-white/80 shadow flex items-center justify-center"
+          >
+            <span className="block w-6 h-[2px] rounded-full bg-black/40" />
+          </button>
+
           <button
             onClick={() => setShowAccount(true)}
             className="group w-11 h-11 rounded-full bg-white flex items-center justify-center hover:bg-black/5"
@@ -186,28 +202,43 @@ export default function FloatingQuickActions() {
         </div>
       </div>
 
-      {/* MOBILE — gdy drawer jest zamknięty, pokazujemy sam koszyk w prawym dolnym rogu */}
+      {/* MOBILE — gdy drawer jest zamknięty, pokazujemy strzałkę + koszyk w prawym dolnym rogu */}
       {!mobileExpanded && (
-        <button
-          className="md:hidden fixed z-[61] rounded-full w-14 h-14 grid place-items-center shadow-2xl
-                     bg-gradient-to-br from-[var(--accent-red-dark,#7a0d0d)] via-[var(--accent-red,#a61b1b)] to-[var(--accent-red-dark-2,#b11212)]
-                     text-white"
+        <div
+          className="md:hidden fixed z-[61] flex flex-col items-center gap-1"
           style={{
             right: "16px",
             bottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
           }}
-          aria-label="Otwórz szybkie akcje"
-          onClick={() => setMobileExpanded(true)}
         >
-          <div className="relative">
-            <ShoppingCart className="w-6 h-6" />
-            {itemCount > 0 && (
-              <span className="absolute -top-2 -right-2 z-[62] text-[11px] leading-none font-bold text-white bg-black/80 rounded-full w-5 h-5 grid place-items-center">
-                {itemCount}
-              </span>
-            )}
-          </div>
-        </button>
+          {/* Cienka strzałeczka / uchwyt do wysunięcia panela */}
+          <button
+            type="button"
+            aria-label="Wysuń panel szybkich akcji"
+            onClick={() => setMobileExpanded(true)}
+            className="w-8 h-6 rounded-full bg-white/90 shadow flex items-center justify-center"
+          >
+            <ChevronUp className="w-4 h-4 text-black/60" />
+          </button>
+
+          {/* Sam koszyk – główna akcja przy schowanym panelu */}
+          <button
+            className="rounded-full w-14 h-14 grid place-items-center shadow-2xl
+                       bg-gradient-to-br from-[var(--accent-red-dark,#7a0d0d)] via-[var(--accent-red,#a61b1b)] to-[var(--accent-red-dark-2,#b11212)]
+                       text-white"
+            aria-label="Koszyk"
+            onClick={openCart}
+          >
+            <div className="relative">
+              <ShoppingCart className="w-6 h-6" />
+              {itemCount > 0 && (
+                <span className="absolute -top-2 -right-2 z-[62] text-[11px] leading-none font-bold text-white bg-black/80 rounded-full w-5 h-5 grid place-items-center">
+                  {itemCount}
+                </span>
+              )}
+            </div>
+          </button>
+        </div>
       )}
 
       {/* Modale */}

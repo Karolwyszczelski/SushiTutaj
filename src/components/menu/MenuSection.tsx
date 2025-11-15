@@ -97,6 +97,45 @@ const priceNumber = (p: Product) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+const SUBCAT_PREFIX: Record<string, string> = {
+  futomaki: "Futomak",
+  california: "California",
+  hosomaki: "Hosomak",
+  nigiri: "Nigiri",
+};
+
+const normalizeDisplay = (s: string) =>
+  s
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+const buildDisplayName = (p: Product): string => {
+  const base = p.name || "";
+  const sub = (p.subcategory || "").toLowerCase();
+  const prefix = SUBCAT_PREFIX[sub];
+  if (!prefix) return base;
+
+  const n = normalizeDisplay(base);
+  const prefNorm = normalizeDisplay(prefix);
+  const subNorm = normalizeDisplay(sub);
+
+  // jeśli nazwa już zaczyna się od prefiksu / nazwy kategorii – nie dublujemy
+  if (n.startsWith(prefNorm) || n.startsWith(subNorm)) {
+    return base;
+  }
+
+  return `${prefix} ${base}`;
+};
+
+const extractSetNumber = (name: string | null | undefined): number | null => {
+  if (!name) return null;
+  const match = name.match(/(\d+)/);
+  if (!match) return null;
+  const num = parseInt(match[1], 10);
+  return Number.isFinite(num) ? num : null;
+};
+
 /** Fallbacki: image_url → /assets/menuphoto/{slug}.webp → .jpg → .png → placeholder */
 function ProductImg({ p, sizes = "50vw" }: { p: Product; sizes?: string }) {
   const candidates = useMemo(() => {
@@ -239,7 +278,41 @@ export default function MenuSection() {
         return;
       }
 
-      const items = (data || []) as Product[];
+      const rows = (data || []) as Product[];
+
+      // defensywnie: unikamy duplikatów produktów (np. po nieoczekiwanym joinie)
+      const uniqueMap = new Map<string, Product>();
+      for (const p of rows) {
+        if (!uniqueMap.has(p.id)) uniqueMap.set(p.id, p);
+      }
+      const unique = Array.from(uniqueMap.values());
+
+      const items = unique.slice().sort((a, b) => {
+        const catA = a.subcategory || "Inne";
+        const catB = b.subcategory || "Inne";
+        const catCmp = catA.localeCompare(catB, "pl");
+        if (catCmp !== 0) return catCmp;
+
+        const subLower = catA.toLowerCase();
+        if (subLower === "zestawy") {
+          const numA = extractSetNumber(a.name);
+          const numB = extractSetNumber(b.name);
+          if (numA !== null || numB !== null) {
+            if (numA === null) return 1;
+            if (numB === null) return -1;
+            if (numA !== numB) return numA - numB;
+          }
+        }
+
+        const posA =
+          typeof a.position === "number" ? a.position : Number.POSITIVE_INFINITY;
+        const posB =
+          typeof b.position === "number" ? b.position : Number.POSITIVE_INFINITY;
+        if (posA !== posB) return posA - posB;
+
+        return (a.name || "").localeCompare(b.name || "", "pl");
+      });
+
       setProducts(items);
 
       const cats = Array.from(
@@ -313,6 +386,7 @@ export default function MenuSection() {
 
   const handleAdd = (p: Product) => {
     if (p.available === false) return;
+    // do koszyka cały czas oryginalna nazwa z bazy – spójność z CheckoutModal
     addItem({ id: p.id, name: p.name, price: priceNumber(p), quantity: 1 });
     setJustAdded((prev) => (prev.includes(p.id) ? prev : [...prev, p.id]));
     setTimeout(
@@ -369,6 +443,7 @@ export default function MenuSection() {
   const CardMobile = ({ p }: { p: Product }) => {
     const isAdded = justAdded.includes(p.id);
     const expanded = !!expandedDesc[p.id];
+    const displayName = buildDisplayName(p);
     const hasLong = !!p.description && p.description.length > 120;
     const brief =
       !p.description
@@ -394,7 +469,7 @@ export default function MenuSection() {
 
         <div className="p-3">
           <h4 className="text-sm font-medium leading-snug text-white">
-            {p.name}
+            {displayName}
           </h4>
 
           {p.description && (
@@ -431,7 +506,7 @@ export default function MenuSection() {
                 handleAdd(p);
               }}
               disabled={p.available === false}
-              aria-label={`Dodaj ${p.name}`}
+              aria-label={`Dodaj ${displayName}`}
               className={`h-9 w-9 shrink-0 rounded-full text-white ${ACCENT}
                 ring-1 ring-black/30 shadow-[0_10px_22px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)]
                 hover:[filter:brightness(1.06)] active:[filter:brightness(0.96)]
@@ -452,6 +527,7 @@ export default function MenuSection() {
   const CardDesktop = ({ p }: { p: Product }) => {
     const isAdded = justAdded.includes(p.id);
     const expanded = !!expandedDesc[p.id];
+    const displayName = buildDisplayName(p);
     const hasLong = !!p.description && p.description.length > 160;
     const brief =
       !p.description
@@ -478,7 +554,7 @@ export default function MenuSection() {
 
         <div className="p-4">
           <h4 className="text-base font-medium leading-snug text-white">
-            {p.name}
+            {displayName}
           </h4>
 
           {p.description && (
@@ -515,7 +591,7 @@ export default function MenuSection() {
                 handleAdd(p);
               }}
               disabled={p.available === false}
-              aria-label={`Dodaj ${p.name}`}
+              aria-label={`Dodaj ${displayName}`}
               className={`h-10 w-10 shrink-0 rounded-full text-white ${ACCENT}
                 ring-1 ring-black/30 shadow-[0_10px_22px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)]
                 hover:[filter:brightness(1.06)] active:[filter:brightness(0.96)]
@@ -536,7 +612,7 @@ export default function MenuSection() {
   return (
     <section
       id="menu"
-      className="relative z-[60] w-full text-white"
+      className="relative z-[60] w-full text-white scroll-mt-24"
       style={
         {
           backgroundColor: "#0b0b0b",
@@ -652,7 +728,7 @@ export default function MenuSection() {
       </div>
 
       {/* ---------- MOBILE ---------- */}
-      <div className="md:hidden px-6 py-10">
+      <div className="md:hidden px-6 pt-16 pb-10">
         <h3 className="mb-3 text-xs tracking-[0.25em] font-thin text-white/60">
           MENU
         </h3>

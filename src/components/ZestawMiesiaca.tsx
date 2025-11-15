@@ -449,7 +449,7 @@ export default function ZestawMiesiaca() {
               >
                 {price !== null ? (
                   <span className="leading-tight text-lg">
-                    {price.toFixed(2)}
+                    {price.toFixed(22)}
                     <br />
                     zł
                   </span>
@@ -463,7 +463,7 @@ export default function ZestawMiesiaca() {
                 aria-hidden
               >
                 <span className="leading-tight text-base">
-                  {pieces ?? 34}
+                  {pieces ?? 28}
                   <br />
                   szt.
                 </span>

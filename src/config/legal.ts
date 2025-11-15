@@ -1,14 +1,13 @@
 // src/config/legal.ts
 export const LEGAL = {
-  legalName: "WitFur Paweł Witkowski",
+  legalName: "WITFUR Paweł Witkowski",
   shortBrand: "Sushi Tutaj",
-  nip: "5661022981",
-  regon: "369738613",
+  nip: "5661896378",
+  regon: "384957944",
   krs: null as string | null, // JDG – brak KRS
-  registeredAddress: "ul. Wesoła 31, 06-400 Ciechanów",
-  restaurantAddress: "ul. Spółdzielcza 7, 06-400 Ciechanów",
-  email: "kontakt@sisiciechanow.pl",
-  phone: "+48 515 433 488",
+  registeredAddress: "ul. Warszawska 51, 06-400 Ciechanów",
+  restaurantAddress: "ul. Warszawska 51, 06-400 Ciechanów, ul. Tadeusza Kościuszki 22, Szczytno, ul. Św. Stanisława Kostki 12, Przasnysz", 
+  email: "kontakt@sushitutaj.pl",
   docsVersion: "2025-02",
   effectiveDate: "2025-02-01",
 };

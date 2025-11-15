@@ -47,9 +47,9 @@ export default function CookieBanner() {
 
   return (
     <div className="fixed bottom-0 inset-x-0 z-50">
-      <div className="mx-auto max-w-4xl m-3 rounded-lg border bg-white p-4 shadow-lg">
+      <div className="mx-auto max-w-3xl m-3 rounded-lg border bg-white p-4 shadow-lg md:mb-6">
         <p className="text-sm">
-          Używamy plików cookie niezbędnych do działania strony oraz – za Twoją zgodą – analitycznych i marketingowych.
+          Hej! Używamy plików cookie niezbędnych do działania strony, jej ulepszania oraz – za Twoją zgodą – analitycznych i marketingowych.
           Szczegóły w{" "}
           <Link href="/cookies" className="underline">
             Polityce cookies
@@ -107,7 +107,7 @@ export default function CookieBanner() {
           </button>
           <button
             onClick={() => save(consent)}
-            className="px-3 py-2 rounded bg-yellow-400"
+            className="px-3 py-2 rounded bg-accent text-white"
           >
             Zapisz wybór
           </button>

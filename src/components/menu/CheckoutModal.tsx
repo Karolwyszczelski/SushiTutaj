@@ -258,6 +258,35 @@ function MobileTopBar({ children }: { children: React.ReactNode }) {
 /* ===== utile produktu i zestawu ===== */
 const normalize = (s: string) => s.toLowerCase();
 
+/* NOWE: prefiks kategorii w nazwach (Futomak, Hosomak, California, Nigiri) */
+const CATEGORY_PREFIX: Record<string, string> = {
+  futomaki: "Futomak",
+  hosomaki: "Hosomak",
+  california: "California",
+  nigiri: "Nigiri",
+};
+
+function withCategoryPrefix(name: string, subcategory?: string | null): string {
+  const base = (name || "").trim();
+  if (!subcategory) return base;
+  const key = subcategory.toLowerCase();
+  const prefix = CATEGORY_PREFIX[key];
+  if (!prefix) return base;
+
+  const lowerBase = base.toLowerCase();
+  // jeśli nazwa już zawiera prefiks / kategorię – nic nie zmieniamy
+  if (
+    lowerBase.startsWith(prefix.toLowerCase() + " ") ||
+    lowerBase.startsWith(key + " ")
+  ) {
+    return base;
+  }
+
+  if (!base) return base;
+  const capitalized = base[0].toUpperCase() + base.slice(1);
+  return `${prefix} ${capitalized}`;
+}
+
 function parseSetComposition(desc?: string | null) {
   if (!desc) return [] as { qty: number; cat: string; from: string }[];
   // przykład: "16 szt, SUROWY: 6x Futomaki łosoś philadelphia surowy, 8x Hosomaki ogórek, ..."
@@ -303,6 +332,19 @@ const ProductItem: React.FC<{
   const subcat = (prodInfo?.subcategory || "").toLowerCase();
   const isSet = subcat === "zestawy";
   const isSpec = subcat === "specjały";
+  const productSubcat = prodInfo?.subcategory || productCategory(prod.name);
+
+  const singleCurrentName = useMemo(() => {
+    if (isSet || isSpec) return prod.name as string;
+    const swaps = Array.isArray((prod as any).swaps) ? (prod as any).swaps : [];
+    const found = swaps.find(
+      (s: any) =>
+        s &&
+        typeof s.from === "string" &&
+        s.from.toLowerCase() === (prod.name || "").toLowerCase()
+    );
+    return (found?.to as string) || prod.name;
+  }, [isSet, isSpec, prod.swaps, prod.name]);
 
   const setRows = useMemo(
     () => (isSet ? parseSetComposition(prodInfo?.description) : []),
@@ -488,7 +530,7 @@ const ProductItem: React.FC<{
                   >
                     {[current, ...pool.filter((n) => n !== current)].map((n) => (
                       <option key={n} value={n}>
-                        {n}
+                        {withCategoryPrefix(n, row.cat)}
                       </option>
                     ))}
                   </select>
@@ -626,13 +668,13 @@ const ProductItem: React.FC<{
             <div className="font-semibold mb-1">Zamień na inne w tej kategorii:</div>
             <select
               className="border border-black/15 rounded px-2 py-1 bg-white"
-              value={prod.name}
+              value={singleCurrentName}
               onChange={(e) => doSingleSwap(prod.name, e.target.value)}
             >
-              {[prod.name, ...sameCatOptions(prod.name).filter((n) => n !== prod.name)].map(
+              {[singleCurrentName, ...sameCatOptions(prod.name).filter((n) => n !== singleCurrentName)].map(
                 (n) => (
                   <option key={n} value={n}>
-                    {n}
+                    {withCategoryPrefix(n, productSubcat)}
                   </option>
                 )
               )}
@@ -1485,7 +1527,7 @@ export default function CheckoutModal() {
                       <div className="space-y-6">
                         {isMobile && (
                           <MobileTopBar>
-                            <div className="flex justify-end">
+                            <div className="flex justify.end">
                               <button
                                 onClick={() => nextStep()}
                                 disabled={!selectedOption}
@@ -1779,7 +1821,7 @@ export default function CheckoutModal() {
 
                     {!isMobile && checkoutStep === 3 && (
                       <div className="space-y-6">
-                        <h3 className="text-2xl font-bold text-center">Podsumowanie</h3>
+                        <h3 className="text-2xl font.bold text-center">Podsumowanie</h3>
 
                         {selectedOption === "delivery" && (
                           <div className="rounded-xl bg-yellow-50 border border-yellow-200 p-3 text-sm text-center">

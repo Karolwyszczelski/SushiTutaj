@@ -47,7 +47,7 @@ body > *{ position:relative; z-index:1; }
 .font-display{ font-family:var(--font-display), serif; }
 
 /* Linki i focus */
-a{ color:#fff; }
+a{ color:#8e0707; }
 a:hover{ opacity:.9; }
 :focus-visible{ outline:2px solid #fff; outline-offset:2px; }
 
