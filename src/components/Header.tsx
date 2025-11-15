@@ -196,8 +196,8 @@ export default function Header() {
                           );
                         }}
                         className={clsx(
-                          "w-full text-left px-4 py-2 text-sm hover:bg-white/10",
-                          city === c.slug && "bg-white/10"
+                          "w-full text-left px-4 py-2 text-sm hover:bg-white/10 text-white/80",
+                          city === c.slug && "bg-white/10 text-white/80"
                         )}
                       >
                         {c.label}
@@ -240,7 +240,7 @@ export default function Header() {
                           );
                         }}
                         className={clsx(
-                          "w-full text-left px-4 py-2 text-sm text-white/80 hover:bg-white/10",
+                          "w-full text-center px-4 py-2 text-sm text-white/80 hover:bg-white/10",
                           city === c.slug && "bg-white/10 text-white/80"
                         )}
                       >
@@ -257,7 +257,7 @@ export default function Header() {
           <div className="md:hidden justify-self-end">
             <button
               type="button"
-              className="p-2.5"
+              className="p-2.5 text-white"
               aria-label="Menu"
               aria-expanded={open}
               onClick={() => setOpen(true)}

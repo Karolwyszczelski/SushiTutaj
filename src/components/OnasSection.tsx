@@ -27,54 +27,57 @@ export default function OnasSection() {
 
         {/* --- MOBILE --- */}
         <div className="md:hidden relative z-10 px-6 py-10">
-          <p className="text-[11px] uppercase tracking-[0.28em] text-white/60">o nas</p>
+          {/* WYŚRODKOWANE NA MOBILE */}
+          <div className="mx-auto w-full max-w-md">
+            <p className="text-[11px] uppercase tracking-[0.28em] text-white/60">o nas</p>
 
-          <h1
-            id="onas-h1"
-            className="mt-3 font-thin tracking-tight leading-[1.15] text-3xl break-words"
-            style={{ textWrap: "balance" as any }}
-          >
-            Robimy sushi jak lubisz — świeżo, szybko, z sercem
-          </h1>
-
-          <div className="mt-4 space-y-2 text-white/70 text-sm">
-            <p>Ryby i składniki od sprawdzonych dostawców. Rolki zwijane na zamówienie.</p>
-            <p>Dostawa w mieście i odbiór osobisty. Rezerwacje on-line.</p>
-          </div>
-
-          <p className="mt-5 text-sm text-white/80 leading-relaxed break-words">
-            Nasze futomaki, hosomaki, california i nigiri składają się z prostych, jakościowych składników.
-            Wpadnij do lokalu albo zamów do domu — zadbamy o detale od kuchni po dostawę.
-          </p>
-
-          <div className="mt-6 flex flex-col gap-3">
-            <button
-              type="button"
-              onClick={() => setResOpen(true)}
-              className={`inline-flex w-full items-center justify-center rounded-full px-6 py-3 font-semibold ${ACCENT}`}
-              aria-haspopup="dialog"
-              aria-expanded={isResOpen}
-              aria-controls="reservation-modal"
+            <h1
+              id="onas-h1"
+              className="mt-3 font-thin tracking-tight leading-[1.15] text-3xl break-words"
+              style={{ textWrap: "balance" as any }}
             >
-              Zarezerwuj stolik
-            </button>
-            <Link
-              href="#menu"
-              className="inline-flex w-full items-center justify-center rounded-full px-6 py-3 font-semibold border border-white/20 hover:bg-white/10 transition"
-            >
-              Zobacz menu
-            </Link>
-          </div>
+              Robimy sushi jak lubisz — świeżo, szybko, z sercem
+            </h1>
 
-          <div className="mt-8 relative aspect-[4/3] w-full">
-            <Image
-              src="/assets/onas.png"
-              alt="SUSHI Tutaj — nasze sushi i wnętrze lokalu"
-              fill
-              sizes="100vw"
-              className="object-cover"
-              priority
-            />
+            <div className="mt-4 space-y-2 text-white/70 text-sm">
+              <p>Ryby i składniki od sprawdzonych dostawców. Rolki zwijane na zamówienie.</p>
+              <p>Dostawa w mieście i odbiór osobisty. Rezerwacje on-line.</p>
+            </div>
+
+            <p className="mt-5 text-sm text-white/80 leading-relaxed break-words">
+              Nasze futomaki, hosomaki, california i nigiri składają się z prostych, jakościowych składników.
+              Wpadnij do lokalu albo zamów do domu — zadbamy o detale od kuchni po dostawę.
+            </p>
+
+            <div className="mt-6 flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => setResOpen(true)}
+                className={`inline-flex w-full items-center justify-center rounded-full px-6 py-3 font-semibold ${ACCENT}`}
+                aria-haspopup="dialog"
+                aria-expanded={isResOpen}
+                aria-controls="reservation-modal"
+              >
+                Zarezerwuj stolik
+              </button>
+              <Link
+                href="#menu"
+                className="inline-flex w-full items-center justify-center rounded-full px-6 py-3 font-semibold border border-white/20 hover:bg-white/10 transition"
+              >
+                Zobacz menu
+              </Link>
+            </div>
+
+            <div className="mt-8 relative aspect-[4/3] w-full">
+              <Image
+                src="/assets/onas.png"
+                alt="SUSHI Tutaj — nasze sushi i wnętrze lokalu"
+                fill
+                sizes="100vw"
+                className="object-cover"
+                priority
+              />
+            </div>
           </div>
         </div>
 

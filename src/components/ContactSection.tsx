@@ -72,7 +72,15 @@ export default function ContactSection() {
   }, [city]);
 
   const oh = data?.opening_hours;
-  const embedSrc = useMemo(() => toEmbed(data?.maps_url), [data?.maps_url]);
+
+  // NOWE: embed po adresie + mieście (dokładna lokalizacja), fallback na maps_url
+  const embedSrc = useMemo(() => {
+    if (data?.address) {
+      const q = `${data.address}${data.city ? ", " + data.city : ""}, Polska`;
+      return `https://www.google.com/maps?q=${encodeURIComponent(q)}&output=embed`;
+    }
+    return toEmbed(data?.maps_url);
+  }, [data?.address, data?.city, data?.maps_url]);
 
   const CityLabel = (data?.city ?? city?.toString() ?? "").toUpperCase();
 
@@ -209,12 +217,12 @@ export default function ContactSection() {
           </div>
         </div>
 
-        {/* Mapa */}
-        <div className="mt-8">
+        {/* Mapa – WYŚRODKOWANA NA MOBILE */}
+        <div className="mt-8 flex justify-center">
           <iframe
             title="Mapa dojazdu"
             src={embedSrc}
-            className="w-full h-[280px] border-0 rounded-2xl"
+            className="w-full max-w-md h-[280px] border-0 rounded-2xl"
             allowFullScreen
             loading="lazy"
           />
