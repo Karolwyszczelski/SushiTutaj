@@ -22,13 +22,21 @@ export default function OnasSection() {
         aria-labelledby="onas-h1"
       >
         {/* boczne pasy */}
-        <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 z-0" style={{ width: 50, background: "#0b0b0b" }} />
-        <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 z-0" style={{ width: 50, background: "#0b0b0b" }} />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0 z-0"
+          style={{ width: 50, background: "#0b0b0b" }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 z-0"
+          style={{ width: 50, background: "#0b0b0b" }}
+        />
 
         {/* --- MOBILE --- */}
         <div className="md:hidden relative z-10 px-6 py-10">
           {/* WYŚRODKOWANE NA MOBILE */}
-          <div className="mx-auto w-full max-w-md">
+          <div className="mx-auto w-full max-w-md text-center">
             <p className="text-[11px] uppercase tracking-[0.28em] text-white/60">o nas</p>
 
             <h1
@@ -147,7 +155,11 @@ export default function OnasSection() {
 
       {isResOpen && (
         <div className="text-black">
-          <ReservationModal isOpen={isResOpen} onClose={() => setResOpen(false)} id="reservation-modal" />
+          <ReservationModal
+            isOpen={isResOpen}
+            onClose={() => setResOpen(false)}
+            id="reservation-modal"
+          />
         </div>
       )}
     </>
