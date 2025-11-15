@@ -145,9 +145,9 @@ export async function GET(request: NextRequest) {
       cookieRid,
     });
 
-    // Pola kompatybilne: delivery_time i "deliveryTime" (obie obsłużone)
+    // Pola kompatybilne: client_delivery_time i "deliveryTime" (obie obsłużone)
     const selectCols =
-      'id, created_at, status, total_price, payment_status, items, client_delivery_time, delivery_time, "deliveryTime"';
+      'id, created_at, status, total_price, payment_status, items, client_delivery_time, "deliveryTime"';
 
     const { data: rows, error } = await supabaseAdmin
       .from("orders")
@@ -171,11 +171,13 @@ export async function GET(request: NextRequest) {
     const todayKey = dayKeyPL(now);
     const ym = todayKey.slice(0, 7);
 
-    for (const o of rows as (Row & {
+    const typedRows = (rows ?? []) as (Row & {
       delivery_time?: string | null;
       deliveryTime?: string | null;
       client_delivery_time?: string | null;
-    })[]) {
+    })[];
+
+    for (const o of typedRows) {
       const created = new Date(o.created_at!);
       const day = dayKeyPL(created);
       ordersPerDay[day] = (ordersPerDay[day] ?? 0) + 1;
