@@ -16,6 +16,8 @@ import QRCode from "react-qr-code";
 import { useSession } from "@supabase/auth-helpers-react";
 import { createClient } from "@supabase/supabase-js";
 import { toZonedTime } from "date-fns-tz";
+import { useSearchParams } from "next/navigation";
+
 import useIsClient from "@/lib/useIsClient";
 import useCartStore from "@/store/cartStore";
 import AddressAutocomplete from "@/components/menu/AddressAutocomplete";
@@ -84,6 +86,12 @@ const SAUCES = [
 const EXTRAS = ["Tempura", "Płatek sojowy", "Tamago", "Ryba pieczona"];
 const SWAP_FEE_NAME = "Zamiana w zestawie";
 
+/* NOWE: nazwy addonów dla pieczenia zestawów/rolek */
+const RAW_SET_BAKE_ALL =
+  "Zamiana całego zestawu surowego na pieczony (+5 zł)";
+const RAW_SET_BAKE_ROLL_PREFIX =
+  "Zamiana surowej rolki na pieczoną: ";
+
 /* Helper: rozpoznanie specjalnej California z opcją Ryby pieczonej +2 zł */
 function isSpecialCaliforniaBakedFishProduct(
   name: string,
@@ -92,7 +100,6 @@ function isSpecialCaliforniaBakedFishProduct(
   const text = `${name} ${description || ""}`.toLowerCase();
   if (!text.includes("california")) return false;
 
-  // Szukamy zestawu słów: łosoś surowy + paluszek krabowy + krewetka
   return (
     text.includes("łosoś") &&
     text.includes("surow") &&
@@ -101,10 +108,15 @@ function isSpecialCaliforniaBakedFishProduct(
   );
 }
 
-/* Spójne liczenie ceny dodatków (także 2 zł dla spec. California) */
+/* Spójne liczenie ceny dodatków (także nowe logiki pieczenia) */
 function computeAddonPrice(addon: string, product?: ProductDb | null): number {
   if (SAUCES.includes(addon)) return 3;
   if (addon === SWAP_FEE_NAME) return 5;
+
+  // całe surowe zestawy 1/3/8 -> pieczone
+  if (addon === RAW_SET_BAKE_ALL) return 5;
+  // pojedyncza surowa rolka w zestawie -> pieczona
+  if (addon.startsWith(RAW_SET_BAKE_ROLL_PREFIX)) return 2;
 
   // Domyślna cena dodatków typu Tempura / Płatek / Tamago / Ryba pieczona
   const price = 4;
@@ -139,17 +151,15 @@ const CITY_SCHEDULE: Record<
   string,
   Partial<Record<Day, Range>> & { default?: Range }
 > = {
-  // Ciechanów: pon–czw i niedz 12:00–20:30, piątek 12:00–21:30, sobota 12:00–20:30
   ciechanow: {
-    0: [12, 0, 20, 30], // nd
-    1: [12, 0, 20, 30], // pn
-    2: [12, 0, 20, 30], // wt
-    3: [12, 0, 20, 30], // śr
-    4: [12, 0, 21, 30], // pt
-    5: [12, 0, 20, 30], // sob
+    0: [12, 0, 20, 30],
+    1: [12, 0, 20, 30],
+    2: [12, 0, 20, 30],
+    3: [12, 0, 20, 30],
+    4: [12, 0, 21, 30],
+    5: [12, 0, 20, 30],
     6: [12, 0, 20, 30],
   },
-  // Przasnysz i Szczytno: codziennie 12:00–20:30
   przasnysz: { default: [12, 0, 20, 30] },
   szczytno: { default: [12, 0, 20, 30] },
 };
@@ -159,10 +169,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const fmt = (r: Range) => `${pad(r[0])}:${pad(r[1])}–${pad(r[2])}:${pad(r[3])}`;
 const MIN_SCHEDULE_MINUTES = 60;
 
-function todayRangeFor(
-  slug: string,
-  d = toZonedTime(new Date(), tz)
-): Range | null {
+function todayRangeFor(slug: string, d = toZonedTime(new Date(), tz)): Range | null {
   const sch = CITY_SCHEDULE[slug] ?? CITY_SCHEDULE["przasnysz"];
   const r = sch[d.getDay() as Day] ?? sch.default ?? null;
   return r ?? null;
@@ -226,7 +233,7 @@ function getRestaurantCityFromPath(): { slug: string; label: string } {
   return { slug, label };
 }
 
-/* NEW: prosty hook do wykrycia mobile (Tailwind lg = 1024) */
+/* prosty hook do wykrycia mobile (Tailwind lg = 1024) */
 function useIsMobile(breakpoint = 1024) {
   const [isMobile, setIsMobile] = React.useState(false);
   React.useEffect(() => {
@@ -240,7 +247,7 @@ function useIsMobile(breakpoint = 1024) {
   return isMobile;
 }
 
-/* NEW: górny pasek akcji tylko na mobile */
+/* górny pasek akcji tylko na mobile */
 function MobileTopBar({ children }: { children: React.ReactNode }) {
   return (
     <div className="lg:hidden sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-black/10 -mx-6 px-6 py-2">
@@ -303,7 +310,21 @@ const ProductItem: React.FC<{
     [isSet, prodInfo?.description]
   );
 
-  // NOWE: odczyt aktualnej zamiany dla danej rolki w ZESTAWIE
+  // surowy zestaw 1 / 3 / 8
+  let isRawSet1_3_8 = false;
+  if (isSet && prodInfo) {
+    const nameL = prodInfo.name.toLowerCase();
+    const descL = (prodInfo.description || "").toLowerCase();
+    const isRaw = descL.includes("surowy") || nameL.includes("surowy");
+    if (isRaw && /(zestaw|set)\s*(1|3|8)\b/i.test(nameL)) {
+      isRawSet1_3_8 = true;
+    }
+  }
+
+  const isWholeSetBaked = (prod.addons ?? []).includes(RAW_SET_BAKE_ALL);
+  const isRawRow = (row: { qty: number; cat: string; from: string }) =>
+    /surowy/i.test(row.from);
+
   const getSetSwapCurrent = (rowFrom: string): string => {
     const swaps = Array.isArray(prod.swaps) ? prod.swaps : [];
     const found = swaps.find(
@@ -324,38 +345,31 @@ const ProductItem: React.FC<{
   const lineTotal = (priceNum + addonsCost) * (prod.quantity || 1);
 
   const canUseExtra = (extra: string): boolean => {
-    // Zestawy – patrzymy na skład
     if (isSet) {
       const hasFuto = setRows.some((row) => /futomaki/i.test(row.cat));
       if (extra === "Tamago" && hasFuto) return true;
       if (extra === "Ryba pieczona") {
-        // surowy zestaw może mieć opcję pieczoną
         return /SUROWY/i.test(prodInfo?.description || "");
       }
       return false;
     }
 
-    // Pojedyncze rolki
     if (subcat === "california") {
-      // wyjątek – specjalna California z opcją pieczonej ryby
       if (
         extra === "Ryba pieczona" &&
         isSpecialCaliforniaBakedFishProduct(prod.name, prodInfo?.description || "")
       ) {
         return true;
       }
-      // pozostałe California bez dodatków
       return false;
     }
 
     if (subcat === "hosomaki") {
-      // Hoso/Hosomaki – tylko Tempura jako dodatek
       return extra === "Tempura";
     }
 
     if (subcat === "futomaki") {
       if (extra === "Ryba pieczona") {
-        // tylko rolki surowe
         return /surowy/i.test(prod.name);
       }
       if (extra === "Tamago") return true;
@@ -369,7 +383,7 @@ const ProductItem: React.FC<{
 
   const toggleAddon = (a: string) => {
     const on = (prod.addons ?? []).includes(a);
-    const allowed = EXTRAS.includes(a) ? canUseExtra(a) : true; // sosy zawsze
+    const allowed = EXTRAS.includes(a) ? canUseExtra(a) : true;
     if (!allowed) return;
     if (on) removeAddon(prod.name, a);
     else addAddon(prod.name, a);
@@ -381,14 +395,12 @@ const ProductItem: React.FC<{
     return optionsByCat[cat] || [];
   };
 
-  // NOWE: osobne funkcje do zamian
   const doSetSwap = (rowFrom: string, to: string) => {
     const current = getSetSwapCurrent(rowFrom);
     if (!to || to === current) return;
-    // dla zestawów pilnujemy tylko, żeby w ogóle coś wybrano – puli pilnujemy na poziomie selecta
+
     swapIngredient(prod.name, rowFrom, to);
 
-    // opłata za zamianę w zestawie
     if (!(prod.addons ?? []).includes(SWAP_FEE_NAME)) {
       addAddon(prod.name, SWAP_FEE_NAME);
     }
@@ -407,9 +419,25 @@ const ProductItem: React.FC<{
       (fromCat.includes("nigiri") && toCat.includes("nigiri"));
 
     if (!same) return;
-    if (toCat === "specjały") return; // zakaz wymiany na specjały
+    if (toCat === "specjały") return;
 
     swapIngredient(prod.name, from, to);
+  };
+
+  const toggleWholeSetBake = () => {
+    const on = isWholeSetBaked;
+    if (on) {
+      removeAddon(prod.name, RAW_SET_BAKE_ALL);
+    } else {
+      addAddon(prod.name, RAW_SET_BAKE_ALL);
+      setRows.forEach((row) => {
+        const rollKey = `${row.cat} ${row.from}`;
+        const label = RAW_SET_BAKE_ROLL_PREFIX + rollKey;
+        if ((prod.addons ?? []).includes(label)) {
+          removeAddon(prod.name, label);
+        }
+      });
+    }
   };
 
   return (
@@ -424,7 +452,6 @@ const ProductItem: React.FC<{
       </div>
 
       <div className="text-xs text-black/80 space-y-3">
-        {/* Edycja składu ZESTAWU: każda rolka ma wybór zamiany w obrębie kategorii */}
         {isSet && setRows.length > 0 && (
           <div className="space-y-2">
             <div className="font-semibold">Zamiany w zestawie</div>
@@ -433,7 +460,22 @@ const ProductItem: React.FC<{
               const pool = (optionsByCat[catKey] || []).filter(
                 (n) => (productCategory(n) || "").toLowerCase() !== "specjały"
               );
-              const current = getSetSwapCurrent(row.from); // BIEŻĄCA wartosc z prod.swaps lub default
+              const current = getSetSwapCurrent(row.from);
+
+              const rollKey = `${row.cat} ${row.from}`;
+              const rollAddonLabel = RAW_SET_BAKE_ROLL_PREFIX + rollKey;
+              const rawRow = isRawRow(row);
+              const rollBaked = (prod.addons ?? []).includes(rollAddonLabel);
+
+              const toggleRowBake = () => {
+                if (!rawRow || isWholeSetBaked) return;
+                if (rollBaked) {
+                  removeAddon(prod.name, rollAddonLabel);
+                } else {
+                  addAddon(prod.name, rollAddonLabel);
+                }
+              };
+
               return (
                 <div key={i} className="flex flex-wrap items-center gap-2">
                   <span className="px-2 py-1 rounded bg-gray-50 border border-gray-200">
@@ -451,17 +493,59 @@ const ProductItem: React.FC<{
                       </option>
                     ))}
                   </select>
+
+                  {rawRow && (
+                    <button
+                      type="button"
+                      onClick={toggleRowBake}
+                      disabled={isWholeSetBaked}
+                      className={clsx(
+                        "px-2 py-1 rounded text-[11px] border",
+                        isWholeSetBaked
+                          ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
+                          : rollBaked
+                          ? "bg-black text-white border-black"
+                          : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                      )}
+                    >
+                      {rollBaked
+                        ? "✓ Ta rolka pieczona (+2 zł)"
+                        : "+ Zamień tę rolkę na pieczoną (+2 zł)"}
+                    </button>
+                  )}
                 </div>
               );
             })}
+
             <p className="text-[11px] text-black/60">
               Zamiany tylko w obrębie tej samej kategorii (Futomaki ↔ Futomaki, Hosomaki ↔
               Hosomaki itd.). Bez specjałów. Dodajemy pozycję „{SWAP_FEE_NAME}”.
             </p>
+
+            {isRawSet1_3_8 && (
+              <div className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-2 space-y-1">
+                <div className="font-semibold text-[11px]">
+                  Opcja dla zestawu surowego 1 / 3 / 8:
+                </div>
+                <label className="flex items-center gap-2 text-[11px]">
+                  <input
+                    type="checkbox"
+                    checked={isWholeSetBaked}
+                    onChange={toggleWholeSetBake}
+                  />
+                  <span>Zamień cały zestaw na pieczony (+5 zł)</span>
+                </label>
+                {isWholeSetBaked && (
+                  <p className="text-[10px] text-black/60">
+                    Dla całego zestawu naliczana jest jedna opłata +5 zł. Indywidualne zamiany
+                    rolek są w tym wariancie nieaktywne.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Uniwersalne sosy */}
         <div>
           <div className="font-semibold mb-1">Sosy:</div>
           <div className="flex flex-wrap gap-2">
@@ -485,7 +569,6 @@ const ProductItem: React.FC<{
           </div>
         </div>
 
-        {/* Dodatki z ograniczeniami wg kategorii */}
         <div>
           <div className="font-semibold mb-1">Dodatki:</div>
           <div className="flex flex-wrap gap-2">
@@ -539,7 +622,6 @@ const ProductItem: React.FC<{
           )}
         </div>
 
-        {/* Zamiana pojedynczej pozycji w obrębie kategorii (dla niezestawów) */}
         {!isSet && !isSpec && (
           <div>
             <div className="font-semibold mb-1">Zamień na inne w tej kategorii:</div>
@@ -625,7 +707,6 @@ function PromoSection({
   );
 }
 
-/* Sterowanie ilością pałeczek – minus po lewej, plus po prawej */
 function ChopsticksControl({
   value,
   onChange,
@@ -687,6 +768,9 @@ export default function CheckoutModal() {
 
   const isMobile = useIsMobile();
 
+  const searchParams = useSearchParams();
+  const reservationId = searchParams?.get("reservation");
+
   const [notes, setNotes] = useState<{ [key: number]: string }>({});
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -730,11 +814,11 @@ export default function CheckoutModal() {
   const { slug: restaurantSlug, label: restaurantCityLabel } = getRestaurantCityFromPath();
   const thanksQrUrl = CITY_REVIEW_QR_URLS[restaurantSlug] || THANKS_QR_URL;
 
-  // Godziny dla miasta + min/max time input
   const openInfo = useMemo(() => isOpenFor(restaurantSlug), [restaurantSlug]);
   const timeMin = openInfo.range ? `${pad(openInfo.range[0])}:${pad(openInfo.range[1])}` : "12:00";
   const timeMax = openInfo.range ? `${pad(openInfo.range[2])}:${pad(openInfo.range[3])}` : "23:59";
   const [scheduledTime, setScheduledTime] = useState<string>(timeMin);
+
   useEffect(() => {
     if (deliveryTimeOption === "schedule") {
       setScheduledTime((prev) => {
@@ -742,7 +826,6 @@ export default function CheckoutModal() {
         return inside ? prev : timeMin;
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeMin, timeMax, deliveryTimeOption]);
 
   useEffect(() => {
@@ -757,12 +840,10 @@ export default function CheckoutModal() {
     }
   }, [isLoggedIn, session]);
 
-  /* NOWE: pobieranie produktów + restauracji (lat/lng) + stref dla danej restauracji */
   useEffect(() => {
     let cancelled = false;
 
     const load = async () => {
-      // produkty – globalnie
       const prodRes = await supabase
         .from("products")
         .select("id,name,subcategory,description");
@@ -771,10 +852,8 @@ export default function CheckoutModal() {
         setProductsDb((prodRes.data as ProductDb[]) || []);
       }
 
-      // jeśli nie mamy sluga restauracji – kończymy na produktach
       if (!restaurantSlug) return;
 
-      // restauracja po slug
       const restRes = await supabase
         .from("restaurants")
         .select("id, lat, lng")
@@ -789,7 +868,6 @@ export default function CheckoutModal() {
         setRestLoc({ lat: rest.lat, lng: rest.lng });
       }
 
-      // strefy tylko dla tej restauracji
       const dzRes = await supabase
         .from("delivery_zones")
         .select("*")
@@ -808,6 +886,40 @@ export default function CheckoutModal() {
     };
   }, [restaurantSlug]);
 
+  const [submitting, setSubmitting] = useState(false);
+  const [confirmCityOk, setConfirmCityOk] = useState(false);
+  const [orderSent, setOrderSent] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [chopsticksQty, setChopsticksQty] = useState<number>(0);
+
+  // Turnstile – remove jako useCallback
+  const removeTurnstile = useCallback(() => {
+    try {
+      if (tsIdRef.current && window.turnstile) window.turnstile.remove(tsIdRef.current);
+    } catch {}
+    tsIdRef.current = null;
+    setTurnstileToken(null);
+    setTurnstileError(false);
+  }, []);
+
+  // Zamknięcie modala jako stabilny callback
+  const closeCheckoutModal = useCallback(() => {
+    originalCloseCheckoutModal();
+    setPromo(null);
+    setPromoError(null);
+    setOrderSent(false);
+    setErrorMessage(null);
+    setConfirmCityOk(false);
+    setLegalAccepted(false);
+    setSubmitting(false);
+    goToStep(1);
+    removeTurnstile();
+  }, [
+    originalCloseCheckoutModal,
+    goToStep,
+    removeTurnstile,
+  ]);
+
   // ESC zamyka modal + blokada scrolla body
   useEffect(() => {
     if (!isCheckoutOpen) return;
@@ -821,7 +933,7 @@ export default function CheckoutModal() {
     };
   }, [isCheckoutOpen, closeCheckoutModal]);
 
-  // Turnstile – stabilne callbacki
+  // Turnstile – render jako useCallback
   const renderTurnstile = useCallback(
     (target: HTMLDivElement | null) => {
       if (!TURNSTILE_SITE_KEY || !window.turnstile || !isVisible(target)) return;
@@ -855,20 +967,10 @@ export default function CheckoutModal() {
         setTurnstileError(true);
       }
     },
-    [] // setState i refy są stabilne
+    []
   );
 
-  const removeTurnstile = useCallback(() => {
-    try {
-      if (tsIdRef.current && window.turnstile) {
-        window.turnstile.remove(tsIdRef.current);
-      }
-    } catch {}
-    tsIdRef.current = null;
-    setTurnstileToken(null);
-    setTurnstileError(false);
-  }, []);
-
+  // Turnstile – efekt z pełnymi dependencies
   useEffect(() => {
     if (!TURNSTILE_SITE_KEY || !tsReady) return;
     if (isCheckoutOpen && checkoutStep === 3) {
@@ -987,21 +1089,6 @@ export default function CheckoutModal() {
   const totalWithDelivery = Math.max(0, subtotal + (deliveryInfo?.cost || 0) - discount);
   const shouldHideOrderActions = Boolean(TURNSTILE_SITE_KEY && turnstileError);
 
-  const [submitting, setSubmitting] = useState(false);
-
-  const closeCheckoutModal = useCallback(() => {
-    originalCloseCheckoutModal();
-    setPromo(null);
-    setPromoError(null);
-    setOrderSent(false);
-    setErrorMessage(null);
-    setConfirmCityOk(false);
-    setLegalAccepted(false);
-    setSubmitting(false);
-    goToStep(1);
-    removeTurnstile();
-  }, [originalCloseCheckoutModal, goToStep, removeTurnstile]);
-
   const productHelpers = {
     addAddon,
     removeAddon,
@@ -1075,13 +1162,6 @@ export default function CheckoutModal() {
     }
   };
 
-  const [confirmCityOk, setConfirmCityOk] = useState(false);
-  const [orderSent, setOrderSent] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  /* Ilość pałeczek – globalnie dla zamówienia */
-  const [chopsticksQty, setChopsticksQty] = useState<number>(0);
-
   const handleSubmitOrder = async () => {
     if (submitting) return;
     setErrorMessage(null);
@@ -1107,7 +1187,6 @@ export default function CheckoutModal() {
       return;
     }
 
-    // walidacja czasu przy "na godzinę" – minimum 60 minut od teraz
     if (selectedOption === "delivery" && deliveryTimeOption === "schedule") {
       const [h, m] = scheduledTime.split(":").map(Number);
       if (!Number.isFinite(h) || !Number.isFinite(m)) {
@@ -1190,9 +1269,10 @@ export default function CheckoutModal() {
         status: "placed",
         notice_payment:
           selectedOption === "delivery" ? "Płatność wyłącznie gotówką u kierowcy" : null,
-        /* ilość pałeczek – globalnie dla zamówienia */
         chopsticks_qty: Math.max(0, Math.min(10, Number(chopsticksQty) || 0)),
+        reservation_id: reservationId || null,
       };
+
       if (selectedOption === "delivery") {
         orderPayload.street = street || null;
         orderPayload.postal_code = postalCode || null;
@@ -1303,7 +1383,6 @@ export default function CheckoutModal() {
           className="w-full max-w-5xl bg-white text-black shadow-2xl grid grid-rows-[auto,1fr] max-h-[75vh]"
           onMouseDown={(e) => e.stopPropagation()}
         >
-          {/* HEADER */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-black/10">
             <h2 className="text-xl font-semibold">Zamówienie — {restaurantCityLabel}</h2>
             {!orderSent && (
@@ -1317,10 +1396,8 @@ export default function CheckoutModal() {
             )}
           </div>
 
-          {/* SCROLL */}
           <div className="overflow-y-auto overscroll-contain">
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 p-6">
-              {/* MAIN */}
               <div>
                 {orderSent ? (
                   <div className="min-h-[320px] flex flex-col items-center justify-center text-center space-y-5 px-4">
@@ -1359,7 +1436,6 @@ export default function CheckoutModal() {
                       </div>
                     )}
 
-                    {/* STEP 1 (MOBILE): Koszyk + pałeczki pod zamianami */}
                     {isMobile && checkoutStep === 1 && (
                       <div className="space-y-6">
                         <MobileTopBar>
@@ -1399,12 +1475,10 @@ export default function CheckoutModal() {
                           )}
                         </div>
 
-                        {/* Ilość pałeczek – pod zamianami (mobile) */}
                         <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
                       </div>
                     )}
 
-                    {/* STEP 1 DESKTOP / STEP 2 MOBILE — Sposób odbioru */}
                     {((!isMobile && checkoutStep === 1) ||
                       (isMobile && checkoutStep === 2)) && (
                       <div className="space-y-6">
@@ -1503,7 +1577,6 @@ export default function CheckoutModal() {
                       </div>
                     )}
 
-                    {/* STEP 2 DESKTOP / STEP 3 MOBILE — Dane kontaktowe */}
                     {((!isMobile && checkoutStep === 2) ||
                       (isMobile && checkoutStep === 3)) && (
                       <div className="space-y-6">
@@ -1636,7 +1709,6 @@ export default function CheckoutModal() {
                           )}
                         </div>
 
-                        {/* mobile: potwierdzenia + Zamawiam (bez pola pałeczek, bo jest w kroku 1) */}
                         {isMobile && (
                           <div className="mt-3 rounded-2xl border border-black/10 bg-gray-50 p-4 space-y-3">
                             <h4 className="text-lg font-semibold">Potwierdzenia</h4>
@@ -1704,7 +1776,6 @@ export default function CheckoutModal() {
                       </div>
                     )}
 
-                    {/* STEP 3 DESKTOP — Podsumowanie + edycja pozycji + pałeczki pod zamianami */}
                     {!isMobile && checkoutStep === 3 && (
                       <div className="space-y-6">
                         <h3 className="text-2xl font-bold text-center">Podsumowanie</h3>
@@ -1740,7 +1811,6 @@ export default function CheckoutModal() {
                           </div>
                         </div>
 
-                        {/* Ilość pałeczek – pod zamianami (desktop, krok 3) */}
                         <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
                       </div>
                     )}
@@ -1748,13 +1818,11 @@ export default function CheckoutModal() {
                 )}
               </div>
 
-              {/* SIDEBAR (desktop) – wyśrodkowane */}
               {!orderSent && (
                 <aside className="hidden lg:flex">
                   <div className="sticky top-4 w-[340px] mx-auto border border-black/10 bg-white p-5 shadow-xl text-black space-y-4 text-left">
                     <h4 className="text-xl font-bold text-center">Podsumowanie</h4>
 
-                    {/* lista produktów */}
                     <div className="space-y-2 max-h-[200px] overflow-y-auto">
                       {items.length === 0 ? (
                         <p className="text-sm text-black/60 text-center">Brak produktów.</p>
