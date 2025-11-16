@@ -151,7 +151,7 @@ export default function Header() {
                   key={l.path}
                   href={hrefObj}
                   className={clsx(
-                    "relative tracking-wide hover:opacity-90",
+                    "relative tracking-wide hover:opacity-90 text-white/80",
                     active &&
                       "after:absolute after:-bottom-1 after:left-0 after:h-[2px] after:w-full after:bg-gradient-to-r after:from-[#b31217] after:to-[#7a0b0b]"
                   )}
