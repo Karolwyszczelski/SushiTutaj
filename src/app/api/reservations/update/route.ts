@@ -5,12 +5,18 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
-import { sendSms } from "@/lib/sms"; // ⬅️ zakładam, że już istnieje
+import { sendSms } from "@/lib/sms";
+import { getAdminContext } from "@/lib/adminContext";
 
 const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!, // bypass RLS
-  { auth: { persistSession: false } }
+  {
+    auth: {
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  }
 );
 
 // prosty sender: Resend, a jeśli brak – SMTP URL z nodemailer
@@ -61,17 +67,39 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Bad request" }, { status: 400 });
     }
 
-    // pobierz rezerwację
+    // 🔐 kontekst admina + restauracja
+    let restaurantId: string;
+    try {
+      const ctx = await getAdminContext();
+      restaurantId = ctx.restaurantId;
+    } catch (err) {
+      console.error("reservations/update: brak kontekstu admina:", err);
+      return NextResponse.json(
+        { error: "Brak uprawnień lub brak przypisanej restauracji" },
+        { status: 403 }
+      );
+    }
+
+    // pobierz rezerwację tylko z restauracji admina
     const { data: r, error: e1 } = await supabaseAdmin
       .from("reservations")
       .select(
         "id, name, email, phone, guests, note, reservation_date, reservation_time, restaurant_id, status"
       )
       .eq("id", id)
+      .eq("restaurant_id", restaurantId) // 🔐 scope do restauracji
       .maybeSingle();
+
     if (e1) throw e1;
+
     if (!r) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json(
+        {
+          error:
+            "Rezerwacja nie istnieje lub nie należy do restauracji przypisanej do tego konta admina",
+        },
+        { status: 404 }
+      );
     }
 
     const update =
@@ -81,15 +109,30 @@ export async function POST(req: Request) {
             confirmed_at: new Date().toISOString(),
             admin_note: admin_note ?? null,
           }
-        : { status: "cancelled", admin_note: admin_note ?? null };
+        : {
+            status: "cancelled",
+            admin_note: admin_note ?? null,
+          };
 
     const { data: updated, error: e2 } = await supabaseAdmin
       .from("reservations")
       .update(update)
       .eq("id", id)
+      .eq("restaurant_id", restaurantId) // 🔐 znowu pilnujemy restauracji
       .select("*")
-      .single();
+      .maybeSingle();
+
     if (e2) throw e2;
+
+    if (!updated) {
+      return NextResponse.json(
+        {
+          error:
+            "Nie udało się zaktualizować rezerwacji (być może została już usunięta)",
+        },
+        { status: 409 }
+      );
+    }
 
     // e-mail do klienta
     const subject =
@@ -106,8 +149,8 @@ export async function POST(req: Request) {
       action === "accept"
         ? `<p>Dzień dobry ${r.name || ""},</p>
            <p>Potwierdzamy rezerwację na ${when} dla ${
-            r.guests || 1
-          } os.</p>
+             r.guests || 1
+           } os.</p>
            <p>Do zobaczenia!</p>`
         : `<p>Dzień dobry ${r.name || ""},</p>
            <p>Rezerwacja na ${when} została anulowana.</p>

@@ -55,7 +55,7 @@ export default async function Page() {
       {/* nagłówek */}
       <section className="px-5 text-center">
         <h1 className="text-4xl sm:text-6xl leading-tight">
-          Wybierz restaurację SUSHI Tutaj
+          Wybierz restaurację
         </h1>
         <p className="mt-3 text-white/80 max-w-xl mx-auto text-sm sm:text-base">
           Wybierz najbliższy lokal i zamów sushi online. Pokażemy aktualne menu,
