@@ -19,7 +19,7 @@ export default function RegulaminPage() {
             Regulamin określa zasady korzystania z serwisu zamówień online {LEGAL.shortBrand} oraz warunki zawierania i realizacji umów
             sprzedaży na odległość. Operatorem Serwisu i Sprzedawcą jest <b>{LEGAL.legalName}</b>, NIP {LEGAL.nip}, REGON {LEGAL.regon}
             {LEGAL.krs ? <> , KRS {LEGAL.krs}</> : null}, z adresem rejestrowym: {LEGAL.registeredAddress}, lokal gastronomiczny: {LEGAL.restaurantAddress}.
-            Kontakt: <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a>, tel. <a href={`tel:${LEGAL.phone.replace(/\s/g,"")}`}>{LEGAL.phone}</a>.
+            Kontakt: <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a>.
           </p>
 
           <h2>1) Definicje</h2>
@@ -85,7 +85,7 @@ export default function RegulaminPage() {
 
           <h2>9) Reklamacje</h2>
           <ul>
-            <li>Reklamacje dotyczące zamówień należy składać niezwłocznie – najlepiej w dniu dostawy/odbioru – na adres {LEGAL.email} lub telefonicznie {LEGAL.phone}.</li>
+            <li>Reklamacje dotyczące zamówień należy składać niezwłocznie – najlepiej w dniu dostawy/odbioru – na adres {LEGAL.email}.</li>
             <li>W zgłoszeniu podaj numer zamówienia, opis zastrzeżeń i – jeśli to możliwe – dokumentację (np. zdjęcia).</li>
             <li>Odpowiadamy w terminie do 14 dni kalendarzowych. W razie uznania reklamacji – naprawa/wymiana, ponowna realizacja, obniżenie ceny lub zwrot środków (w przypadku płatności online – tą samą drogą).</li>
           </ul>
