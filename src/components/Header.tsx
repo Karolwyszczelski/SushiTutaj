@@ -300,7 +300,7 @@ export default function Header() {
               />
             </Link>
 
-            <nav className="flex flex-col items-center gap-6 text-2xl">
+            <nav className="flex flex-col items-center gap-6 text-2xl text-white/80">
               {links.map((l) => (
                 <Link
                   key={l.path}
