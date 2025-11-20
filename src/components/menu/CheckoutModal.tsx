@@ -88,8 +88,7 @@ const SWAP_FEE_NAME = "Zamiana w zestawie";
 /* NOWE: nazwy addonów dla pieczenia zestawów/rolek */
 const RAW_SET_BAKE_ALL =
   "Zamiana całego zestawu surowego na pieczony (+5 zł)";
-const RAW_SET_BAKE_ROLL_PREFIX =
-  "Zamiana surowej rolki na pieczoną: ";
+const RAW_SET_BAKE_ROLL_PREFIX = "Zamiana surowej rolki na pieczoną: ";
 
 /* Helper: rozpoznanie specjalnej California z opcją Ryby pieczonej +2 zł */
 function isSpecialCaliforniaBakedFishProduct(
@@ -482,11 +481,17 @@ const ProductItem: React.FC<{
     }
   };
 
+  // WYŚWIETLANA NAZWA W KOSZYKU: kategoria + nazwa
+  const displayTitle = useMemo(() => {
+    if (isSet || isSpec) return prod.name as string;
+    return withCategoryPrefix(singleCurrentName, productSubcat);
+  }, [isSet, isSpec, prod.name, singleCurrentName, productSubcat]);
+
   return (
     <div className="border border-black/10 bg-white p-3">
       <div className="flex justify-between items-center font-semibold mb-2">
         <span className="text-black">
-          {prod.name} x{prod.quantity || 1}
+          {displayTitle} x{prod.quantity || 1}
         </span>
         <span className="text-black">
           {lineTotal.toFixed(2).replace(".", ",")} zł
@@ -1923,14 +1928,20 @@ export default function CheckoutModal() {
                       {items.length === 0 ? (
                         <p className="text-sm text-black/60 text-center">Brak produktów.</p>
                       ) : (
-                        items.map((it: any, i: number) => (
-                          <div key={i} className="flex justify-between text-sm">
-                            <span className="truncate pr-2">
-                              {it.name} ×{it.quantity || 1}
-                            </span>
-                            <span>{getItemLineTotal(it).toFixed(2)} zł</span>
-                          </div>
-                        ))
+                        items.map((it: any, i: number) => {
+                          const label = withCategoryPrefix(
+                            it.name,
+                            productCategory(it.name)
+                          );
+                          return (
+                            <div key={i} className="flex justify-between text-sm">
+                              <span className="truncate pr-2">
+                                {label} ×{it.quantity || 1}
+                              </span>
+                              <span>{getItemLineTotal(it).toFixed(2)} zł</span>
+                            </div>
+                          );
+                        })
                       )}
                     </div>
 
