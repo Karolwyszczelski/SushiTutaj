@@ -8,6 +8,7 @@ import React, {
   useState,
   useCallback,
 } from "react";
+import type { CSSProperties } from "react";
 import Image from "next/image";
 import { ShoppingCart, ChevronLeft, ChevronRight } from "lucide-react";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
@@ -120,7 +121,6 @@ const buildDisplayName = (p: Product): string => {
   const prefNorm = normalizeDisplay(prefix);
   const subNorm = normalizeDisplay(sub);
 
-  // jeśli nazwa już zaczyna się od prefiksu / nazwy kategorii – nie dublujemy
   if (n.startsWith(prefNorm) || n.startsWith(subNorm)) {
     return base;
   }
@@ -152,6 +152,7 @@ function ProductImg({ p, sizes = "50vw" }: { p: Product; sizes?: string }) {
     ].filter(Boolean) as string[];
     return list;
   }, [p.name, p.image_url]);
+
   const [idx, setIdx] = useState(0);
   const src = candidates[Math.min(idx, candidates.length - 1)];
   return (
@@ -175,7 +176,6 @@ function chunk<T>(arr: T[], size: number): T[][] {
 
 export default function MenuSection() {
   const supabase = useMemo(() => getSupabaseBrowser(), []);
-  // rozluźniony typ addItem – żeby TS nie marudził na dodatkowe pola
   const { addItem } = useCartStore() as any;
 
   const [loading, setLoading] = useState(true);
@@ -189,18 +189,15 @@ export default function MenuSection() {
     {}
   );
 
-  // karuzele
   const railTopRef = useRef<HTMLDivElement | null>(null);
   const railBotRef = useRef<HTMLDivElement | null>(null);
   const [pageTop, setPageTop] = useState(0);
   const [pageBot, setPageBot] = useState(0);
 
-  // kategorie: szyna + strzałki (mobile)
   const catsRailRef = useRef<HTMLDivElement | null>(null);
   const [catsCanLeft, setCatsCanLeft] = useState(false);
   const [catsCanRight, setCatsCanRight] = useState(false);
 
-  // zapobieganie globalnym handlerom dotyku
   const stopProp = (e: any) => e.stopPropagation();
 
   useEffect(() => {
@@ -280,21 +277,37 @@ export default function MenuSection() {
 
       const rows = (data || []) as Product[];
 
-      // defensywnie: unikamy duplikatów produktów (np. po nieoczekiwanym joinie)
+      // unikamy duplikatów
       const uniqueMap = new Map<string, Product>();
       for (const p of rows) {
         if (!uniqueMap.has(p.id)) uniqueMap.set(p.id, p);
       }
       const unique = Array.from(uniqueMap.values());
 
+      // sortowanie z preferencją dla zestawów po numerze
       const items = unique.slice().sort((a, b) => {
         const catA = a.subcategory || "Inne";
         const catB = b.subcategory || "Inne";
-        const catCmp = catA.localeCompare(catB, "pl");
-        if (catCmp !== 0) return catCmp;
+        const catNormA = normalizeDisplay(catA);
+        const catNormB = normalizeDisplay(catB);
+        const nameNormA = normalizeDisplay(a.name || "");
+        const nameNormB = normalizeDisplay(b.name || "");
 
-        const subLower = catA.toLowerCase();
-        if (subLower === "zestawy") {
+        const isSetA =
+          /zestaw|set/.test(catNormA) || /zestaw|set/.test(nameNormA);
+        const isSetB =
+          /zestaw|set/.test(catNormB) || /zestaw|set/.test(nameNormB);
+
+        const posA =
+          typeof a.position === "number"
+            ? a.position
+            : Number.POSITIVE_INFINITY;
+        const posB =
+          typeof b.position === "number"
+            ? b.position
+            : Number.POSITIVE_INFINITY;
+
+        if (isSetA && isSetB) {
           const numA = extractSetNumber(a.name);
           const numB = extractSetNumber(b.name);
           if (numA !== null || numB !== null) {
@@ -302,14 +315,15 @@ export default function MenuSection() {
             if (numB === null) return -1;
             if (numA !== numB) return numA - numB;
           }
+          const catCmp = catNormA.localeCompare(catNormB, "pl");
+          if (catCmp !== 0) return catCmp;
+          if (posA !== posB) return posA - posB;
+          return (a.name || "").localeCompare(b.name || "", "pl");
         }
 
-        const posA =
-          typeof a.position === "number" ? a.position : Number.POSITIVE_INFINITY;
-        const posB =
-          typeof b.position === "number" ? b.position : Number.POSITIVE_INFINITY;
+        const catCmp = catNormA.localeCompare(catNormB, "pl");
+        if (catCmp !== 0) return catCmp;
         if (posA !== posB) return posA - posB;
-
         return (a.name || "").localeCompare(b.name || "", "pl");
       });
 
@@ -344,33 +358,40 @@ export default function MenuSection() {
     });
   }, [products, activeCat, q]);
 
-  // desktop: 3/stronę; mobile: 2/stronę
-  const groupsD = useMemo(() => chunk(visible, 3), [visible]);
-  const groupsTopD = useMemo(
-    () => groupsD.filter((_, i) => i % 2 === 0),
-    [groupsD]
-  );
-  const groupsBotD = useMemo(
-    () => groupsD.filter((_, i) => i % 2 === 1),
-    [groupsD]
-  );
+  // ---------- GRUPOWANIE DO KARUZEL ----------
+  // desktop: 3/stronę – górny slider = pierwsza połowa listy, dolny = druga połowa
+  const groupsTopD = useMemo(() => {
+    const half = Math.ceil(visible.length / 2);
+    return chunk(visible.slice(0, half), 3);
+  }, [visible]);
 
-  const groupsM = useMemo(() => chunk(visible, 2), [visible]);
-  const groupsTopM = useMemo(
-    () => groupsM.filter((_, i) => i % 2 === 0),
-    [groupsM]
-  );
-  const groupsBotM = useMemo(
-    () => groupsM.filter((_, i) => i % 2 === 1),
-    [groupsM]
-  );
+  const groupsBotD = useMemo(() => {
+    const half = Math.ceil(visible.length / 2);
+    return chunk(visible.slice(half), 3);
+  }, [visible]);
+
+  // mobile: 2/stronę – ta sama zasada
+  const groupsTopM = useMemo(() => {
+    const half = Math.ceil(visible.length / 2);
+    return chunk(visible.slice(0, half), 2);
+  }, [visible]);
+
+  const groupsBotM = useMemo(() => {
+    const half = Math.ceil(visible.length / 2);
+    return chunk(visible.slice(half), 2);
+  }, [visible]);
 
   useEffect(() => {
     setPageTop(0);
     setPageBot(0);
     railTopRef.current?.scrollTo({ left: 0, behavior: "auto" });
     railBotRef.current?.scrollTo({ left: 0, behavior: "auto" });
-  }, [groupsTopD.length, groupsBotD.length, groupsTopM.length, groupsBotM.length]);
+  }, [
+    groupsTopD.length,
+    groupsBotD.length,
+    groupsTopM.length,
+    groupsBotM.length,
+  ]);
 
   const onScroll = (row: "top" | "bot") => {
     const rail = row === "top" ? railTopRef.current : railBotRef.current;
@@ -386,7 +407,6 @@ export default function MenuSection() {
 
   const handleAdd = (p: Product) => {
     if (p.available === false) return;
-    // do koszyka cały czas oryginalna nazwa z bazy – spójność z CheckoutModal
     addItem({ id: p.id, name: p.name, price: priceNumber(p), quantity: 1 });
     setJustAdded((prev) => (prev.includes(p.id) ? prev : [...prev, p.id]));
     setTimeout(
@@ -411,7 +431,6 @@ export default function MenuSection() {
     `shadow-[0_10px_18px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)] ` +
     `hover:[filter:brightness(1.06)] active:[filter:brightness(0.96)] disabled:opacity-40 disabled:cursor-not-allowed`;
 
-  // kategorie: obsługa strzałek + gest
   const updateCatArrows = useCallback(() => {
     const el = catsRailRef.current;
     if (!el) return;
@@ -621,27 +640,27 @@ export default function MenuSection() {
           ["--menu-tl-h" as any]: MENU_TL.h,
           ["--menu-tl-x" as any]: MENU_TL.x,
           ["--menu-tl-y" as any]: MENU_TL.y,
-          ["--menu-tl-z" as any]: (MENU_TL.z as unknown as number),
-          ["--menu-tl-opacity" as any]: (MENU_TL.opacity as unknown as number),
+          ["--menu-tl-z" as any]: MENU_TL.z,
+          ["--menu-tl-opacity" as any]: MENU_TL.opacity,
           ["--menu-tl-scale" as any]: MENU_TL.scale,
           ["--menu-tl-rot" as any]: MENU_TL.rot,
           ["--menu-br-w" as any]: MENU_BR.w,
           ["--menu-br-h" as any]: MENU_BR.h,
           ["--menu-br-x" as any]: MENU_BR.x,
           ["--menu-br-y" as any]: MENU_BR.y,
-          ["--menu-br-z" as any]: (MENU_BR.z as unknown as number),
-          ["--menu-br-opacity" as any]: (MENU_BR.opacity as unknown as number),
+          ["--menu-br-z" as any]: MENU_BR.z,
+          ["--menu-br-opacity" as any]: MENU_BR.opacity,
           ["--menu-br-scale" as any]: MENU_BR.scale,
           ["--menu-br-rot" as any]: MENU_BR.rot,
           ["--menu-tr-w" as any]: MENU_TR.w,
           ["--menu-tr-h" as any]: MENU_TR.h,
           ["--menu-tr-x" as any]: MENU_TR.x,
           ["--menu-tr-y" as any]: MENU_TR.y,
-          ["--menu-tr-z" as any]: (MENU_TR.z as unknown as number),
-          ["--menu-tr-opacity" as any]: (MENU_TR.opacity as unknown as number),
+          ["--menu-tr-z" as any]: MENU_TR.z,
+          ["--menu-tr-opacity" as any]: MENU_TR.opacity,
           ["--menu-tr-scale" as any]: MENU_TR.scale,
           ["--menu-tr-rot" as any]: MENU_TR.rot,
-        } as React.CSSProperties
+        } as CSSProperties
       }
     >
       {/* boczne pasy */}
@@ -665,8 +684,8 @@ export default function MenuSection() {
           top: "var(--menu-tl-y)",
           width: "var(--menu-tl-w)",
           height: "var(--menu-tl-h)",
-          zIndex: "var(--menu-tl-z)" as unknown as number,
-          opacity: "var(--menu-tl-opacity)" as unknown as number,
+          zIndex: "var(--menu-tl-z)" as number,
+          opacity: "var(--menu-tl-opacity)" as any,
           transform: "scale(var(--menu-tl-scale)) rotate(var(--menu-tl-rot))",
           transformOrigin: "top left",
         }}
@@ -688,8 +707,8 @@ export default function MenuSection() {
           top: "var(--menu-tr-y)",
           width: "var(--menu-tr-w)",
           height: "var(--menu-tr-h)",
-          zIndex: "var(--menu-tr-z)" as unknown as number,
-          opacity: "var(--menu-tr-opacity)" as unknown as number,
+          zIndex: "var(--menu-tr-z)" as number,
+          opacity: "var(--menu-tr-opacity)" as any,
           transform: "scale(var(--menu-tr-scale)) rotate(var(--menu-tr-rot))",
           transformOrigin: "top right",
         }}
@@ -711,8 +730,8 @@ export default function MenuSection() {
           bottom: "var(--menu-br-y)",
           width: "var(--menu-br-w)",
           height: "var(--menu-br-h)",
-          zIndex: "var(--menu-br-z)" as unknown as number,
-          opacity: "var(--menu-br-opacity)" as unknown as number,
+          zIndex: "var(--menu-br-z)" as number,
+          opacity: "var(--menu-br-opacity)" as any,
           transform: "scale(var(--menu-br-scale)) rotate(var(--menu-br-rot))",
           transformOrigin: "bottom right",
         }}
@@ -729,7 +748,7 @@ export default function MenuSection() {
 
       {/* ---------- MOBILE ---------- */}
       <div className="md:hidden px-6 pt-16 pb-10">
-        <h3 className="mb-3 text-xs tracking-[0.25em] font-thin text-white/60">
+        <h3 className="mb-3 text-xs tracking-[0.25em] font-thin text-white/60 text-center">
           MENU
         </h3>
 
@@ -787,7 +806,7 @@ export default function MenuSection() {
         </div>
 
         {/* search */}
-        <div className="mt-4">
+        <div className="mt-4 relative z-10">
           <input
             type="search"
             value={q}
@@ -796,12 +815,12 @@ export default function MenuSection() {
             placeholder="Szukaj po nazwie…"
             spellCheck={false}
             autoComplete="off"
-            className="w-full bg-black text-white placeholder-white/50 outline-none px-4 py-3 text-sm font-light"
+            className="w-full bg-black text-white placeholder-white/50 outline-none px-4 py-3 text-sm font-light rounded-md border border-white/15"
             aria-label="Szukaj po nazwie"
           />
         </div>
 
-        {/* DWA RZĘDY KARUZEL NA MOBILE, GESTEM */}
+        {/* DWA RZĘDY KARUZEL NA MOBILE */}
         {loading ? (
           <div className="mt-6 grid grid-rows-2 gap-6">
             {Array.from({ length: 2 }).map((_, r) => (
@@ -812,7 +831,7 @@ export default function MenuSection() {
               </div>
             ))}
           </div>
-        ) : groupsM.length === 0 ? (
+        ) : groupsTopM.length + groupsBotM.length === 0 ? (
           <p className="mt-6 text-white/60 text-sm text-center">
             Brak pozycji.
           </p>
@@ -882,7 +901,7 @@ export default function MenuSection() {
       {/* ---------- DESKTOP ---------- */}
       <div
         className="hidden md:block relative z-10 mx-auto w-full max-w-7xl"
-        style={{ paddingLeft: "var(--gutter)", paddingRight: "var(--gutter)" }}
+        style={{ paddingLeft: GUTTER, paddingRight: GUTTER }}
       >
         <div className="py-14 md:py-20 grid grid-cols-12 gap-10">
           {/* SIDEBAR */}
@@ -962,7 +981,7 @@ export default function MenuSection() {
                   </div>
                 ))}
               </div>
-            ) : groupsD.length === 0 ? (
+            ) : groupsTopD.length + groupsBotD.length === 0 ? (
               <p className="text-white/60 text-sm font-light">Brak pozycji.</p>
             ) : (
               <div className="space-y-10">

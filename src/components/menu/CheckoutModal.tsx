@@ -238,6 +238,7 @@ function useIsMobile(breakpoint = 1024) {
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     const mq = window.matchMedia(`(max-width:${breakpoint - 1}px)`);
+
     const update = () => setIsMobile(mq.matches);
     update();
     mq.addEventListener?.("change", update);
@@ -763,7 +764,7 @@ function ChopsticksControl({
     <div className="mt-4 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-black">Ilość pałeczek</span>
-        <span className="text-[11px] text.black/60">0 = nie potrzebuję</span>
+        <span className="text-[11px] text-black/60">0 = nie potrzebuję</span>
       </div>
       <div className="flex items-center justify-center gap-4">
         <button
@@ -777,7 +778,7 @@ function ChopsticksControl({
         <button
           type="button"
           onClick={inc}
-          className="h-11 w-11 rounded-full border border-black/20 bg.black text-white text-xl flex items-center justify-center"
+          className="h-11 w-11 rounded-full border border-black/20 bg-black text-white text-xl flex items-center justify-center"
         >
           +
         </button>
@@ -1444,7 +1445,7 @@ export default function CheckoutModal() {
               <div>
                 {orderSent ? (
                   <div className="min-h-[320px] flex flex-col items-center justify-center text-center space-y-5 px-4">
-                    <div className="bg-white p-4 rounded-2xl shadow flex flex-col items.center gap-2">
+                    <div className="bg-white p-4 rounded-2xl shadow flex flex-col items-center gap-2">
                       <div className="bg-white p-3 rounded-xl">
                         <QRCode value={thanksQrUrl} size={170} />
                       </div>
@@ -1527,7 +1528,7 @@ export default function CheckoutModal() {
                       <div className="space-y-6">
                         {isMobile && (
                           <MobileTopBar>
-                            <div className="flex justify.end">
+                            <div className="flex justify-end">
                               <button
                                 onClick={() => nextStep()}
                                 disabled={!selectedOption}
@@ -1651,7 +1652,7 @@ export default function CheckoutModal() {
                                 <input
                                   type="text"
                                   placeholder="Numer mieszkania (opcjonalnie)"
-                                  className="flex-1 px-3 py-2 border border-black/15 rounded-xl bg.white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
+                                  className="flex-1 px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
                                   value={flatNumber}
                                   onChange={(e) => setFlatNumber(e.target.value)}
                                   disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
@@ -1659,7 +1660,7 @@ export default function CheckoutModal() {
                                 <input
                                   type="text"
                                   placeholder="Kod pocztowy"
-                                  className="flex-1 px-3 py-2 border border-black/15 rounded-xl bg.white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
+                                  className="flex-1 px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
                                   value={postalCode}
                                   onChange={(e) => setPostalCode(e.target.value)}
                                   disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
@@ -1668,7 +1669,7 @@ export default function CheckoutModal() {
                               <input
                                 type="text"
                                 placeholder="Miasto"
-                                className="w-full px-3 py-2 border border-black/15 rounded-xl bg.white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
+                                className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
                                 value={city}
                                 onChange={(e) => setCity(e.target.value)}
                                 disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
@@ -1693,14 +1694,14 @@ export default function CheckoutModal() {
                           <input
                             type="text"
                             placeholder="Imię"
-                            className="w-full px-3 py-2 border border-black/15 rounded-xl bg.white"
+                            className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                           />
                           <input
                             type="tel"
                             placeholder="Telefon"
-                            className="w-full px-3 py-2 border border-black/15 rounded-xl bg.white"
+                            className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
                             value={phone}
                             onChange={(e) => setPhone(e.target.value)}
                           />
@@ -1708,7 +1709,7 @@ export default function CheckoutModal() {
                             <input
                               type="text"
                               placeholder="Uwagi do odbioru (opcjonalnie)"
-                              className="w-full px-3 py-2 border border-black/15 rounded-xl bg.white"
+                              className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
                               value={optionalAddress}
                               onChange={(e) => setOptionalAddress(e.target.value)}
                             />
@@ -1716,7 +1717,7 @@ export default function CheckoutModal() {
                           <input
                             type="email"
                             placeholder="Email (wymagany do potwierdzenia)"
-                            className="w-full px-3 py-2 border border-black/15 rounded-xl bg.white"
+                            className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
                             value={contactEmail}
                             onChange={(e) => setContactEmail(e.target.value)}
                           />
@@ -1753,67 +1754,119 @@ export default function CheckoutModal() {
                         </div>
 
                         {isMobile && (
-                          <div className="mt-3 rounded-2xl border border-black/10 bg-gray-50 p-4 space-y-3">
-                            <h4 className="text-lg font-semibold">Potwierdzenia</h4>
-                            <div className="space-y-3">
-                              {LegalConsent}
-                              <label className="flex items-start gap-2 text-xs leading-5 text.black">
-                                <input
-                                  type="checkbox"
-                                  checked={confirmCityOk}
-                                  onChange={(e) => setConfirmCityOk(e.target.checked)}
-                                  className="mt-0.5"
-                                />
-                                <span>
-                                  Uwaga: składasz zamówienie do restauracji w{" "}
-                                  <b>{restaurantCityLabel}</b>. Potwierdzam, że to prawidłowe miasto.
-                                </span>
-                              </label>
-
-                              {TURNSTILE_SITE_KEY ? (
-                                <div>
-                                  <h4 className="font-semibold mb-1">Weryfikacja</h4>
-                                  {turnstileError ? (
-                                    <p className="text-sm text-red-600">
-                                      Nie udało się załadować weryfikacji.
-                                    </p>
-                                  ) : (
-                                    <>
-                                      <div ref={tsMobileRef} />
-                                      <p className="text-[11px] text-black/60 mt-1">
-                                        Chronimy formularz przed botami.
-                                      </p>
-                                    </>
-                                  )}
+                          <div className="mt-3 space-y-4">
+                            {/* MOBILE: podsumowanie cen jak na desktopie */}
+                            <div className="rounded-2xl border border-black/10 bg-white p-4 space-y-2">
+                              <h4 className="text-lg font-semibold">Podsumowanie</h4>
+                              <div className="space-y-1 text-sm">
+                                <div className="flex justify-between">
+                                  <span>Produkty:</span>
+                                  <span>{baseTotal.toFixed(2)} zł</span>
                                 </div>
-                              ) : (
-                                <p className="text-[11px] text-black/60">
-                                  Weryfikacja Turnstile wyłączona (brak klucza).
+                                {selectedOption && (
+                                  <div className="flex justify-between">
+                                    <span>Opakowanie:</span>
+                                    <span>2.00 zł</span>
+                                  </div>
+                                )}
+                                {deliveryInfo && (
+                                  <div className="flex justify-between">
+                                    <span>Dostawa:</span>
+                                    <span>{deliveryInfo.cost.toFixed(2)} zł</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              <PromoSection
+                                promo={promo}
+                                promoError={promoError}
+                                onApply={applyPromo}
+                                onClear={clearPromo}
+                              />
+
+                              {discount > 0 && (
+                                <div className="flex justify-between text-sm text-green-700">
+                                  <span>Rabat:</span>
+                                  <span>-{discount.toFixed(2)} zł</span>
+                                </div>
+                              )}
+
+                              <div className="flex justify-between font-semibold border-t border-black/10 pt-2">
+                                <span>RAZEM:</span>
+                                <span>{totalWithDelivery.toFixed(2)} zł</span>
+                              </div>
+
+                              {deliveryInfo && (
+                                <p className="text-[11px] text-black/60 text-center mt-1">
+                                  ETA: {deliveryInfo.eta}
                                 </p>
                               )}
                             </div>
 
-                            {!shouldHideOrderActions && (
-                              <button
-                                onClick={handleSubmitOrder}
-                                disabled={
-                                  submitting ||
-                                  !legalAccepted ||
-                                  !confirmCityOk ||
-                                  (TURNSTILE_SITE_KEY ? !turnstileToken : false)
-                                }
-                                className={`w-full mt-2 py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
-                              >
-                                {submitting ? (
-                                  <span className="flex items-center justify-center gap-2">
-                                    <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
-                                    Przetwarzanie...
+                            {/* MOBILE: potwierdzenia + Turnstile + przycisk */}
+                            <div className="rounded-2xl border border-black/10 bg-gray-50 p-4 space-y-3">
+                              <h4 className="text-lg font-semibold">Potwierdzenia</h4>
+                              <div className="space-y-3">
+                                {LegalConsent}
+                                <label className="flex items-start gap-2 text-xs leading-5 text-black">
+                                  <input
+                                    type="checkbox"
+                                    checked={confirmCityOk}
+                                    onChange={(e) => setConfirmCityOk(e.target.checked)}
+                                    className="mt-0.5"
+                                  />
+                                  <span>
+                                    Uwaga: składasz zamówienie do restauracji w{" "}
+                                    <b>{restaurantCityLabel}</b>. Potwierdzam, że to prawidłowe
+                                    miasto.
                                   </span>
+                                </label>
+
+                                {TURNSTILE_SITE_KEY ? (
+                                  <div>
+                                    <h4 className="font-semibold mb-1">Weryfikacja</h4>
+                                    {turnstileError ? (
+                                      <p className="text-sm text-red-600">
+                                        Nie udało się załadować weryfikacji.
+                                      </p>
+                                    ) : (
+                                      <>
+                                        <div ref={tsMobileRef} />
+                                        <p className="text-[11px] text-black/60 mt-1">
+                                          Chronimy formularz przed botami.
+                                        </p>
+                                      </>
+                                    )}
+                                  </div>
                                 ) : (
-                                  "✅ Zamawiam"
+                                  <p className="text-[11px] text-black/60">
+                                    Weryfikacja Turnstile wyłączona (brak klucza).
+                                  </p>
                                 )}
-                              </button>
-                            )}
+                              </div>
+
+                              {!shouldHideOrderActions && (
+                                <button
+                                  onClick={handleSubmitOrder}
+                                  disabled={
+                                    submitting ||
+                                    !legalAccepted ||
+                                    !confirmCityOk ||
+                                    (TURNSTILE_SITE_KEY ? !turnstileToken : false)
+                                  }
+                                  className={`w-full mt-2 py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
+                                >
+                                  {submitting ? (
+                                    <span className="flex items-center justify-center gap-2">
+                                      <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                                      Przetwarzanie...
+                                    </span>
+                                  ) : (
+                                    "✅ Zamawiam"
+                                  )}
+                                </button>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1821,7 +1874,7 @@ export default function CheckoutModal() {
 
                     {!isMobile && checkoutStep === 3 && (
                       <div className="space-y-6">
-                        <h3 className="text-2xl font.bold text-center">Podsumowanie</h3>
+                        <h3 className="text-2xl font-bold text-center">Podsumowanie</h3>
 
                         {selectedOption === "delivery" && (
                           <div className="rounded-xl bg-yellow-50 border border-yellow-200 p-3 text-sm text-center">
@@ -1841,7 +1894,7 @@ export default function CheckoutModal() {
                                   helpers={productHelpers}
                                 />
                                 <textarea
-                                  className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg.white"
+                                  className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
                                   placeholder="Notatka do produktu"
                                   value={notes[idx] || ""}
                                   onChange={(e) => setNotes({ ...notes, [idx]: e.target.value })}
@@ -1920,7 +1973,7 @@ export default function CheckoutModal() {
 
                     <div className="space-y-2">
                       {LegalConsent}
-                      <label className="flex items-start gap-2 text-xs leading-5 text.black">
+                      <label className="flex items-start gap-2 text-xs leading-5 text-black">
                         <input
                           type="checkbox"
                           checked={confirmCityOk}
