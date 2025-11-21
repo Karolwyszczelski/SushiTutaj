@@ -24,6 +24,15 @@ function makeRes(body: any, code = 200) {
   });
 }
 
+type RestaurantBySlugRow = {
+  id: string;
+  slug: string | null;
+};
+
+type RestaurantSlugRow = {
+  slug: string | null;
+};
+
 export async function GET(req: Request) {
   const supabase = createRouteHandlerClient<Database>({ cookies });
   const url = new URL(req.url);
@@ -37,7 +46,7 @@ export async function GET(req: Request) {
     search.get("city") ||
     null;
 
-  // WAŻNE: cookies() jest teraz asynchroniczne w route handlerach
+  // w aktualnym Next cookies() zwraca Promise<ReadonlyRequestCookies>
   const cookieStore = await cookies();
   const cookieId = cookieStore.get("restaurant_id")?.value ?? null;
   const cookieSlug = cookieStore.get("restaurant_slug")?.value ?? null;
@@ -59,10 +68,13 @@ export async function GET(req: Request) {
         .from("restaurants")
         .select("id, slug")
         .eq("slug", restaurantSlug)
-        .maybeSingle();
+        .maybeSingle<RestaurantBySlugRow>();
 
       if (error) {
-        console.error("ensure-cookie restaurants by slug error:", error.message);
+        console.error(
+          "ensure-cookie restaurants by slug error:",
+          error.message
+        );
         return makeRes({ error: error.message }, 500);
       }
       if (!data) {
@@ -79,7 +91,7 @@ export async function GET(req: Request) {
         .from("restaurants")
         .select("slug")
         .eq("id", restaurantId)
-        .maybeSingle();
+        .maybeSingle<RestaurantSlugRow>();
 
       if (error) {
         console.error("ensure-cookie restaurants by id error:", error.message);
@@ -98,7 +110,7 @@ export async function GET(req: Request) {
         .eq("user_id", userId)
         .order("added_at", { ascending: true })
         .limit(1)
-        .maybeSingle();
+        .maybeSingle<{ restaurant_id: string }>();
 
       if (adminError) {
         console.error(
@@ -122,7 +134,7 @@ export async function GET(req: Request) {
         .from("restaurants")
         .select("slug")
         .eq("id", restaurantId)
-        .maybeSingle();
+        .maybeSingle<RestaurantSlugRow>();
 
       if (error) {
         console.error(
