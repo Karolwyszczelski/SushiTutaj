@@ -37,7 +37,8 @@ export async function GET(req: Request) {
     search.get("city") ||
     null;
 
-  const cookieStore = cookies();
+  // WAŻNE: cookies() jest teraz asynchroniczne w route handlerach
+  const cookieStore = await cookies();
   const cookieId = cookieStore.get("restaurant_id")?.value ?? null;
   const cookieSlug = cookieStore.get("restaurant_slug")?.value ?? null;
 
