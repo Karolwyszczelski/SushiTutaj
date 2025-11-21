@@ -49,7 +49,9 @@ export default function DeliveryZonesForm() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch("/api/admin/delivery-zones", { cache: "no-store" });
+      const r = await fetch("/api/admin/delivery-zones", {
+        cache: "no-store",
+      });
       if (!r.ok) {
         setError("Nie udało się pobrać stref.");
         setLoading(false);
@@ -66,7 +68,7 @@ export default function DeliveryZonesForm() {
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   async function create() {
@@ -255,12 +257,16 @@ export default function DeliveryZonesForm() {
           <Num
             label="ETA min"
             value={draft.eta_min_minutes}
-            onChange={(v) => setDraft({ ...draft, eta_min_minutes: v ?? 0 })}
+            onChange={(v) =>
+              setDraft({ ...draft, eta_min_minutes: v ?? 0 })
+            }
           />
           <Num
             label="ETA max"
             value={draft.eta_max_minutes}
-            onChange={(v) => setDraft({ ...draft, eta_max_minutes: v ?? 0 })}
+            onChange={(v) =>
+              setDraft({ ...draft, eta_max_minutes: v ?? 0 })
+            }
           />
           <Num
             label="Stała (zł)"
@@ -298,12 +304,16 @@ function Num({
   onChange: (v: number | null) => void;
   nullable?: boolean;
 }) {
+  const inputCls =
+    "h-9 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-900 " +
+    "shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300";
+
   return (
     <label className="flex flex-col gap-1 md:col-span-1">
       <span className="text-[12px] text-slate-600">{label}</span>
       <input
         type="number"
-        className="h-9 rounded-md border px-2"
+        className={inputCls}
         value={value ?? ""}
         onChange={(e) => {
           const v = e.target.value;

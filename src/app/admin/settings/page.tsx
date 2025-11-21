@@ -1,3 +1,4 @@
+// src/app/admin/settings/page.tsx
 "use client";
 
 import { Tab } from "@headlessui/react";
@@ -11,8 +12,9 @@ function classNames(...classes: string[]) {
 
 export default function SettingsPage() {
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="min-h-screen bg-slate-50 p-6 text-slate-900">
+      {/* nagłówek */}
+      <div className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">
           Ustawienia panelu
         </h1>
@@ -21,12 +23,13 @@ export default function SettingsPage() {
         </p>
       </div>
 
+      {/* zakładki */}
       <Tab.Group>
         <Tab.List className="flex gap-2 rounded-xl bg-slate-100 p-1 text-sm">
           <Tab
             className={({ selected }) =>
               classNames(
-                "flex-1 rounded-lg px-3 py-2 text-center font-medium outline-none",
+                "flex-1 rounded-lg px-3 py-2 text-center font-medium outline-none transition",
                 selected
                   ? "bg-white text-slate-900 shadow-sm"
                   : "text-slate-600 hover:text-slate-900"
@@ -38,7 +41,7 @@ export default function SettingsPage() {
           <Tab
             className={({ selected }) =>
               classNames(
-                "flex-1 rounded-lg px-3 py-2 text-center font-medium outline-none",
+                "flex-1 rounded-lg px-3 py-2 text-center font-medium outline-none transition",
                 selected
                   ? "bg-white text-slate-900 shadow-sm"
                   : "text-slate-600 hover:text-slate-900"
@@ -50,7 +53,7 @@ export default function SettingsPage() {
           <Tab
             className={({ selected }) =>
               classNames(
-                "flex-1 rounded-lg px-3 py-2 text-center font-medium outline-none",
+                "flex-1 rounded-lg px-3 py-2 text-center font-medium outline-none transition",
                 selected
                   ? "bg-white text-slate-900 shadow-sm"
                   : "text-slate-600 hover:text-slate-900"
@@ -62,14 +65,22 @@ export default function SettingsPage() {
         </Tab.List>
 
         <Tab.Panels className="mt-4">
-          <Tab.Panel>
-            <TableLayoutForm />
+          <Tab.Panel className="focus:outline-none">
+            <div className="rounded-2xl border bg-white p-5 shadow-sm">
+              <TableLayoutForm />
+            </div>
           </Tab.Panel>
-          <Tab.Panel>
-            <DeliveryZonesForm />
+
+          <Tab.Panel className="focus:outline-none">
+            <div className="rounded-2xl border bg-white p-5 shadow-sm">
+              <DeliveryZonesForm />
+            </div>
           </Tab.Panel>
-          <Tab.Panel>
-            <BlockedAddressesForm />
+
+          <Tab.Panel className="focus:outline-none">
+            <div className="rounded-2xl border bg-white p-5 shadow-sm">
+              <BlockedAddressesForm />
+            </div>
           </Tab.Panel>
         </Tab.Panels>
       </Tab.Group>

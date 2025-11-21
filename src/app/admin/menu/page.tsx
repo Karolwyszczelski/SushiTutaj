@@ -2,7 +2,15 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Pencil, Trash, ToggleRight, ChevronDown, Power, Plus, X as XIcon } from "lucide-react";
+import {
+  Pencil,
+  Trash,
+  ToggleRight,
+  ChevronDown,
+  Power,
+  Plus,
+  X as XIcon,
+} from "lucide-react";
 import debounce from "lodash.debounce";
 
 /* ========= Typy ========= */
@@ -26,7 +34,8 @@ type Closure = {
 };
 
 /* ========= Utils ========= */
-const fmtPrice = (cents?: number | null) => ((cents ?? 0) / 100).toFixed(2) + " zł";
+const fmtPrice = (cents?: number | null) =>
+  ((cents ?? 0) / 100).toFixed(2) + " zł";
 const ymd = (d: Date) => {
   const y = d.getFullYear();
   const m = `${d.getMonth() + 1}`.padStart(2, "0");
@@ -47,7 +56,10 @@ function EditProductModal({
   const supabase = useMemo(() => createClientComponentClient(), []);
   const [form, setForm] = useState({
     name: product.name ?? "",
-    priceZl: product.price_cents != null ? (product.price_cents / 100).toFixed(2) : "",
+    priceZl:
+      product.price_cents != null
+        ? (product.price_cents / 100).toFixed(2)
+        : "",
     description: product.description ?? "",
     subcategory: product.subcategory ?? "",
     image_url: product.image_url ?? "",
@@ -60,13 +72,17 @@ function EditProductModal({
     setErr(null);
     setSaving(true);
     try {
-      const cents = Math.round(Number((form.priceZl || "0").replace(",", ".")) * 100);
+      const cents = Math.round(
+        Number((form.priceZl || "0").replace(",", ".")) * 100
+      );
       const payload: Partial<Product> = {
         name: form.name || null,
         description: form.description || null,
         subcategory: form.subcategory || null,
         image_url: form.image_url || null,
-        position: Number.isFinite(form.position as number) ? Number(form.position) : 0,
+        position: Number.isFinite(form.position as number)
+          ? Number(form.position)
+          : 0,
         price_cents: Number.isFinite(cents) ? cents : 0,
       };
       const { data, error } = await supabase
@@ -94,7 +110,10 @@ function EditProductModal({
       >
         <div className="flex items-center justify-between border-b px-6 py-4">
           <h3 className="text-xl font-bold">Edytuj produkt</h3>
-          <button onClick={onClose} className="inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-sm hover:bg-slate-50">
+          <button
+            onClick={onClose}
+            className="inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-sm hover:bg-slate-50"
+          >
             Zamknij
           </button>
         </div>
@@ -107,18 +126,26 @@ function EditProductModal({
           )}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">Nazwa</label>
+              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+                Nazwa
+              </label>
               <input
                 value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, name: e.target.value }))
+                }
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">Cena (PLN)</label>
+              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+                Cena (PLN)
+              </label>
               <input
                 value={form.priceZl}
-                onChange={(e) => setForm((f) => ({ ...f, priceZl: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, priceZl: e.target.value }))
+                }
                 inputMode="decimal"
                 placeholder="np. 34.00"
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
@@ -126,39 +153,55 @@ function EditProductModal({
             </div>
 
             <div className="md:col-span-2">
-              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">Opis</label>
+              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+                Opis
+              </label>
               <textarea
                 rows={3}
                 value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, description: e.target.value }))
+                }
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">Kategoria</label>
+              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+                Kategoria
+              </label>
               <input
                 value={form.subcategory}
-                onChange={(e) => setForm((f) => ({ ...f, subcategory: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, subcategory: e.target.value }))
+                }
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">Kolejność</label>
+              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+                Kolejność
+              </label>
               <input
                 type="number"
                 value={form.position}
-                onChange={(e) => setForm((f) => ({ ...f, position: Number(e.target.value) }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, position: Number(e.target.value) }))
+                }
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
               />
             </div>
 
             <div className="md:col-span-2">
-              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">URL obrazka</label>
+              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+                URL obrazka
+              </label>
               <input
                 value={form.image_url}
-                onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, image_url: e.target.value }))
+                }
                 placeholder="https://…"
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
               />
@@ -167,7 +210,10 @@ function EditProductModal({
         </div>
 
         <div className="flex justify-end gap-2 border-t px-6 py-3">
-          <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50">
+          <button
+            onClick={onClose}
+            className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
+          >
             Anuluj
           </button>
           <button
@@ -191,7 +237,9 @@ export default function AdminMenuPage() {
 
   const [products, setProducts] = useState<Product[]>([]);
   const [filterCat, setFilterCat] = useState<string>("Wszystkie");
-  const [sortKey, setSortKey] = useState<"nameAsc" | "nameDesc" | "priceAsc" | "priceDesc">("nameAsc");
+  const [sortKey, setSortKey] = useState<
+    "nameAsc" | "nameDesc" | "priceAsc" | "priceDesc"
+  >("nameAsc");
   const [search, setSearch] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -214,7 +262,10 @@ export default function AdminMenuPage() {
     let stop = false;
     (async () => {
       try {
-        const r = await fetch("/api/restaurants/ensure-cookie", { cache: "no-store", credentials: "include" });
+        const r = await fetch("/api/restaurants/ensure-cookie", {
+          cache: "no-store",
+          credentials: "include",
+        });
         const j = await r.json().catch(() => ({}));
         if (stop) return;
         setRestaurantId(j?.restaurant_id ?? null);
@@ -226,23 +277,34 @@ export default function AdminMenuPage() {
         }
       }
     })();
-    return () => { stop = true; };
+    return () => {
+      stop = true;
+    };
   }, []);
 
   /* 2) Załaduj produkty + status przyjmowania + przerwy dzisiaj */
   const fetchAll = useCallback(async () => {
-    if (!restaurantId) { setLoading(false); return; }
+    if (!restaurantId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [{ data, error: err }, ri, cls] = await Promise.all([
         supabase
           .from("products")
-          .select("id,restaurant_id,name,description,subcategory,position,image_url,available,price_cents")
+          .select(
+            "id,restaurant_id,name,description,subcategory,position,image_url,available,price_cents"
+          )
           .eq("restaurant_id", restaurantId)
           .order("subcategory", { ascending: true, nullsFirst: true })
           .order("position", { ascending: true, nullsFirst: true })
           .order("name", { ascending: true }),
-        supabase.from("restaurants").select("active").eq("id", restaurantId).maybeSingle(),
+        supabase
+          .from("restaurants")
+          .select("active")
+          .eq("id", restaurantId)
+          .maybeSingle(),
         supabase
           .from("restaurant_closures")
           .select("*")
@@ -271,7 +333,12 @@ export default function AdminMenuPage() {
       .channel("public:products:" + restaurantId)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "products", filter: `restaurant_id=eq.${restaurantId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "products",
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
         () => void fetchAll()
       )
       .subscribe();
@@ -280,10 +347,16 @@ export default function AdminMenuPage() {
       .channel("public:restaurants:" + restaurantId)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "restaurants", filter: `id=eq.${restaurantId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "restaurants",
+          filter: `id=eq.${restaurantId}`,
+        },
         (p: any) => {
           const row = (p?.new || p?.record) as { active?: boolean } | undefined;
-          if (row && typeof row.active === "boolean") setOrderingOpen(row.active);
+          if (row && typeof row.active === "boolean")
+            setOrderingOpen(row.active);
         }
       )
       .subscribe();
@@ -292,7 +365,12 @@ export default function AdminMenuPage() {
       .channel("public:restaurant_closures:" + restaurantId)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "restaurant_closures", filter: `restaurant_id=eq.${restaurantId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "restaurant_closures",
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
         () => void fetchAll()
       )
       .subscribe();
@@ -307,13 +385,20 @@ export default function AdminMenuPage() {
   /* 3) Akcje */
   const toggleAvailability = async (id: string, current: boolean) => {
     setTogglingId(id);
-    setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, available: !current } : p)));
+    setProducts((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, available: !current } : p))
+    );
     try {
-      const { error } = await supabase.from("products").update({ available: !current }).eq("id", id);
+      const { error } = await supabase
+        .from("products")
+        .update({ available: !current })
+        .eq("id", id);
       if (error) throw error;
     } catch (e: any) {
       alert(`Nie udało się zmienić dostępności: ${e.message || e}`);
-      setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, available: current } : p)));
+      setProducts((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, available: current } : p))
+      );
     } finally {
       setTogglingId(null);
     }
@@ -332,7 +417,9 @@ export default function AdminMenuPage() {
       if (error) throw error;
     } catch (e: any) {
       setOrderingOpen(!orderingOpen);
-      alert("Nie udało się zmienić statusu zamawiania: " + (e.message || e));
+      alert(
+        "Nie udało się zmienić statusu zamawiania: " + (e.message || e)
+      );
     } finally {
       setToggleOrderingBusy(false);
     }
@@ -342,13 +429,15 @@ export default function AdminMenuPage() {
     if (!restaurantId) return;
     if (!cStart || !cEnd) return alert("Podaj godziny.");
     try {
-      const { error } = await supabase.from("restaurant_closures").insert([{
-        restaurant_id: restaurantId,
-        date: todayStr,
-        start_time: cStart,
-        end_time: cEnd,
-        reason: cReason || null,
-      }]);
+      const { error } = await supabase.from("restaurant_closures").insert([
+        {
+          restaurant_id: restaurantId,
+          date: todayStr,
+          start_time: cStart,
+          end_time: cEnd,
+          reason: cReason || null,
+        },
+      ]);
       if (error) throw error;
       setCReason("");
       await fetchAll();
@@ -359,7 +448,10 @@ export default function AdminMenuPage() {
 
   const delClosure = async (id: string) => {
     try {
-      const { error } = await supabase.from("restaurant_closures").delete().eq("id", id);
+      const { error } = await supabase
+        .from("restaurant_closures")
+        .delete()
+        .eq("id", id);
       if (error) throw error;
       await fetchAll();
     } catch (e: any) {
@@ -369,34 +461,57 @@ export default function AdminMenuPage() {
 
   /* 4) Filtry */
   const categories = useMemo(
-    () => Array.from(new Set(products.map((p) => p.subcategory || "Bez kategorii"))).filter(Boolean).sort(),
+    () =>
+      Array.from(
+        new Set(
+          products.map((p) => p.subcategory || "Bez kategorii")
+        )
+      )
+        .filter(Boolean)
+        .sort(),
     [products]
   );
 
   const filtered = useMemo(() => {
     return products
       .filter((p) => {
-        if (filterCat !== "Wszystkie" && (p.subcategory || "Bez kategorii") !== filterCat) return false;
+        if (
+          filterCat !== "Wszystkie" &&
+          (p.subcategory || "Bez kategorii") !== filterCat
+        )
+          return false;
         if (search.trim()) {
           const term = search.toLowerCase();
-          return (p.name || "").toLowerCase().includes(term) || (p.description || "").toLowerCase().includes(term);
+          return (
+            (p.name || "").toLowerCase().includes(term) ||
+            (p.description || "").toLowerCase().includes(term)
+          );
         }
         return true;
       })
       .sort((a, b) => {
         switch (sortKey) {
-          case "nameAsc": return (a.name || "").localeCompare(b.name || "");
-          case "nameDesc": return (b.name || "").localeCompare(a.name || "");
-          case "priceAsc": return (a.price_cents ?? 0) - (b.price_cents ?? 0);
-          case "priceDesc": return (b.price_cents ?? 0) - (a.price_cents ?? 0);
-          default: return 0;
+          case "nameAsc":
+            return (a.name || "").localeCompare(b.name || "");
+          case "nameDesc":
+            return (b.name || "").localeCompare(a.name || "");
+          case "priceAsc":
+            return (a.price_cents ?? 0) - (b.price_cents ?? 0);
+          case "priceDesc":
+            return (b.price_cents ?? 0) - (a.price_cents ?? 0);
+          default:
+            return 0;
         }
       });
   }, [products, filterCat, sortKey, search]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const onSearchChange = useCallback(debounce((v: string) => setSearch(v), 300), []);
-  const handleSaved = (u: Product) => setProducts((prev) => prev.map((p) => (p.id === u.id ? u : p)));
+  const onSearchChange = useCallback(
+    debounce((v: string) => setSearch(v), 300),
+    []
+  );
+  const handleSaved = (u: Product) =>
+    setProducts((prev) => prev.map((p) => (p.id === u.id ? u : p)));
 
   /* 5) UI */
   return (
@@ -409,16 +524,24 @@ export default function AdminMenuPage() {
 
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Zarządzanie menu {slug ? `— ${slug}` : ""}</h1>
-          {error && <p className="mt-1 text-sm text-rose-600">{error}</p>}
+          <h1 className="text-3xl font-bold">
+            Zarządzanie menu {slug ? `— ${slug}` : ""}
+          </h1>
+          {error && (
+            <p className="mt-1 text-sm text-rose-600">{error}</p>
+          )}
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
           <button
             onClick={flipOrdering}
-            disabled={orderingOpen == null || toggleOrderingBusy || !restaurantId}
+            disabled={
+              orderingOpen == null || toggleOrderingBusy || !restaurantId
+            }
             className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold shadow-sm ${
-              orderingOpen ? "bg-emerald-600 text-white" : "bg-white text-slate-800"
+              orderingOpen
+                ? "bg-emerald-600 text-white"
+                : "bg-white text-slate-800"
             }`}
             title="Włącz/wyłącz przyjmowanie zamówień"
           >
@@ -427,24 +550,30 @@ export default function AdminMenuPage() {
           </button>
 
           <div className="flex-1 min-w-[160px]">
-            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">Kategoria</label>
+            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+              Kategoria
+            </label>
             <select
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+              className="w-full rounded-xl border border-slate-200 bg-white text-slate-900 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
               value={filterCat}
               onChange={(e) => setFilterCat(e.target.value)}
             >
               <option value="Wszystkie">Wszystkie</option>
               {categories.map((c) => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c} value={c}>
+                  {c}
+                </option>
               ))}
             </select>
           </div>
 
           <div className="flex-1 min-w-[160px]">
-            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">Sortuj</label>
+            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+              Sortuj
+            </label>
             <div className="relative">
               <select
-                className="w-full appearance-none rounded-xl border border-slate-200 px-3 py-2 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+                className="w-full appearance-none rounded-xl border border-slate-200 bg-white text-slate-900 px-3 py-2 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
                 value={sortKey}
                 onChange={(e) => setSortKey(e.target.value as any)}
               >
@@ -460,12 +589,14 @@ export default function AdminMenuPage() {
           </div>
 
           <div className="min-w-[220px] flex-1">
-            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">Szukaj</label>
+            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+              Szukaj
+            </label>
             <input
               type="text"
               placeholder="Nazwa lub opis"
               onChange={(e) => onSearchChange(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+              className="w-full rounded-xl border border-slate-200 bg-white text-slate-900 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
             />
           </div>
 
@@ -482,23 +613,42 @@ export default function AdminMenuPage() {
       {/* Pasek przerw „dziś” */}
       <div className="mb-6 rounded-2xl border bg-white p-5 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Przerwy dzisiaj ({todayStr})</h2>
+          <h2 className="text-lg font-semibold">
+            Przerwy dzisiaj ({todayStr})
+          </h2>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">Od</label>
-            <input value={cStart} onChange={(e) => setCStart(e.target.value)} type="time"
-              className="rounded-lg border border-slate-200 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300" />
+            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+              Od
+            </label>
+            <input
+              value={cStart}
+              onChange={(e) => setCStart(e.target.value)}
+              type="time"
+              className="rounded-lg border border-slate-200 bg-white text-slate-900 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+            />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">Do</label>
-            <input value={cEnd} onChange={(e) => setCEnd(e.target.value)} type="time"
-              className="rounded-lg border border-slate-200 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300" />
+            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+              Do
+            </label>
+            <input
+              value={cEnd}
+              onChange={(e) => setCEnd(e.target.value)}
+              type="time"
+              className="rounded-lg border border-slate-200 bg-white text-slate-900 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+            />
           </div>
           <div className="flex-1">
-            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">Powód (opcjonalnie)</label>
-            <input value={cReason} onChange={(e) => setCReason(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300" />
+            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+              Powód (opcjonalnie)
+            </label>
+            <input
+              value={cReason}
+              onChange={(e) => setCReason(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 bg-white text-slate-900 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
+            />
           </div>
           <button
             onClick={addClosure}
@@ -511,10 +661,15 @@ export default function AdminMenuPage() {
         {closures.length > 0 ? (
           <ul className="mt-4 divide-y divide-slate-100 text-sm">
             {closures.map((c) => (
-              <li key={c.id} className="flex items-center justify-between py-2">
+              <li
+                key={c.id}
+                className="flex items-center justify-between py-2"
+              >
                 <div>
                   {c.start_time}–{c.end_time}
-                  {c.reason ? <span className="text-slate-500"> • {c.reason}</span> : null}
+                  {c.reason ? (
+                    <span className="text-slate-500"> • {c.reason}</span>
+                  ) : null}
                 </div>
                 <button
                   onClick={() => delClosure(c.id)}
@@ -526,7 +681,9 @@ export default function AdminMenuPage() {
             ))}
           </ul>
         ) : (
-          <p className="mt-3 text-sm text-slate-500">Brak przerw na dziś.</p>
+          <p className="mt-3 text-sm text-slate-500">
+            Brak przerw na dziś.
+          </p>
         )}
       </div>
 
@@ -536,59 +693,120 @@ export default function AdminMenuPage() {
           <table className="min-w-full divide-y divide-slate-200">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">#</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Nazwa</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Cena</th>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">Kategoria</th>
-                <th className="px-6 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-600">Dostępność</th>
-                <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-600">Akcje</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  #
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Nazwa
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Cena
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Kategoria
+                </th>
+                <th className="px-6 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Dostępność
+                </th>
+                <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Akcje
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i} className="animate-pulse">
-                    <td className="px-6 py-4"><div className="h-4 w-4 rounded bg-slate-200" /></td>
-                    <td className="px-6 py-4"><div className="h-4 w-40 rounded bg-slate-200" /></td>
-                    <td className="px-6 py-4"><div className="h-4 w-16 rounded bg-slate-200" /></td>
-                    <td className="px-6 py-4"><div className="h-4 w-32 rounded bg-slate-200" /></td>
-                    <td className="px-6 py-4 text-center"><div className="inline-block h-6 w-16 rounded-full bg-slate-200" /></td>
-                    <td className="px-6 py-4 text-right"><div className="inline-block h-4 w-28 rounded bg-slate-200" /></td>
+                    <td className="px-6 py-4">
+                      <div className="h-4 w-4 rounded bg-slate-200" />
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="h-4 w-40 rounded bg-slate-200" />
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="h-4 w-16 rounded bg-slate-200" />
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="h-4 w-32 rounded bg-slate-200" />
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="inline-block h-6 w-16 rounded-full bg-slate-200" />
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="inline-block h-4 w-28 rounded bg-slate-200" />
+                    </td>
                   </tr>
                 ))
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">Brak produktów do wyświetlenia.</td>
+                  <td
+                    colSpan={6}
+                    className="px-6 py-12 text-center text-slate-500"
+                  >
+                    Brak produktów do wyświetlenia.
+                  </td>
                 </tr>
               ) : (
                 filtered.map((it, i) => (
-                  <tr key={it.id} className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}>
-                    <td className="px-6 py-4 text-sm font-medium text-slate-900">{i + 1}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-slate-900">{it.name}</td>
-                    <td className="px-6 py-4 text-sm text-slate-700">{fmtPrice(it.price_cents)}</td>
-                    <td className="px-6 py-4 text-sm text-slate-700">{it.subcategory}</td>
+                  <tr
+                    key={it.id}
+                    className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}
+                  >
+                    <td className="px-6 py-4 text-sm font-medium text-slate-900">
+                      {i + 1}
+                    </td>
+                    <td className="px-6 py-4 text-sm font-medium text-slate-900">
+                      {it.name}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-700">
+                      {fmtPrice(it.price_cents)}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-700">
+                      {it.subcategory}
+                    </td>
                     <td className="px-6 py-4 text-center">
                       <button
-                        onClick={() => toggleAvailability(it.id, it.available)}
+                        onClick={() =>
+                          toggleAvailability(it.id, it.available)
+                        }
                         disabled={togglingId === it.id}
                         className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition ${
-                          it.available ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
-                        } ${togglingId === it.id ? "cursor-not-allowed opacity-70" : "hover:scale-105"}`}
+                          it.available
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-rose-100 text-rose-800"
+                        } ${
+                          togglingId === it.id
+                            ? "cursor-not-allowed opacity-70"
+                            : "hover:scale-105"
+                        }`}
                       >
-                        {it.available ? "Dostępny" : "Wyłączony"} <ToggleRight className="h-4 w-4" />
+                        {it.available ? "Dostępny" : "Wyłączony"}{" "}
+                        <ToggleRight className="h-4 w-4" />
                       </button>
                     </td>
                     <td className="flex justify-end gap-2 px-6 py-4 text-right">
-                      <button onClick={() => setEditing(it)} className="inline-flex items-center gap-1 text-sky-700 hover:text-sky-900">
+                      <button
+                        onClick={() => setEditing(it)}
+                        className="inline-flex items-center gap-1 text-sky-700 hover:text-sky-900"
+                      >
                         <Pencil size={16} /> Edytuj
                       </button>
                       <button
                         onClick={() => {
                           if (!confirm("Na pewno usunąć ten produkt?")) return;
-                          supabase.from("products").delete().eq("id", it.id).then(({ error }) => {
-                            if (error) return alert("Nie udało się usunąć produktu");
-                            setProducts((p) => p.filter((x) => x.id !== it.id));
-                          });
+                          supabase
+                            .from("products")
+                            .delete()
+                            .eq("id", it.id)
+                            .then(({ error }) => {
+                              if (error)
+                                return alert(
+                                  "Nie udało się usunąć produktu"
+                                );
+                              setProducts((p) =>
+                                p.filter((x) => x.id !== it.id)
+                              );
+                            });
                         }}
                         className="inline-flex items-center gap-1 text-rose-600 hover:text-rose-800"
                       >
@@ -607,7 +825,10 @@ export default function AdminMenuPage() {
       <div className="mt-6 space-y-4 md:hidden">
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm">
+            <div
+              key={i}
+              className="flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm"
+            >
               <div className="h-4 w-3/4 rounded bg-slate-200" />
               <div className="flex justify-between">
                 <div className="h-4 w-1/4 rounded bg-slate-200" />
@@ -621,37 +842,71 @@ export default function AdminMenuPage() {
             </div>
           ))
         ) : filtered.length === 0 ? (
-          <div className="rounded-2xl bg-white p-8 text-center text-slate-500 shadow-sm">Brak produktów do wyświetlenia.</div>
+          <div className="rounded-2xl bg-white p-8 text-center text-slate-500 shadow-sm">
+            Brak produktów do wyświetlenia.
+          </div>
         ) : (
           filtered.map((it) => (
-            <div key={it.id} className="relative flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm">
+            <div
+              key={it.id}
+              className="relative flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm"
+            >
               <div className="flex items-start justify-between">
-                <div className="text-lg font-semibold text-slate-900">{it.name}</div>
-                <div className="text-sm font-medium text-slate-700">{fmtPrice(it.price_cents)}</div>
+                <div className="text-lg font-semibold text-slate-900">
+                  {it.name}
+                </div>
+                <div className="text-sm font-medium text-slate-700">
+                  {fmtPrice(it.price_cents)}
+                </div>
               </div>
-              <div className="text-xs text-slate-600">{it.subcategory}</div>
-              {it.description && <div className="text-sm text-slate-800">{it.description}</div>}
+              <div className="text-xs text-slate-600">
+                {it.subcategory}
+              </div>
+              {it.description && (
+                <div className="text-sm text-slate-800">
+                  {it.description}
+                </div>
+              )}
               <div className="mt-2 flex items-center justify-between gap-2">
                 <button
                   onClick={() => toggleAvailability(it.id, it.available)}
                   disabled={togglingId === it.id}
                   className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
-                    it.available ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"
-                  } ${togglingId === it.id ? "cursor-not-allowed opacity-70" : ""}`}
+                    it.available
+                      ? "bg-emerald-100 text-emerald-800"
+                      : "bg-rose-100 text-rose-800"
+                  } ${
+                    togglingId === it.id
+                      ? "cursor-not-allowed opacity-70"
+                      : ""
+                  }`}
                 >
-                  {it.available ? "Dostępny" : "Wyłączony"} <ToggleRight className="h-4 w-4" />
+                  {it.available ? "Dostępny" : "Wyłączony"}{" "}
+                  <ToggleRight className="h-4 w-4" />
                 </button>
                 <div className="flex gap-3">
-                  <button onClick={() => setEditing(it)} className="text-sky-700">
+                  <button
+                    onClick={() => setEditing(it)}
+                    className="text-sky-700"
+                  >
                     <Pencil size={16} />
                   </button>
                   <button
                     onClick={() => {
                       if (!confirm("Na pewno usunąć ten produkt?")) return;
-                      supabase.from("products").delete().eq("id", it.id).then(({ error }) => {
-                        if (error) return alert("Nie udało się usunąć produktu");
-                        setProducts((p) => p.filter((x) => x.id !== it.id));
-                      });
+                      supabase
+                        .from("products")
+                        .delete()
+                        .eq("id", it.id)
+                        .then(({ error }) => {
+                          if (error)
+                            return alert(
+                              "Nie udało się usunąć produktu"
+                            );
+                          setProducts((p) =>
+                            p.filter((x) => x.id !== it.id)
+                          );
+                        });
                     }}
                     className="text-rose-600"
                   >
@@ -664,7 +919,13 @@ export default function AdminMenuPage() {
         )}
       </div>
 
-      {editing && <EditProductModal product={editing} onClose={() => setEditing(null)} onSaved={handleSaved} />}
+      {editing && (
+        <EditProductModal
+          product={editing}
+          onClose={() => setEditing(null)}
+          onSaved={handleSaved}
+        />
+      )}
     </div>
   );
 }

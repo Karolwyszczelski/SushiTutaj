@@ -24,8 +24,7 @@ export default function BlockedAddressesForm() {
   const [error, setError] = useState<string | null>(null);
 
   const sorted = useMemo(
-    () =>
-      [...rows].sort((a, b) => a.pattern.localeCompare(b.pattern)),
+    () => [...rows].sort((a, b) => a.pattern.localeCompare(b.pattern)),
     [rows]
   );
 
@@ -52,7 +51,7 @@ export default function BlockedAddressesForm() {
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   async function create() {
@@ -121,6 +120,13 @@ export default function BlockedAddressesForm() {
     );
   }
 
+  const inputCls =
+    "h-9 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-900 " +
+    "shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300";
+
+  const checkboxCls =
+    "h-4 w-4 rounded border-slate-400 text-sky-600 focus:ring-sky-500";
+
   return (
     <div className="space-y-4">
       {error && (
@@ -153,7 +159,7 @@ export default function BlockedAddressesForm() {
                   </span>
                   <input
                     type="text"
-                    className="h-9 rounded-md border px-2 text-sm"
+                    className={inputCls}
                     value={row.pattern}
                     onChange={(e) =>
                       editLocal(row.id, "pattern", e.target.value)
@@ -164,21 +170,23 @@ export default function BlockedAddressesForm() {
                     ma blokować.
                   </p>
                 </div>
+
                 <div className="md:col-span-5 flex flex-col gap-1">
                   <span className="text-[12px] text-slate-600">Notatka</span>
                   <input
                     type="text"
-                    className="h-9 rounded-md border px-2 text-sm"
+                    className={inputCls}
                     value={row.note ?? ""}
                     onChange={(e) =>
                       editLocal(row.id, "note", e.target.value || null)
                     }
                   />
                 </div>
+
                 <label className="md:col-span-1 flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 rounded border-slate-400"
+                    className={checkboxCls}
                     checked={row.active}
                     onChange={(e) =>
                       editLocal(row.id, "active", e.target.checked)
@@ -186,6 +194,7 @@ export default function BlockedAddressesForm() {
                   />
                   <span>Aktywna</span>
                 </label>
+
                 <div className="md:col-span-2 flex gap-2">
                   <button
                     onClick={() => save(row)}
@@ -215,7 +224,7 @@ export default function BlockedAddressesForm() {
             <span className="text-[12px] text-slate-600">Wzorzec adresu</span>
             <input
               type="text"
-              className="h-9 rounded-md border px-2 text-sm"
+              className={inputCls}
               value={draft.pattern}
               onChange={(e) =>
                 setDraft({ ...draft, pattern: e.target.value })
@@ -227,7 +236,7 @@ export default function BlockedAddressesForm() {
             <span className="text-[12px] text-slate-600">Notatka</span>
             <input
               type="text"
-              className="h-9 rounded-md border px-2 text-sm"
+              className={inputCls}
               value={draft.note ?? ""}
               onChange={(e) =>
                 setDraft({ ...draft, note: e.target.value || "" })
@@ -238,7 +247,7 @@ export default function BlockedAddressesForm() {
           <label className="md:col-span-1 flex items-center gap-2 text-sm">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-400"
+              className={checkboxCls}
               checked={draft.active}
               onChange={(e) =>
                 setDraft({ ...draft, active: e.target.checked })
