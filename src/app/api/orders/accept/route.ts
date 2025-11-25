@@ -47,12 +47,16 @@ export async function POST(req: Request) {
     if (selErr) throw selErr;
     if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
-    // aktualizacja statusu i ETA — używaj kolumny `deliveryTime` (w typach jej używasz)
+     // aktualizacja statusu i ETA — ustaw oba warianty kolumny czasu
     const { data: updated, error: updErr } = await supabaseAdmin
       .from("orders")
-      .update({ status: "accepted", deliveryTime: etaISO })
+      .update({
+        status: "accepted",
+        deliveryTime: etaISO,
+        delivery_time: etaISO,
+      } as any)
       .eq("id", id)
-      .select("id, status, deliveryTime")
+      .select("id, status, deliveryTime, delivery_time")
       .maybeSingle();
     if (updErr) throw updErr;
 
@@ -79,7 +83,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       id: updated?.id,
       status: updated?.status,
-      deliveryTime: updated?.deliveryTime || etaISO,
+      deliveryTime: (updated as any)?.deliveryTime || (updated as any)?.delivery_time || etaISO,
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
