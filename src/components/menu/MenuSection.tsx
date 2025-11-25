@@ -60,7 +60,7 @@ const MENU_BR = {
   rot: "0deg",
 };
 const MENU_TR = {
-  src: "/assets/hero-left.png",
+  src: "/assets/hero-left.svg",
   w: "520px",
   h: "520px",
   x: "-100px",
