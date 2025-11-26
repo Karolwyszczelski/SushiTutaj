@@ -440,9 +440,10 @@ const ProductItem: React.FC<{
   const lineTotal = (priceNum + addonsCost) * (prod.quantity || 1);
 
   // Czy dany extra jest dozwolony dla tego produktu
-  const canUseExtra = (extra: string): boolean => {
+ const canUseExtra = (extra: string): boolean => {
     if (isSet) {
-      const hasFuto = setRows.some((row) => /futomaki/i.test(row.cat));
+      // w zestawach patrzymy po nazwach z opisu zestawu
+      const hasFuto = setRows.some((row) => /futo/i.test(row.cat));
       if (extra === "Tamago" && hasFuto) return true;
       if (extra === "Ryba pieczona") {
         return /SUROWY/i.test(prodInfo?.description || "");
@@ -452,7 +453,10 @@ const ProductItem: React.FC<{
 
     if (!prodInfo) return false;
 
-    if (subcat === "california") {
+    const s = (prodInfo.subcategory || subcat || "").toLowerCase();
+
+    // === California ===
+    if (s.includes("california")) {
       if (
         extra === "Ryba pieczona" &&
         isSpecialCaliforniaBakedFishProduct(
@@ -462,26 +466,30 @@ const ProductItem: React.FC<{
       ) {
         return true;
       }
+      // do California nie dokładamy innych EXTRAS poza tą jedną opcją
       return false;
     }
 
-    if (subcat === "hosomaki") {
+    // === Hosomaki / Hoso ===
+    if (s.includes("hoso")) {
+      // Hoso mają tylko Tempurę
       return extra === "Tempura";
     }
 
-    if (subcat === "futomaki") {
+    // === Futomaki / Futo ===
+    if (s.includes("futo")) {
       if (extra === "Ryba pieczona") {
-        return /surowy/i.test(prod.name);
+        // tylko przy surowych futomakach
+        return /surowy/i.test(`${prod.name} ${prodInfo.description || ""}`);
       }
       if (extra === "Tamago") return true;
       return extra === "Tempura" || extra === "Płatek sojowy";
     }
 
-    if (subcat === "nigiri") {
+    // === Nigiri ===
+    if (s.includes("nigiri")) {
       // Nigiri z łososiem / tuńczykiem – tylko Ryba pieczona (opalana)
-      const text = `${prodInfo.name} ${
-        prodInfo.description || ""
-      }`.toLowerCase();
+      const text = `${prodInfo.name} ${prodInfo.description || ""}`.toLowerCase();
       const fishNigiri =
         text.includes("łosoś") ||
         text.includes("losos") ||
