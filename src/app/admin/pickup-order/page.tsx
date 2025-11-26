@@ -37,7 +37,7 @@ interface Order {
   payment_method?: PaymentMethod;
   payment_status?: PaymentStatus;
 
-  // NEW: liczba pałeczek
+  // liczba pałeczek – tylko do odczytu
   chopsticks?: number | null;
 }
 
@@ -370,7 +370,7 @@ const AcceptButton: React.FC<{
   );
 };
 
-/* --------- NEW: pałeczki – ekstrakcja i zapis --------- */
+/* --------- Pałeczki – odczyt z różnych pól --------- */
 
 const asInt = (v: any): number | null => {
   const n = Number(v);
@@ -390,6 +390,7 @@ const readNestedInt = (obj: any, keys: string[]): number | null => {
 const extractChopsticksFromOrderRaw = (o: any): number | null => {
   // top-level
   const top = readNestedInt(o, [
+    "chopsticks_qty",
     "chopsticks_count",
     "chopsticks",
     "paleczki",
@@ -400,7 +401,7 @@ const extractChopsticksFromOrderRaw = (o: any): number | null => {
   ]);
   if (top !== null) return top;
 
-  // poszukaj w meta / options / data
+  // meta / options / data
   const deepCandidates = [
     o?.meta,
     o?.options,
@@ -412,6 +413,7 @@ const extractChopsticksFromOrderRaw = (o: any): number | null => {
   ].filter(Boolean);
   for (const d of deepCandidates) {
     const n = readNestedInt(d, [
+      "chopsticks_qty",
       "chopsticks_count",
       "chopsticks",
       "paleczki",
@@ -423,12 +425,17 @@ const extractChopsticksFromOrderRaw = (o: any): number | null => {
     if (n !== null) return n;
   }
 
-  // ostatnia próba: w items JSON – niektóre systemy pakują tu ustawienia
+  // w items JSON (niektóre systemy pakują tam ustawienia)
   try {
     const items = typeof o?.items === "string" ? JSON.parse(o.items) : o?.items;
     if (items && typeof items === "object") {
       const n =
-        readNestedInt(items, ["chopsticks_count", "chopsticks", "paleczki"]) ??
+        readNestedInt(items, [
+          "chopsticks_qty",
+          "chopsticks_count",
+          "chopsticks",
+          "paleczki",
+        ]) ??
         (Array.isArray(items)
           ? items.reduce<number | null>(
               (acc, it) => acc ?? extractChopsticksFromOrderRaw(it),
@@ -482,16 +489,15 @@ export default function PickupOrdersPage() {
     setBooted(true);
   }, [urlSlug]);
 
-  /* AUDIO – pojedynczy dźwięk + pętla alarmowa */
+  /* AUDIO – dźwięk nowego zamówienia */
   const newOrderAudio = useRef<HTMLAudioElement | null>(null);
-  const ringIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
   useEffect(() => {
     const a = new Audio("/new-order.mp3");
     a.preload = "auto";
     a.volume = 1;
     newOrderAudio.current = a;
 
+    // „odblokowanie” audio po pierwszym kliknięciu
     const unlock = async () => {
       try {
         a.currentTime = 0;
@@ -499,7 +505,6 @@ export default function PickupOrdersPage() {
         a.pause();
       } catch {}
     };
-
     window.addEventListener("pointerdown", unlock, { once: true });
     return () => window.removeEventListener("pointerdown", unlock);
   }, []);
@@ -551,6 +556,7 @@ export default function PickupOrdersPage() {
         return;
       }
 
+      /* ważne: bierzemy restaurant_id z odpowiedzi API, bo httpOnly cookie nie jest dostępne w JS */
       if (json?.restaurant_id && typeof json.restaurant_id === "string") {
         setRestaurantId(json.restaurant_id);
       }
@@ -559,36 +565,43 @@ export default function PickupOrdersPage() {
       const raw = Array.isArray(json.orders) ? json.orders : [];
       const totalCount = Number(json.totalCount || 0);
 
-      const mapped: Order[] = raw.map((o: any) => ({
-        id: String(o.id),
-        name: o.name ?? o.customer_name ?? o.client_name ?? undefined,
-        total_price: toNumber(o.total_price),
-        delivery_cost: o.delivery_cost ?? null,
-        created_at: o.created_at,
-        status: o.status,
-        clientDelivery:
-          o.client_delivery_time ??
-          o.delivery_time ??
-          o.clientDelivery,
-        deliveryTime: o.deliveryTime ?? o.delivery_time ?? null,
-        address:
-          o.selected_option === "delivery"
-            ? `${o.street || ""}${
-                o.flat_number ? `, nr ${o.flat_number}` : ""
-              }${o.city ? `, ${o.city}` : ""}`
-            : o.address || "",
-        street: o.street,
-        flat_number: o.flat_number,
-        city: o.city,
-        phone: o.phone,
-        items: o.items ?? o.order_items ?? [],
-        selected_option: o.selected_option,
-        payment_method: fromDBPaymentMethod(o.payment_method),
-        payment_status: fromDBPaymentStatus(o.payment_status),
+      const mapped: Order[] = raw.map((o: any) => {
+        const chopsticksRaw =
+          asInt(o.chopsticks_qty) ??
+          asInt(o.chopsticks) ??
+          extractChopsticksFromOrderRaw(o);
 
-        // NEW: odczyt pałeczek
-        chopsticks: extractChopsticksFromOrderRaw(o),
-      }));
+        return {
+          id: String(o.id),
+          name: o.name ?? o.customer_name ?? o.client_name ?? undefined,
+          total_price: toNumber(o.total_price),
+          delivery_cost: o.delivery_cost ?? null,
+          created_at: o.created_at,
+          status: o.status,
+          clientDelivery:
+            o.client_delivery_time ??
+            o.delivery_time ??
+            o.clientDelivery,
+          deliveryTime: o.deliveryTime ?? o.delivery_time ?? null,
+          address:
+            o.selected_option === "delivery"
+              ? `${o.street || ""}${
+                  o.flat_number ? `, nr ${o.flat_number}` : ""
+                }${o.city ? `, ${o.city}` : ""}`
+              : o.address || "",
+          street: o.street,
+          flat_number: o.flat_number,
+          city: o.city,
+          phone: o.phone,
+          items: o.items ?? o.order_items ?? [],
+          selected_option: o.selected_option,
+          payment_method: fromDBPaymentMethod(o.payment_method),
+          payment_status: fromDBPaymentStatus(o.payment_status),
+
+          // liczba pałeczek tylko do odczytu
+          chopsticks: chopsticksRaw ?? 0,
+        };
+      });
 
       setTotal(totalCount);
 
@@ -598,6 +611,7 @@ export default function PickupOrdersPage() {
         return sortOrder === "desc" ? tb - ta : ta - tb;
       });
 
+      // wykrywanie nowych zamówień (do pojedynczego dźwięku)
       const prev = prevIdsRef.current;
       const newOnes = mapped.filter(
         (o) =>
@@ -674,6 +688,25 @@ export default function PickupOrdersPage() {
     return () => clearInterval(iv);
   }, [orders, editingOrderId, fetchOrders]);
 
+  // powtarzający się dźwięk dopóki są niezaakceptowane zamówienia
+  const hasUnaccepted = useMemo(
+    () =>
+      orders.some((o) =>
+        ["new", "pending", "placed"].includes(o.status)
+      ),
+    [orders]
+  );
+  useEffect(() => {
+    if (!hasUnaccepted) return;
+    // od razu jeden dźwięk
+    void playDing();
+    // i powtarzamy co 15 s, dopóki coś czeka
+    const iv = setInterval(() => {
+      void playDing();
+    }, 15000);
+    return () => clearInterval(iv);
+  }, [hasUnaccepted, playDing]);
+
   const refreshPaymentStatus = async (id: string) => {
     try {
       setEditingOrderId(id);
@@ -709,7 +742,7 @@ export default function PickupOrdersPage() {
     if (res.ok) updateLocal(id, { status: "completed" });
   };
 
-  // 🔧 Akceptacja przez PATCH /api/orders/[id] → status + czas + powiadomienia
+  // Akceptacja – PATCH /api/orders/[id] → status + czas
   const acceptAndSetTime = async (order: Order, minutes: number) => {
     const eta = new Date(Date.now() + minutes * 60_000).toISOString();
 
@@ -819,30 +852,6 @@ export default function PickupOrdersPage() {
     }
   };
 
-  /* --- NEW: zapis liczby pałeczek --- */
-  const setChopsticks = async (o: Order, value: number) => {
-    const safe = Math.max(0, Math.floor(value));
-    try {
-      setEditingOrderId(o.id);
-      const payload = {
-        chopsticks_count: safe,
-        chopsticks: safe,
-        paleczki: safe,
-        paleczki_count: safe,
-        sticks: safe,
-      };
-      const res = await fetch(`/api/orders/${o.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) return;
-      updateLocal(o.id, { chopsticks: safe });
-    } finally {
-      setEditingOrderId(null);
-    }
-  };
-
   const filtered = useMemo(
     () =>
       orders
@@ -866,38 +875,13 @@ export default function PickupOrdersPage() {
     (o) => o.status === "cancelled" || o.status === "completed"
   );
 
-  /* --- PĘTLA DŹWIĘKU: gra dopóki są niezaakceptowane zamówienia --- */
-  useEffect(() => {
-    const hasOpenNew = newList.length > 0;
-
-    if (hasOpenNew) {
-      if (!ringIntervalRef.current) {
-        ringIntervalRef.current = setInterval(() => {
-          void playDing();
-        }, 10000); // co 10 sekund, dopóki są nowe/pending/placed
-      }
-    } else {
-      if (ringIntervalRef.current) {
-        clearInterval(ringIntervalRef.current);
-        ringIntervalRef.current = null;
-      }
-    }
-
-    return () => {
-      if (ringIntervalRef.current) {
-        clearInterval(ringIntervalRef.current);
-        ringIntervalRef.current = null;
-      }
-    };
-  }, [newList.length, playDing]);
-
   const ProductItem: React.FC<{
     raw: any;
     onDetails?: (p: any) => void;
   }> = ({ raw, onDetails }) => {
     const p = normalizeProduct(raw);
     return (
-      <div className="rounded-md border bg-white p-3 shadow-sm text-slate-900">
+      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm text-slate-900">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold">{p.name}</div>
@@ -924,9 +908,9 @@ export default function PickupOrdersPage() {
             {onDetails && (
               <button
                 onClick={() => onDetails(p)}
-                className="mt-2 text-xs font-medium text-blue-700 underline"
+                className="mt-2 text-xs font-medium text-sky-700 underline"
               >
-                Szczegóły
+                Szczegóły pozycji
               </button>
             )}
           </div>
@@ -946,12 +930,12 @@ export default function PickupOrdersPage() {
     const title = p.quantity > 1 ? `${p.name} x${p.quantity}` : p.name;
     return (
       <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center">
-        <div className="w-full max-w-lg rounded-md border bg-white p-5 text-slate-900 shadow-2xl">
+        <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-2xl">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-lg font-bold">{title}</h2>
             <button
               onClick={onClose}
-              className="rounded-md border px-3 py-1 text-sm hover:bg-slate-50"
+              className="rounded-md border border-slate-200 px-3 py-1 text-sm hover:bg-slate-50"
             >
               Zamknij
             </button>
@@ -991,7 +975,7 @@ export default function PickupOrdersPage() {
 
   const OrderCard: React.FC<{ o: Order }> = ({ o }) => {
     const prods = parseProducts(o.items);
-    const sticks = o.chopsticks ?? 0;
+    const sticks = typeof o.chopsticks === "number" ? o.chopsticks : 0;
 
     return (
       <article
@@ -1039,7 +1023,7 @@ export default function PickupOrdersPage() {
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-3 text-sm">
+          <div className="flex flex-col items-end gap-1 text-sm sm:items-end">
             {o.status === "accepted" &&
               o.deliveryTime && (
                 <InlineCountdown
@@ -1047,6 +1031,9 @@ export default function PickupOrdersPage() {
                   onComplete={() => completeOrder(o.id)}
                 />
               )}
+            <span className="text-xs text-slate-500">
+              #{o.id.slice(0, 8)}
+            </span>
             <span className="text-slate-600">
               {new Date(o.created_at).toLocaleString("pl-PL")}
             </span>
@@ -1054,7 +1041,7 @@ export default function PickupOrdersPage() {
         </header>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <div className="space-y-2 text-sm text-slate-800">
+          <div className="space-y-3 text-sm text-slate-800">
             <div>
               <b>Kwota:</b> {o.total_price.toFixed(2)} zł
             </div>
@@ -1078,7 +1065,7 @@ export default function PickupOrdersPage() {
 
             <div className="mt-1">
               <b>Płatność:</b>{" "}
-              <span className="inline-flex items-center gap-2">
+              <span className="mt-1 inline-flex items-center gap-2">
                 <select
                   value={o.payment_method || "Gotówka"}
                   onChange={(e) =>
@@ -1087,7 +1074,7 @@ export default function PickupOrdersPage() {
                       e.target.value as PaymentMethod
                     )
                   }
-                  className="h-8 rounded border bg-white px-2 text-xs text-slate-900"
+                  className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs text-slate-900 shadow-sm"
                   disabled={editingOrderId === o.id}
                 >
                   <option>Gotówka</option>
@@ -1097,15 +1084,13 @@ export default function PickupOrdersPage() {
 
                 {o.payment_method === "Online" ? (
                   <>
-                    <span className="ml-1">
-                      {paymentBadge(o)}
-                    </span>
+                    <span className="ml-1">{paymentBadge(o)}</span>
                     {o.payment_status === "pending" && (
                       <button
                         onClick={() =>
                           refreshPaymentStatus(o.id)
                         }
-                        className="h-8 rounded bg-sky-600 px-2 text-xs font-semibold text-white hover:bg-sky-500"
+                        className="h-8 rounded-md bg-sky-600 px-2 text-xs font-semibold text-white shadow hover:bg-sky-500"
                         disabled={editingOrderId === o.id}
                       >
                         Odśwież status
@@ -1113,69 +1098,38 @@ export default function PickupOrdersPage() {
                     )}
                   </>
                 ) : (
-                  <span className="ml-1">
-                    {paymentBadge(o)}
-                  </span>
+                  <span className="ml-1">{paymentBadge(o)}</span>
                 )}
               </span>
             </div>
 
-            {/* NEW: Pałeczki */}
-            <div className="mt-3">
-              <label className="mb-1 block text-sm font-semibold text-slate-800">
-                Pałeczki
-              </label>
-              <div className="inline-flex items-center gap-2">
-                <button
-                  onClick={() =>
-                    setChopsticks(
-                      o,
-                      Math.max(0, (o.chopsticks ?? 0) - 1)
-                    )
-                  }
-                  className="h-8 w-8 rounded-md border bg-white text-slate-900 hover:bg-slate-50"
-                  disabled={editingOrderId === o.id}
-                  aria-label="Mniej pałeczek"
-                >
-                  −
-                </button>
-                <input
-                  type="number"
-                  min={0}
-                  value={sticks}
-                  onChange={(e) => {
-                    const v = e.currentTarget.value;
-                    const n = asInt(v) ?? 0;
-                    updateLocal(o.id, { chopsticks: n });
-                  }}
-                  onBlur={(e) => {
-                    const n = asInt(e.currentTarget.value) ?? 0;
-                    void setChopsticks(o, n);
-                  }}
-                  className="h-8 w-16 rounded-md border bg-white px-2 text-center text-sm"
-                  disabled={editingOrderId === o.id}
-                />
-                <button
-                  onClick={() =>
-                    setChopsticks(o, (o.chopsticks ?? 0) + 1)
-                  }
-                  className="h-8 w-8 rounded-md border bg-white text-slate-900 hover:bg-slate-50"
-                  disabled={editingOrderId === o.id}
-                  aria-label="Więcej pałeczek"
-                >
-                  +
-                </button>
+            {/* Pałeczki – tylko odczyt z bazy */}
+            <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-slate-800">
+                  Pałeczki
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1 text-xs font-medium text-white">
+                  {sticks > 0 ? `${sticks} szt.` : "brak"}
+                </span>
               </div>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Wartość pochodzi z zamówienia klienta (kolumna{" "}
+                <code>chopsticks_qty</code> w tabeli{" "}
+                <code>orders</code>).
+              </p>
             </div>
           </div>
 
           <div className="sm:col-span-2">
-            <div className="mb-1 text-sm font-semibold text-slate-800">
-              Produkty
+            <div className="mb-1 flex items-center justify-between">
+              <div className="text-sm font-semibold text-slate-800">
+                Produkty
+              </div>
             </div>
             {prods.length === 0 ? (
-              <div className="rounded-md border bg-white p-3 text-sm text-slate-500">
-                brak
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+                brak pozycji
               </div>
             ) : (
               <ul className="space-y-2">
@@ -1192,7 +1146,7 @@ export default function PickupOrdersPage() {
           </div>
         </div>
 
-        <footer className="mt-4 flex flex-wrap items-center gap-2">
+        <footer className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
           {(o.status === "new" ||
             o.status === "pending" ||
             o.status === "placed") && (
@@ -1230,7 +1184,7 @@ export default function PickupOrdersPage() {
                 <button
                   key={m}
                   onClick={() => extendTime(o, m)}
-                  className="h-10 rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500"
+                  className="h-10 rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white shadow hover:bg-emerald-500"
                 >
                   +{m >= 60 ? `${m / 60} h` : `${m} min`}
                 </button>
@@ -1249,7 +1203,7 @@ export default function PickupOrdersPage() {
               />
               <button
                 onClick={() => completeOrder(o.id)}
-                className="h-10 rounded-md bg-sky-600 px-4 text-sm font-semibold text-white hover:bg-sky-500"
+                className="h-10 rounded-md bg-sky-600 px-4 text-sm font-semibold text-white shadow hover:bg-sky-500"
               >
                 Zrealizowany
               </button>
@@ -1259,7 +1213,7 @@ export default function PickupOrdersPage() {
           {o.status === "cancelled" && (
             <button
               onClick={() => restoreOrder(o.id)}
-              className="h-10 rounded-md bg-sky-600 px-4 text-sm font-semibold text-white hover:bg-sky-500"
+              className="h-10 rounded-md bg-sky-600 px-4 text-sm font-semibold text-white shadow hover:bg-sky-500"
             >
               Przywróć
             </button>
@@ -1277,12 +1231,21 @@ export default function PickupOrdersPage() {
     title: string;
   }) => (
     <section className="space-y-3">
-      <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold text-slate-900">
+          {title}
+        </h2>
+        <span className="text-xs text-slate-500">
+          {list.length} zamówień
+        </span>
+      </div>
       {loading && list === newList && (
         <p className="text-center text-slate-500">Ładowanie…</p>
       )}
       {list.length === 0 ? (
-        <p className="text-center text-slate-600">Brak pozycji.</p>
+        <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-600">
+          Brak pozycji w tej sekcji.
+        </p>
       ) : (
         <div className="grid grid-cols-1 gap-4">
           {list.map((o) => (
@@ -1302,39 +1265,40 @@ export default function PickupOrdersPage() {
       )}
 
       {/* Instrukcja dla obsługi */}
-      <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs sm:text-sm text-amber-900">
+      <div className="mb-4 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-amber-100 p-3 text-xs sm:text-sm text-amber-900">
         <p className="mb-1 font-semibold">
-          Jak obsługiwać zamówienia w tym widoku:
+          Jak obsługiwać zamówienia:
         </p>
         <ul className="ml-4 list-disc space-y-1">
           <li>
-            <b>Nowe zamówienia</b> pojawiają się na górze. Ustal czas i kliknij{" "}
-            <b>Akceptuj</b>, żeby rozpocząć realizację.
+            <b>Nowe zamówienia</b> pojawiają się na górze. Ustal czas i
+            kliknij <b>Akceptuj</b>, żeby rozpocząć realizację.
           </li>
           <li>
             Po akceptacji zamówienie trafia do sekcji{" "}
-            <b>„Zamówienia w realizacji”</b>, a klient dostaje godzinę odbioru.
+            <b>„Zamówienia w realizacji”</b>, a klient dostaje godzinę
+            odbioru / dostawy.
           </li>
           <li>
-            <b>Pałeczki</b> – ustaw liczbę sztuk dla zamówienia (minus / plus
-            lub wpisz ręcznie). Liczba zapisuje się po zmianie.
+            <b>Pałeczki</b> – liczba jest pobierana z zamówienia klienta
+            (nie zmieniasz jej tutaj).
           </li>
           <li>
-            <b>Płatność</b> – wybierz formę. Dla opcji <b>Online</b> możesz
-            użyć przycisku „Odśwież status”.
+            <b>Płatność</b> – wybierz formę. Dla opcji <b>Online</b>{" "}
+            możesz użyć przycisku „Odśwież status”.
           </li>
           <li>
-            Po wydaniu zamówienia kliknij przycisk <b>„Zrealizowany”</b>, żeby
+            Po wydaniu zamówienia kliknij <b>„Zrealizowany”</b>, żeby
             zamknąć je w systemie.
           </li>
         </ul>
       </div>
 
       {/* Pasek filtrów */}
-      <div className="sticky top-0 z-20 -mx-4 mb-5 bg-white p-4 text-slate-900 sm:mx-0 sm:rounded-2xl sm:border">
+      <div className="sticky top-0 z-20 -mx-4 mb-5 bg-white/90 p-4 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:border-slate-200">
         <div className="flex flex-wrap items-center gap-2">
           <select
-            className="h-10 rounded-md border bg-white px-3 text-sm text-slate-900"
+            className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm"
             value={filterStatus}
             onChange={(e) =>
               setFilterStatus(e.target.value as any)
@@ -1348,7 +1312,7 @@ export default function PickupOrdersPage() {
             <option value="completed">Zrealizowane</option>
           </select>
           <select
-            className="h-10 rounded-md border bg-white px-3 text-sm text-slate-900"
+            className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm"
             value={filterOption}
             onChange={(e) =>
               setFilterOption(e.target.value as any)
@@ -1359,7 +1323,7 @@ export default function PickupOrdersPage() {
             <option value="delivery">Dostawa</option>
           </select>
           <button
-            className="h-10 rounded-md border bg-white px-3 text-sm text-slate-900"
+            className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm"
             onClick={() =>
               setSortOrder((o) => (o === "desc" ? "asc" : "desc"))
             }
@@ -1367,7 +1331,7 @@ export default function PickupOrdersPage() {
             {sortOrder === "desc" ? "Najnowsze" : "Najstarsze"}
           </button>
           <button
-            className="ml-auto h-10 rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500"
+            className="ml-auto h-10 rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white shadow hover:bg-emerald-500"
             onClick={() => fetchOrders()}
             disabled={loading || !booted}
           >
@@ -1396,7 +1360,7 @@ export default function PickupOrdersPage() {
         <button
           onClick={() => setPage((p) => Math.max(1, p - 1))}
           disabled={page === 1}
-          className="h-10 rounded-md border px-4 text-sm disabled:opacity-50"
+          className="h-10 rounded-md border border-slate-300 px-4 text-sm text-slate-800 disabled:opacity-50"
         >
           Poprzednia
         </button>
@@ -1410,7 +1374,7 @@ export default function PickupOrdersPage() {
             )
           }
           disabled={page >= Math.ceil(total / perPage)}
-          className="h-10 rounded-md border px-4 text-sm disabled:opacity-50"
+          className="h-10 rounded-md border border-slate-300 px-4 text-sm text-slate-800 disabled:opacity-50"
         >
           Następna
         </button>
