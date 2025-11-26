@@ -90,6 +90,13 @@ const RAW_SET_BAKE_ALL =
   "Zamiana całego zestawu surowego na pieczony (+5 zł)";
 const RAW_SET_BAKE_ROLL_PREFIX = "Zamiana surowej rolki na pieczoną: ";
 
+/* NOWE: bazowe opcje do tatara – bez dopłaty */
+const TARTAR_BASES = [
+  "Podanie: na awokado",
+  "Podanie: na ryżu",
+  "Podanie: na chipsach krewetkowych",
+];
+
 /* Helper: rozpoznanie specjalnej California z opcją Ryby pieczonej +2 zł */
 function isSpecialCaliforniaBakedFishProduct(
   name: string,
@@ -111,27 +118,42 @@ function computeAddonPrice(addon: string, product?: ProductDb | null): number {
   if (SAUCES.includes(addon)) return 3;
   if (addon === SWAP_FEE_NAME) return 5;
 
+  // Bazowe opcje podania tatara – 0 zł
+  if (TARTAR_BASES.includes(addon)) return 0;
+
   // całe surowe zestawy 1/3/8 -> pieczone
   if (addon === RAW_SET_BAKE_ALL) return 5;
   // pojedyncza surowa rolka w zestawie -> pieczona
   if (addon.startsWith(RAW_SET_BAKE_ROLL_PREFIX)) return 2;
 
   // Domyślna cena dodatków typu Tempura / Płatek / Tamago / Ryba pieczona
-  const price = 4;
+  const basePrice = 4;
 
-  if (!product) return price;
+  if (!product) return basePrice;
 
   const subcat = (product.subcategory || "").toLowerCase();
+  const nameAndDesc = `${product.name} ${product.description || ""}`.toLowerCase();
+
   const isSpecialCalifornia =
     subcat === "california" &&
     isSpecialCaliforniaBakedFishProduct(product.name, product.description);
 
-  // Wyjątek: specjalna California – Ryba pieczona +2 zł
-  if (addon === "Ryba pieczona" && isSpecialCalifornia) {
-    return 2;
+  if (addon === "Ryba pieczona") {
+    // Specjalna California – ryba pieczona +2 zł
+    if (isSpecialCalifornia) return 2;
+
+    // Nigiri z łososiem / tuńczykiem – opalana ryba +2 zł
+    if (subcat === "nigiri") {
+      const hasFish =
+        nameAndDesc.includes("łosoś") ||
+        nameAndDesc.includes("losos") ||
+        nameAndDesc.includes("tuńczyk") ||
+        nameAndDesc.includes("tunczyk");
+      if (hasFish) return 2;
+    }
   }
 
-  return price;
+  return basePrice;
 }
 
 /* helper dla widoczności elementu (używany przez Turnstile) */
@@ -312,6 +334,7 @@ const ProductItem: React.FC<{
   productCategory: (name: string) => string;
   productsDb: ProductDb[];
   optionsByCat: Record<string, string[]>;
+  restaurantSlug: string;
   helpers: {
     addAddon: (name: string, addon: string) => void;
     removeAddon: (name: string, addon: string) => void;
@@ -319,8 +342,16 @@ const ProductItem: React.FC<{
     removeItem: (name: string) => void;
     removeWholeItem: (name: string) => void;
   };
-}> = ({ prod, productCategory, productsDb, optionsByCat, helpers }) => {
-  const { addAddon, removeAddon, swapIngredient, removeItem, removeWholeItem } = helpers;
+}> = ({
+  prod,
+  productCategory,
+  productsDb,
+  optionsByCat,
+  restaurantSlug,
+  helpers,
+}) => {
+  const { addAddon, removeAddon, swapIngredient, removeItem, removeWholeItem } =
+    helpers;
 
   const byName = useMemo(() => {
     const map = new Map<string, ProductDb>();
@@ -336,7 +367,9 @@ const ProductItem: React.FC<{
 
   const singleCurrentName = useMemo(() => {
     if (isSet || isSpec) return prod.name as string;
-    const swaps = Array.isArray((prod as any).swaps) ? (prod as any).swaps : [];
+    const swaps = Array.isArray((prod as any).swaps)
+      ? (prod as any).swaps
+      : [];
     const found = swaps.find(
       (s: any) =>
         s &&
@@ -380,11 +413,12 @@ const ProductItem: React.FC<{
   const priceNum =
     typeof prod.price === "string" ? parseFloat(prod.price) : prod.price || 0;
   const addonsCost = (prod.addons ?? []).reduce((sum: number, addon: string) => {
-    const unit = computeAddonPrice(addon, prodInfo);
+    const unit = computeAddonPrice(addon, prodInfo || undefined);
     return sum + unit;
   }, 0);
   const lineTotal = (priceNum + addonsCost) * (prod.quantity || 1);
 
+  // Czy dany extra jest dozwolony dla tego produktu
   const canUseExtra = (extra: string): boolean => {
     if (isSet) {
       const hasFuto = setRows.some((row) => /futomaki/i.test(row.cat));
@@ -395,10 +429,15 @@ const ProductItem: React.FC<{
       return false;
     }
 
+    if (!prodInfo) return false;
+
     if (subcat === "california") {
       if (
         extra === "Ryba pieczona" &&
-        isSpecialCaliforniaBakedFishProduct(prod.name, prodInfo?.description || "")
+        isSpecialCaliforniaBakedFishProduct(
+          prod.name,
+          prodInfo?.description || ""
+        )
       ) {
         return true;
       }
@@ -417,9 +456,55 @@ const ProductItem: React.FC<{
       return extra === "Tempura" || extra === "Płatek sojowy";
     }
 
-    if (subcat === "nigiri") return false;
+    if (subcat === "nigiri") {
+      // Nigiri z łososiem / tuńczykiem – tylko Ryba pieczona (opalana)
+      const text = `${prodInfo.name} ${
+        prodInfo.description || ""
+      }`.toLowerCase();
+      const fishNigiri =
+        text.includes("łosoś") ||
+        text.includes("losos") ||
+        text.includes("tuńczyk") ||
+        text.includes("tunczyk");
+      return extra === "Ryba pieczona" && fishNigiri;
+    }
 
     return false;
+  };
+
+  // Tatar: tylko w Szczytnie / Przasnyszu, przystawki + tatar z łososia/tuńczyka
+  const isTartar = useMemo(() => {
+    if (!prodInfo) return false;
+    const sub = (prodInfo.subcategory || "").toLowerCase();
+    if (!sub.includes("przystawki")) return false;
+
+    const city = (restaurantSlug || "").toLowerCase();
+    if (city !== "szczytno" && city !== "przasnysz") return false;
+
+    const text = `${prodInfo.name} ${prodInfo.description || ""}`.toLowerCase();
+    if (!text.includes("tatar")) return false;
+
+    const hasFish =
+      text.includes("łosoś") ||
+      text.includes("losos") ||
+      text.includes("tuńczyk") ||
+      text.includes("tunczyk");
+    return hasFish;
+  }, [prodInfo, restaurantSlug]);
+
+  const tartarSelectedBase = useMemo(() => {
+    if (!isTartar) return null;
+    const addons = Array.isArray(prod.addons) ? prod.addons : [];
+    return TARTAR_BASES.find((b) => addons.includes(b)) || null;
+  }, [isTartar, prod.addons]);
+
+  const setTartarBase = (base: string) => {
+    if (!isTartar) return;
+    // zawsze jedna baza – wyczyść pozostałe i ustaw wybraną
+    TARTAR_BASES.forEach((b) => {
+      if (prod.addons?.includes(b)) removeAddon(prod.name, b);
+    });
+    addAddon(prod.name, base);
   };
 
   const toggleAddon = (a: string) => {
@@ -428,41 +513,6 @@ const ProductItem: React.FC<{
     if (!allowed) return;
     if (on) removeAddon(prod.name, a);
     else addAddon(prod.name, a);
-  };
-
-  const sameCatOptions = (name: string) => {
-    const cat = (productCategory(name) || "").toLowerCase();
-    if (!cat || cat === "specjały" || cat === "zestawy") return [];
-    return optionsByCat[cat] || [];
-  };
-
-  const doSetSwap = (rowFrom: string, to: string) => {
-    const current = getSetSwapCurrent(rowFrom);
-    if (!to || to === current) return;
-
-    swapIngredient(prod.name, rowFrom, to);
-
-    if (!(prod.addons ?? []).includes(SWAP_FEE_NAME)) {
-      addAddon(prod.name, SWAP_FEE_NAME);
-    }
-  };
-
-  const doSingleSwap = (from: string, to: string) => {
-    if (!to || to === from) return;
-
-    const fromCat = (productCategory(from) || "").toLowerCase();
-    const toCat = (productCategory(to) || "").toLowerCase();
-
-    const same =
-      (fromCat.includes("futomaki") && toCat.includes("futomaki")) ||
-      (fromCat.includes("california") && toCat.includes("california")) ||
-      (fromCat.includes("hosomaki") && toCat.includes("hosomaki")) ||
-      (fromCat.includes("nigiri") && toCat.includes("nigiri"));
-
-    if (!same) return;
-    if (toCat === "specjały") return;
-
-    swapIngredient(prod.name, from, to);
   };
 
   const toggleWholeSetBake = () => {
@@ -481,7 +531,7 @@ const ProductItem: React.FC<{
     }
   };
 
-  // WYŚWIETLANA NAZWA W KOSZYKU: kategoria + nazwa
+  // WYŚWIETLANA NAZWA W KOSZYKU: kategoria + nazwa (dla pojedynczych rolek)
   const displayTitle = useMemo(() => {
     if (isSet || isSpec) return prod.name as string;
     return withCategoryPrefix(singleCurrentName, productSubcat);
@@ -505,7 +555,8 @@ const ProductItem: React.FC<{
             {setRows.map((row, i) => {
               const catKey = normalize(row.cat);
               const pool = (optionsByCat[catKey] || []).filter(
-                (n) => (productCategory(n) || "").toLowerCase() !== "specjały"
+                (n) =>
+                  (productCategory(n) || "").toLowerCase() !== "specjały"
               );
               const current = getSetSwapCurrent(row.from);
 
@@ -532,13 +583,15 @@ const ProductItem: React.FC<{
                   <select
                     className="border border-black/15 rounded px-2 py-1 bg-white"
                     value={current}
-                    onChange={(e) => doSetSwap(row.from, e.target.value)}
+                    onChange={(e) => swapIngredient(prod.name, row.from, e.target.value)}
                   >
-                    {[current, ...pool.filter((n) => n !== current)].map((n) => (
-                      <option key={n} value={n}>
-                        {withCategoryPrefix(n, row.cat)}
-                      </option>
-                    ))}
+                    {[current, ...pool.filter((n) => n !== current)].map(
+                      (n) => (
+                        <option key={n} value={n}>
+                          {withCategoryPrefix(n, row.cat)}
+                        </option>
+                      )
+                    )}
                   </select>
 
                   {rawRow && (
@@ -565,8 +618,9 @@ const ProductItem: React.FC<{
             })}
 
             <p className="text-[11px] text-black/60">
-              Zamiany tylko w obrębie tej samej kategorii (Futomaki ↔ Futomaki, Hosomaki ↔
-              Hosomaki itd.). Bez specjałów. Dodajemy pozycję „{SWAP_FEE_NAME}”.
+              Zamiany tylko w obrębie tej samej kategorii (Futomaki ↔ Futomaki,
+              Hosomaki ↔ Hosomaki itd.). Bez specjałów. Dodajemy pozycję „
+              {SWAP_FEE_NAME}”.
             </p>
 
             {isRawSet1_3_8 && (
@@ -584,8 +638,8 @@ const ProductItem: React.FC<{
                 </label>
                 {isWholeSetBaked && (
                   <p className="text-[10px] text-black/60">
-                    Dla całego zestawu naliczana jest jedna opłata +5 zł. Indywidualne zamiany
-                    rolek są w tym wariancie nieaktywne.
+                    Dla całego zestawu naliczana jest jedna opłata +5 zł.
+                    Indywidualne zamiany rolek są w tym wariancie nieaktywne.
                   </p>
                 )}
               </div>
@@ -640,63 +694,82 @@ const ProductItem: React.FC<{
               );
             })}
           </div>
+
           {subcat === "california" && (
             <p className="text-[11px] text-black/60 mt-1">
-              California = rolki z ryżem na zewnątrz. Standardowo nie dodajemy do nich dodatków –
-              wyjątek stanowi wybrana pozycja z łososiem surowym, paluszkiem krabowym i krewetką
-              obłożoną łososiem, gdzie dostępna jest opcja „Ryba pieczona” (+2 zł).
+              California = rolki z ryżem na zewnątrz. Standardowo nie dodajemy
+              do nich dodatków – wyjątek stanowi wybrana pozycja z łososiem
+              surowym, paluszkiem krabowym i krewetką obłożoną łososiem, gdzie
+              dostępna jest opcja „Ryba pieczona” (+2 zł).
             </p>
           )}
           {subcat === "hosomaki" && (
             <p className="text-[11px] text-black/60 mt-1">
-              Hosomaki (Hoso) = cienkie rolki z jednym składnikiem. Można dodać jedynie Tempurę,
-              a w zamianach wybierasz tylko inne Hosomaki.
+              Hosomaki (Hoso) = cienkie rolki z jednym składnikiem. Można dodać
+              jedynie Tempurę, a w zamianach wybierasz tylko inne Hosomaki.
             </p>
           )}
           {subcat === "futomaki" && (
             <p className="text-[11px] text-black/60 mt-1">
-              Futomaki (Futo) = grubsze rolki z kilkoma składnikami. Dostępne dodatki: Tempura,
-              Płatek sojowy, Tamago, a przy rolkach surowych także „Ryba pieczona”.
+              Futomaki (Futo) = grubsze rolki z kilkoma składnikami. Dostępne
+              dodatki: Tempura, Płatek sojowy, Tamago, a przy rolkach surowych
+              także „Ryba pieczona”.
             </p>
           )}
           {isSet && (
             <p className="text-[11px] text-black/60 mt-1">
-              W zestawach zamieniasz rolki tylko w obrębie kategorii (Futomaki ↔ Futomaki,
-              Hosomaki ↔ Hosomaki, California ↔ California, Nigiri ↔ Nigiri). Jeśli w składzie
-              zestawu są Futomaki, możesz dodać Tamago, a w zestawach surowych dostępna jest też
-              opcja „Ryba pieczona”.
+              W zestawach zamieniasz rolki tylko w obrębie kategorii (Futomaki ↔
+              Futomaki, Hosomaki ↔ Hosomaki, California ↔ California, Nigiri ↔
+              Nigiri). Jeśli w składzie zestawu są Futomaki, możesz dodać
+              Tamago, a w zestawach surowych dostępna jest też opcja „Ryba
+              pieczona”.
             </p>
           )}
         </div>
 
-        {!isSet && !isSpec && (
+        {isTartar && (
           <div>
-            <div className="font-semibold mb-1">Zamień na inne w tej kategorii:</div>
-            <select
-              className="border border-black/15 rounded px-2 py-1 bg-white"
-              value={singleCurrentName}
-              onChange={(e) => doSingleSwap(prod.name, e.target.value)}
-            >
-              {[singleCurrentName, ...sameCatOptions(prod.name).filter((n) => n !== singleCurrentName)].map(
-                (n) => (
-                  <option key={n} value={n}>
-                    {withCategoryPrefix(n, productSubcat)}
-                  </option>
-                )
-              )}
-            </select>
+            <div className="font-semibold mb-1">Sposób podania tatara:</div>
+            <div className="flex flex-wrap gap-2">
+              {TARTAR_BASES.map((base) => {
+                const label = base.replace(/^Podanie:\s*/i, "");
+                const on = tartarSelectedBase === base;
+                return (
+                  <button
+                    key={base}
+                    type="button"
+                    onClick={() => setTartarBase(base)}
+                    className={clsx(
+                      "px-2 py-1 rounded text-xs border",
+                      on
+                        ? "bg-black text-white border-black"
+                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                    )}
+                  >
+                    {on ? `✓ ${label}` : label}
+                  </button>
+                );
+              })}
+            </div>
             <p className="text-[11px] text-black/60 mt-1">
-              Zamiana tylko w obrębie tej samej kategorii. Bez wymiany na Specjały.
+              Dostępne tylko w Szczytnie i Przasnyszu dla tatara z łososia lub
+              tuńczyka: wybierz bazę (awokado, ryż lub chipsy krewetkowe).
             </p>
           </div>
         )}
       </div>
 
       <div className="flex justify-end items-center mt-2 gap-2 flex-wrap text-[11px]">
-        <button onClick={() => removeItem(prod.name)} className="text-red-600 underline">
+        <button
+          onClick={() => removeItem(prod.name)}
+          className="text-red-600 underline"
+        >
           Usuń 1 szt.
         </button>
-        <button onClick={() => removeWholeItem(prod.name)} className="text-red-600 underline">
+        <button
+          onClick={() => removeWholeItem(prod.name)}
+          className="text-red-600 underline"
+        >
           Usuń produkt
         </button>
       </div>
@@ -1505,12 +1578,13 @@ export default function CheckoutModal() {
                           {items.map((item, idx) => (
                             <div key={idx} className="space-y-1">
                               <ProductItem
-                                prod={item}
-                                productCategory={productCategory}
-                                productsDb={productsDb}
-                                optionsByCat={optionsByCat}
-                                helpers={productHelpers}
-                              />
+  prod={item}
+  productCategory={productCategory}
+  productsDb={productsDb}
+  optionsByCat={optionsByCat}
+  restaurantSlug={restaurantSlug}
+  helpers={productHelpers}
+/>
                               <textarea
                                 className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
                                 placeholder="Notatka do produktu"
@@ -1892,12 +1966,13 @@ export default function CheckoutModal() {
                             {items.map((item, idx) => (
                               <div key={idx} className="space-y-1">
                                 <ProductItem
-                                  prod={item}
-                                  productCategory={productCategory}
-                                  productsDb={productsDb}
-                                  optionsByCat={optionsByCat}
-                                  helpers={productHelpers}
-                                />
+  prod={item}
+  productCategory={productCategory}
+  productsDb={productsDb}
+  optionsByCat={optionsByCat}
+  restaurantSlug={restaurantSlug}
+  helpers={productHelpers}
+/>
                                 <textarea
                                   className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
                                   placeholder="Notatka do produktu"
