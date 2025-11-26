@@ -84,11 +84,12 @@ async function resolveRestaurantId(
 }
 
 /* ====== PATCH ====== */
-export async function PATCH(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  const { id: orderId } = params;
+export async function PATCH(request: Request, ctx: any) {
+  const orderId = ctx?.params?.id as string | undefined;
+
+  if (!orderId) {
+    return NextResponse.json({ error: "Missing order id" }, { status: 400 });
+  }
 
   const { session, role } = await getSessionAndRole(request);
   if (!session || (role !== "admin" && role !== "employee")) {
@@ -131,7 +132,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // Mapowanie pól do aktualizacji (tylko istniejące kolumny)
+  // Mapowanie pól do aktualizacji (tylko istniejące kolumny z Twojej tabeli)
   const employeeTime: string | undefined =
     body.deliveryTime ?? body.employee_delivery_time;
   const clientTime: string | undefined =
@@ -141,8 +142,8 @@ export async function PATCH(
 
   if (body.status) updateData.status = body.status;
 
-  if (employeeTime) updateData.deliveryTime = employeeTime; // kolumna "deliveryTime"
-  if (clientTime) updateData.client_delivery_time = clientTime; // kolumna "client_delivery_time"
+  if (employeeTime) updateData.deliveryTime = employeeTime; // "deliveryTime" timestamptz
+  if (clientTime) updateData.client_delivery_time = clientTime; // "client_delivery_time" text
 
   if (body.items !== undefined) {
     updateData.items =
@@ -172,7 +173,7 @@ export async function PATCH(
     updateData.discount_amount = body.discount_amount;
   }
 
-  // Pałeczki → istniejąca kolumna chopsticks_qty
+  // Pałeczki → istniejąca kolumna chopsticks_qty (smallint, CHECK 0–10)
   const chopsticksRaw =
     body.chopsticks_qty ??
     body.chopsticks_count ??
@@ -184,11 +185,12 @@ export async function PATCH(
   if (chopsticksRaw !== undefined) {
     const n = Number(chopsticksRaw);
     if (Number.isFinite(n)) {
-      updateData.chopsticks_qty = Math.max(0, Math.floor(n));
+      const clamped = Math.min(10, Math.max(0, Math.floor(n)));
+      updateData.chopsticks_qty = clamped;
     }
   }
 
-  // Uwaga: w tabeli orders NIE ma kolumny updated_at, więc nic takiego nie ustawiamy
+  // Uwaga: w tabeli orders NIE ma kolumny updated_at – nic takiego nie ustawiamy
 
   // UPDATE zamówienia
   const { data, error } = await (supabaseAdmin as any)
@@ -312,8 +314,9 @@ export async function PATCH(
       } else if (
         changingPaymentStatus &&
         body.payment_status === "paid" &&
-        updated.payment_method === "Online"
+        updated.payment_method === "online"
       ) {
+        // uwaga: w DB payment_method ma CHECK ('cash','online')
         subject += " — płatność potwierdzona";
         headline = "Otrzymaliśmy Twoją płatność online";
         extra = "Status płatności: <b>opłacone</b>";
@@ -351,7 +354,7 @@ export async function PATCH(
           to: toEmail,
           subject,
           html,
-          // from: EMAIL_FROM, // jeśli Twój helper to wspiera
+          // from: EMAIL_FROM, // włącz jeśli Twój helper to obsługuje
         });
       }
     }
