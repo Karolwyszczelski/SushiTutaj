@@ -19,24 +19,31 @@ function toMsisdnPL(raw: string): string | null {
  * sendSms: wysyła SMS do jednego numeru. Zwraca true, gdy żądanie poszło, false gdy pominęliśmy.
  * Nie rzuca wyjątków (loguje i zwraca false), żeby nie blokować procesu.
  */
-export async function sendSms(to: string | null | undefined, message: string): Promise<boolean> {
+export async function sendSms(
+  to: string | null | undefined,
+  message: string
+): Promise<boolean> {
   try {
     if (!to || !message || PROVIDER === "none") return false;
 
     const msisdn = toMsisdnPL(to);
     if (!msisdn) return false;
 
-    const sender = process.env.SMS_SENDER_ID || ""; // np. zatwierdzony "SushiTutaj"
-
     if (PROVIDER === "smsapi") {
       const token = process.env.SMSAPI_TOKEN || "";
       if (!token) return false;
+
+      // Na koncie TEST w SMSAPI dozwolony nadawca to "Test".
+      // Produkcja: ustaw SMS_SENDER_ID (np. "SushiTutaj").
+      const sender =
+        process.env.SMS_SENDER_ID ||
+        (process.env.NODE_ENV === "production" ? "" : "Test");
 
       // SMSAPI (x-www-form-urlencoded). Wymaga MSISDN bez plusa.
       const body = new URLSearchParams();
       body.set("to", msisdn);
       body.set("message", message);
-      body.set("encoding", "utf-8");     // poprawne polskie znaki
+      body.set("encoding", "utf-8"); // poprawne polskie znaki
       if (sender) body.set("from", sender);
 
       const res = await fetch("https://api.smsapi.pl/sms.do", {
@@ -47,11 +54,15 @@ export async function sendSms(to: string | null | undefined, message: string): P
         },
         body: body.toString(),
       });
-      if (!res.ok) {
-        const t = await res.text().catch(() => "");
+
+      const t = await res.text().catch(() => "");
+
+      // SMSAPI potrafi zwrócić 200 z treścią "ERROR:xx"
+      if (!res.ok || t.startsWith("ERROR")) {
         console.error("[sms] smsapi fail", res.status, t);
         return false;
       }
+
       return true;
     }
 
@@ -59,6 +70,8 @@ export async function sendSms(to: string | null | undefined, message: string): P
       const login = process.env.SERVERSMS_LOGIN || "";
       const password = process.env.SERVERSMS_PASSWORD || "";
       if (!login || !password) return false;
+
+      const sender = process.env.SMS_SENDER_ID || "";
 
       // SerwerSMS przyjmuje numer z plusikiem
       const payload = {
@@ -71,7 +84,9 @@ export async function sendSms(to: string | null | undefined, message: string): P
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: "Basic " + Buffer.from(`${login}:${password}`).toString("base64"),
+          Authorization:
+            "Basic " +
+            Buffer.from(`${login}:${password}`).toString("base64"),
         },
         body: JSON.stringify(payload),
       });
