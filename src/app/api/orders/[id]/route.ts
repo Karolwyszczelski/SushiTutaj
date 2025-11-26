@@ -85,9 +85,9 @@ async function resolveRestaurantId(
 /* ====== PATCH ====== */
 export async function PATCH(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
-  const { id: orderId } = await params;
+  const { id: orderId } = params;
 
   const { session, role } = await getSessionAndRole(request);
   if (!session || (role !== "admin" && role !== "employee")) {
@@ -101,7 +101,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const cookieStore = await cookies();
+  const cookieStore = cookies();
   const cookieRid = cookieStore.get("restaurant_id")?.value ?? null;
   const allowedRestaurantId = await resolveRestaurantId(
     session.user.id,
@@ -112,7 +112,6 @@ export async function PATCH(
   }
 
   // SELECT istniejącego zamówienia
-  // WA: typy Database mogą nie zawierać niektórych kolumn (np. user_id) → rzutujemy na any
   const { data: existing, error: getErr } = await (supabaseAdmin as any)
     .from("orders")
     .select(
@@ -138,35 +137,59 @@ export async function PATCH(
     body.client_delivery_time ?? body.delivery_time;
 
   const updateData: Record<string, any> = {};
+
   if (body.status) updateData.status = body.status;
-  if (employeeTime) updateData.deliveryTime = employeeTime;
-  if (clientTime) updateData.client_delivery_time = clientTime;
+
+  if (employeeTime) updateData.deliveryTime = employeeTime; // kolumna "deliveryTime"
+  if (clientTime) updateData.client_delivery_time = clientTime; // kolumna "client_delivery_time"
+
   if (body.items !== undefined) {
     updateData.items =
       typeof body.items === "string" ? body.items : JSON.stringify(body.items);
   }
+
   if (body.selected_option) updateData.selected_option = body.selected_option;
   if (body.payment_method) updateData.payment_method = body.payment_method;
   if (body.payment_status !== undefined) {
     updateData.payment_status = body.payment_status;
   }
   if (body.total_price !== undefined) updateData.total_price = body.total_price;
+
   if (body.address) updateData.address = body.address;
   if (body.street) updateData.street = body.street;
   if (body.postal_code) updateData.postal_code = body.postal_code;
   if (body.city) updateData.city = body.city;
   if (body.flat_number) updateData.flat_number = body.flat_number;
+
   if (body.phone) updateData.phone = body.phone;
   if (body.contact_email) updateData.contact_email = body.contact_email;
   if (body.name) updateData.name = body.name;
   if (body.customer_name) updateData.name = body.customer_name;
+
   if (body.promo_code !== undefined) updateData.promo_code = body.promo_code;
   if (body.discount_amount !== undefined) {
     updateData.discount_amount = body.discount_amount;
   }
-  updateData.updated_at = new Date().toISOString();
 
-  // UPDATE zamówienia (również rzutowany na any, by nie blokować buildu)
+  // Pałeczki → kolumna chopsticks_qty
+  const chopsticksRaw =
+    body.chopsticks_qty ??
+    body.chopsticks_count ??
+    body.chopsticks ??
+    body.paleczki ??
+    body.paleczki_count ??
+    body.sticks;
+
+  if (chopsticksRaw !== undefined) {
+    const n = Number(chopsticksRaw);
+    if (Number.isFinite(n)) {
+      updateData.chopsticks_qty = Math.max(0, Math.floor(n));
+    }
+  }
+
+  // Uwaga: w tabeli orders NIE ma kolumny updated_at, więc nic takiego nie ustawiamy
+
+  // UPDATE zamówienia
   const { data, error } = await (supabaseAdmin as any)
     .from("orders")
     .update(updateData)
