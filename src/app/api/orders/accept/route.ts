@@ -47,17 +47,17 @@ export async function POST(req: Request) {
     if (selErr) throw selErr;
     if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
 
-     // aktualizacja statusu i ETA — ustaw oba warianty kolumny czasu
-    const { data: updated, error: updErr } = await supabaseAdmin
-      .from("orders")
-      .update({
-        status: "accepted",
-        deliveryTime: etaISO,
-        delivery_time: etaISO,
-      } as any)
-      .eq("id", id)
-      .select("id, status, deliveryTime, delivery_time")
-      .maybeSingle();
+        // aktualizacja statusu i ETA — ustaw oba warianty kolumny czasu
+  const { data: updated, error: updErr } = await supabaseAdmin
+    .from("orders")
+    .update({
+      status: "accepted",
+      deliveryTime: etaISO,
+      delivery_time: etaISO,
+    } as any)
+    .eq("id", id)
+    .select("id, status, deliveryTime, delivery_time")
+    .maybeSingle();
     if (updErr) throw updErr;
 
     // e-mail do klienta

@@ -533,10 +533,10 @@ export default function PickupOrdersPage() {
       const slug = restaurantSlug || urlSlug;
       if (slug) qs.set("restaurant", slug);
 
-      const res = await fetch(
-        `/api/orders/current?${qs.toString()}`,
-        { cache: "no-store", signal: ac.signal }
-      );
+      const res = await fetch(`/api/orders/current?${qs.toString()}`, {
+        cache: "no-store",
+        signal: ac.signal,
+      });
       const json = await res.json().catch(() => ({} as any));
 
       if (!res.ok) {
@@ -705,29 +705,46 @@ export default function PickupOrdersPage() {
     if (res.ok) updateLocal(id, { status: "completed" });
   };
 
-  // 🔧 POPRAWIONE: używamy /api/orders/accept + wysyłamy id w body
+  // 🔧 Akceptacja przez PATCH /api/orders/[id] → status + czas + powiadomienia
   const acceptAndSetTime = async (order: Order, minutes: number) => {
+    // ETA – za ile minut zamówienie będzie gotowe
+    const eta = new Date(Date.now() + minutes * 60_000).toISOString();
+
     try {
       setEditingOrderId(order.id);
       setErrorMsg(null);
-      const r = await fetch(`/api/orders/accept`, {
-        method: "POST",
+
+      const res = await fetch(`/api/orders/${order.id}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: order.id, minutes }),
+        body: JSON.stringify({
+          status: "accepted",
+          // różne pola, żeby backend miał pełne dane
+          deliveryTime: eta,
+          delivery_time: eta,
+          client_delivery_time: eta,
+        }),
       });
-      const j = await r.json().catch(() => ({} as any));
-      if (!r.ok) {
+
+      const j = (await res.json().catch(() => ({}))) as any;
+
+      if (!res.ok) {
         setErrorMsg(
           j?.error || "Nie udało się zaakceptować zamówienia."
         );
         return;
       }
+
       updateLocal(order.id, {
         status: (j.status as Order["status"]) || "accepted",
         deliveryTime:
           (j.deliveryTime as string) ||
           (j.delivery_time as string) ||
-          order.deliveryTime,
+          eta,
+        clientDelivery:
+          (j.client_delivery_time as string) ||
+          order.clientDelivery ||
+          eta,
       });
     } finally {
       setEditingOrderId(null);
@@ -901,7 +918,7 @@ export default function PickupOrdersPage() {
     const p = normalizeProduct(product);
     const title = p.quantity > 1 ? `${p.name} x${p.quantity}` : p.name;
     return (
-      <div className="fixed inset-0 z-50 flex items-end justify中心ER bg-black/60 p-4 sm:items-center">
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center">
         <div className="w-full max-w-lg rounded-md border bg-white p-5 text-slate-900 shadow-2xl">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-lg font-bold">{title}</h2>
