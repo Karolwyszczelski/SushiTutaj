@@ -32,7 +32,7 @@ const adminAuth = createClient(
   { auth: { persistSession: false } }
 );
 
-/* ====== Mail FROM (używane w szablonie, jeśli potrzebne w sendEmail) ====== */
+/* ====== Mail FROM ====== */
 const EMAIL_FROM = (process.env.EMAIL_FROM ||
   process.env.RESEND_FROM ||
   "Sushi Tutaj <no-reply@sushitutaj.pl>").replace(/^['"\s]+|['"\s]+$/g, "");
@@ -63,6 +63,7 @@ const optLabel = (v?: string) =>
 
 /* ====== Pomocnicze: ID restauracji z członkostwa ====== */
 type RestaurantAdminMinimal = { restaurant_id: string; added_at?: string } | null;
+
 async function resolveRestaurantId(
   userId: string | null,
   cookieRid?: string | null
@@ -78,7 +79,7 @@ async function resolveRestaurantId(
     .limit(1)
     .maybeSingle();
 
-  const row = resp.data as unknown as RestaurantAdminMinimal; // typy mogą być niekompletne
+  const row = resp.data as unknown as RestaurantAdminMinimal;
   return row?.restaurant_id ?? null;
 }
 
@@ -130,7 +131,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // Mapowanie pól do aktualizacji
+  // Mapowanie pól do aktualizacji (tylko istniejące kolumny)
   const employeeTime: string | undefined =
     body.deliveryTime ?? body.employee_delivery_time;
   const clientTime: string | undefined =
@@ -171,7 +172,7 @@ export async function PATCH(
     updateData.discount_amount = body.discount_amount;
   }
 
-  // Pałeczki → kolumna chopsticks_qty
+  // Pałeczki → istniejąca kolumna chopsticks_qty
   const chopsticksRaw =
     body.chopsticks_qty ??
     body.chopsticks_count ??
@@ -350,7 +351,7 @@ export async function PATCH(
           to: toEmail,
           subject,
           html,
-          // from: EMAIL_FROM, // jeśli Twój helper wspiera
+          // from: EMAIL_FROM, // jeśli Twój helper to wspiera
         });
       }
     }
