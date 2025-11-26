@@ -34,7 +34,6 @@ type RestaurantIdRow = {
 
 const GUTTER = "170px";
 const ACCENT = "[background:linear-gradient(180deg,#b31217_0%,#7a0b0b_100%)]";
-const ARROW_GUTTER_PX = 56;
 
 // dekoracje (desktop)
 const MENU_TL = {
@@ -168,15 +167,27 @@ function ProductImg({ p, sizes = "50vw" }: { p: Product; sizes?: string }) {
   );
 }
 
-function chunk<T>(arr: T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
+// prosty hook do wykrycia mobile (Tailwind lg ~ 1024px)
+function useIsMobile(breakpoint = 1024) {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia(`(max-width:${breakpoint - 1}px)`);
+
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, [breakpoint]);
+
+  return isMobile;
 }
 
 export default function MenuSection() {
   const supabase = useMemo(() => getSupabaseBrowser(), []);
   const { addItem } = useCartStore() as any;
+  const isMobile = useIsMobile();
 
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
@@ -188,11 +199,7 @@ export default function MenuSection() {
   const [expandedDesc, setExpandedDesc] = useState<Record<string, boolean>>(
     {}
   );
-
-  const railTopRef = useRef<HTMLDivElement | null>(null);
-  const railBotRef = useRef<HTMLDivElement | null>(null);
-  const [pageTop, setPageTop] = useState(0);
-  const [pageBot, setPageBot] = useState(0);
+  const [visibleLimit, setVisibleLimit] = useState<number>(8);
 
   const catsRailRef = useRef<HTMLDivElement | null>(null);
   const [catsCanLeft, setCatsCanLeft] = useState(false);
@@ -277,7 +284,7 @@ export default function MenuSection() {
 
       const rows = (data || []) as Product[];
 
-      // unikamy duplikatów
+      // unikamy duplikatów po id
       const uniqueMap = new Map<string, Product>();
       for (const p of rows) {
         if (!uniqueMap.has(p.id)) uniqueMap.set(p.id, p);
@@ -358,56 +365,22 @@ export default function MenuSection() {
     });
   }, [products, activeCat, q]);
 
-  // ---------- GRUPOWANIE DO KARUZEL ----------
-  // desktop: 3/stronę – górny slider = pierwsza połowa listy, dolny = druga połowa
-  const groupsTopD = useMemo(() => {
-    const half = Math.ceil(visible.length / 2);
-    return chunk(visible.slice(0, half), 3);
-  }, [visible]);
-
-  const groupsBotD = useMemo(() => {
-    const half = Math.ceil(visible.length / 2);
-    return chunk(visible.slice(half), 3);
-  }, [visible]);
-
-  // mobile: 2/stronę – ta sama zasada
-  const groupsTopM = useMemo(() => {
-    const half = Math.ceil(visible.length / 2);
-    return chunk(visible.slice(0, half), 2);
-  }, [visible]);
-
-  const groupsBotM = useMemo(() => {
-    const half = Math.ceil(visible.length / 2);
-    return chunk(visible.slice(half), 2);
-  }, [visible]);
-
+  // limit widocznych pozycji: desktop 8, mobile 4
   useEffect(() => {
-    setPageTop(0);
-    setPageBot(0);
-    railTopRef.current?.scrollTo({ left: 0, behavior: "auto" });
-    railBotRef.current?.scrollTo({ left: 0, behavior: "auto" });
-  }, [
-    groupsTopD.length,
-    groupsBotD.length,
-    groupsTopM.length,
-    groupsBotM.length,
-  ]);
-
-  const onScroll = (row: "top" | "bot") => {
-    const rail = row === "top" ? railTopRef.current : railBotRef.current;
-    if (!rail) return;
-    const width = rail.clientWidth || 1;
-    const idx = Math.round(rail.scrollLeft / width);
-    if (row === "top") {
-      if (idx !== pageTop) setPageTop(idx);
-    } else {
-      if (idx !== pageBot) setPageBot(idx);
-    }
-  };
+    setVisibleLimit(isMobile ? 4 : 8);
+  }, [isMobile, activeCat, q, visible.length]);
 
   const handleAdd = (p: Product) => {
     if (p.available === false) return;
-    addItem({ id: p.id, name: p.name, price: priceNumber(p), quantity: 1 });
+    const displayName = buildDisplayName(p);
+    addItem({
+      id: p.id,
+      product_id: p.id,
+      baseName: p.name,
+      name: displayName,
+      price: priceNumber(p),
+      quantity: 1,
+    });
     setJustAdded((prev) => (prev.includes(p.id) ? prev : [...prev, p.id]));
     setTimeout(
       () => setJustAdded((prev) => prev.filter((id) => id !== p.id)),
@@ -420,11 +393,6 @@ export default function MenuSection() {
     const [first, ...rest] = categories;
     return [first, rest] as [string, string[]];
   }, [categories]);
-
-  const arrowBtn =
-    `h-11 w-11 rounded-full text-white ${ACCENT} ring-1 ring-black/30 ` +
-    `shadow-[0_10px_22px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)] ` +
-    `hover:[filter:brightness(1.06)] active:[filter:brightness(0.96)] disabled:opacity-40 disabled:cursor-not-allowed`;
 
   const arrowBtnSm =
     `h-10 w-10 rounded-full text-white ${ACCENT} ring-1 ring-black/30 ` +
@@ -464,12 +432,11 @@ export default function MenuSection() {
     const expanded = !!expandedDesc[p.id];
     const displayName = buildDisplayName(p);
     const hasLong = !!p.description && p.description.length > 120;
-    const brief =
-      !p.description
-        ? ""
-        : hasLong && !expanded
-        ? p.description.slice(0, 120) + "…"
-        : p.description;
+    const brief = !p.description
+      ? ""
+      : hasLong && !expanded
+      ? p.description.slice(0, 120) + "…"
+      : p.description;
 
     return (
       <article
@@ -514,7 +481,7 @@ export default function MenuSection() {
           )}
 
           <div className="mt-3 flex items-center justify-between">
-            <span className="text-sm font-medium text-white">
+            <span className="text-sm font-medium text:white text-white">
               {priceLabel(p)}
             </span>
 
@@ -548,19 +515,18 @@ export default function MenuSection() {
     const expanded = !!expandedDesc[p.id];
     const displayName = buildDisplayName(p);
     const hasLong = !!p.description && p.description.length > 160;
-    const brief =
-      !p.description
-        ? ""
-        : hasLong && !expanded
-        ? p.description.slice(0, 160) + "…"
-        : p.description;
+    const brief = !p.description
+      ? ""
+      : hasLong && !expanded
+      ? p.description.slice(0, 160) + "…"
+      : p.description;
 
     return (
       <article
         key={p.id}
         tabIndex={0}
         onClick={() => handleAdd(p)}
-        className="group relative bg-transparent transition hover:bg-white/5 focus:bg-white/5 outline-none cursor-pointer"
+        className="group relative bg-transparent transition hover:bg:white/5 hover:bg-white/5 focus:bg-white/5 outline-none cursor-pointer"
       >
         <div className="relative aspect-square bg-black">
           <ProductImg p={p} sizes="33vw" />
@@ -820,81 +786,36 @@ export default function MenuSection() {
           />
         </div>
 
-        {/* DWA RZĘDY KARUZEL NA MOBILE */}
+        {/* lista produktów – grid + pokaż więcej */}
         {loading ? (
-          <div className="mt-6 grid grid-rows-2 gap-6">
-            {Array.from({ length: 2 }).map((_, r) => (
-              <div key={r} className="grid grid-cols-2 gap-4">
-                {Array.from({ length: 2 }).map((_, i) => (
-                  <div key={i} className="h-44 bg-white/5" />
-                ))}
-              </div>
+          <div className="mt-6 grid grid-cols-2 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-44 bg:white/5 bg-white/5 rounded-md" />
             ))}
           </div>
-        ) : groupsTopM.length + groupsBotM.length === 0 ? (
+        ) : visible.length === 0 ? (
           <p className="mt-6 text-white/60 text-sm text-center">
             Brak pozycji.
           </p>
         ) : (
-          <div className="mt-6 space-y-8">
-            {/* TOP row */}
-            <div>
-              <div
-                ref={railTopRef}
-                onScroll={() => onScroll("top")}
-                className="overflow-x-auto snap-x snap-mandatory scroll-smooth"
-                style={{
-                  scrollbarWidth: "none",
-                  msOverflowStyle: "none",
-                  WebkitOverflowScrolling: "touch" as any,
-                }}
-                onTouchStartCapture={stopProp}
-                onTouchMoveCapture={stopProp}
-                onWheelCapture={stopProp}
-              >
-                <div className="flex">
-                  {groupsTopM.map((group, gi) => (
-                    <div key={gi} className="snap-start shrink-0 w-full">
-                      <div className="grid grid-cols-2 gap-4">
-                        {group.map((p) => (
-                          <CardMobile key={p.id} p={p} />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          <>
+            <div className="mt-6 grid grid-cols-2 gap-4">
+              {visible.slice(0, visibleLimit).map((p) => (
+                <CardMobile key={p.id} p={p} />
+              ))}
             </div>
-
-            {/* BOTTOM row */}
-            <div>
-              <div
-                ref={railBotRef}
-                onScroll={() => onScroll("bot")}
-                className="overflow-x-auto snap-x snap-mandatory scroll-smooth"
-                style={{
-                  scrollbarWidth: "none",
-                  msOverflowStyle: "none",
-                  WebkitOverflowScrolling: "touch" as any,
-                }}
-                onTouchStartCapture={stopProp}
-                onTouchMoveCapture={stopProp}
-                onWheelCapture={stopProp}
-              >
-                <div className="flex">
-                  {groupsBotM.map((group, gi) => (
-                    <div key={gi} className="snap-start shrink-0 w-full">
-                      <div className="grid grid-cols-2 gap-4">
-                        {group.map((p) => (
-                          <CardMobile key={p.id} p={p} />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+            {visibleLimit < visible.length && (
+              <div className="mt-6 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setVisibleLimit(visible.length)}
+                  className="px-4 py-2 text-sm rounded-full border border-white/40 bg-white/5 text-white hover:bg-white/10"
+                >
+                  Pokaż więcej
+                </button>
               </div>
-            </div>
-          </div>
+            )}
+          </>
         )}
       </div>
 
@@ -970,138 +891,35 @@ export default function MenuSection() {
               </div>
             </div>
 
-            {/* dwie karuzele */}
+            {/* lista produktów – grid + pokaż więcej */}
             {loading ? (
-              <div className="grid grid-rows-2 gap-8">
-                {Array.from({ length: 2 }).map((_, r) => (
-                  <div key={r} className="grid grid-cols-3 gap-6">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <div key={i} className="h-72 bg-white/5" />
-                    ))}
-                  </div>
+              <div className="grid grid-cols-3 gap-6">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="h-72 bg-white/5 rounded-md" />
                 ))}
               </div>
-            ) : groupsTopD.length + groupsBotD.length === 0 ? (
+            ) : visible.length === 0 ? (
               <p className="text-white/60 text-sm font-light">Brak pozycji.</p>
             ) : (
-              <div className="space-y-10">
-                {/* ROW TOP */}
-                <div
-                  className="relative"
-                  style={{
-                    paddingLeft: ARROW_GUTTER_PX,
-                    paddingRight: ARROW_GUTTER_PX,
-                  }}
-                >
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10">
-                    <button
-                      aria-label="Poprzednia strona (góra)"
-                      onClick={() =>
-                        railTopRef.current?.scrollBy({
-                          left: -(railTopRef.current?.clientWidth || 0),
-                          behavior: "smooth",
-                        })
-                      }
-                      className={arrowBtn}
-                    >
-                      <ChevronLeft className="mx-auto my-auto" />
-                    </button>
-                  </div>
-
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 z-10">
-                    <button
-                      aria-label="Następna strona (góra)"
-                      onClick={() =>
-                        railTopRef.current?.scrollBy({
-                          left: railTopRef.current?.clientWidth || 0,
-                          behavior: "smooth",
-                        })
-                      }
-                      className={arrowBtn}
-                    >
-                      <ChevronRight className="mx-auto my-auto" />
-                    </button>
-                  </div>
-
-                  <div
-                    ref={railTopRef}
-                    onScroll={() => onScroll("top")}
-                    className="overflow-x-auto snap-x snap-mandatory scroll-smooth"
-                    style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-                  >
-                    <div className="flex">
-                      {groupsTopD.map((group, gi) => (
-                        <div key={gi} className="snap-start shrink-0 w-full">
-                          <div className="grid grid-cols-3 gap-6">
-                            {group.map((p) => (
-                              <CardDesktop key={p.id} p={p} />
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+              <>
+                <div className="grid grid-cols-3 gap-6">
+                  {visible.slice(0, visibleLimit).map((p) => (
+                    <CardDesktop key={p.id} p={p} />
+                  ))}
                 </div>
-
-                {/* ROW BOTTOM */}
-                <div
-                  className="relative"
-                  style={{
-                    paddingLeft: ARROW_GUTTER_PX,
-                    paddingRight: ARROW_GUTTER_PX,
-                  }}
-                >
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10">
+                {visibleLimit < visible.length && (
+                  <div className="mt-8 flex justify-center">
                     <button
-                      aria-label="Poprzednia strona (dół)"
-                      onClick={() =>
-                        railBotRef.current?.scrollBy({
-                          left: -(railBotRef.current?.clientWidth || 0),
-                          behavior: "smooth",
-                        })
-                      }
-                      className={arrowBtn}
+                      type="button"
+                      onClick={() => setVisibleLimit(visible.length)}
+                      className="px-5 py-2 text-sm rounded-full border border-white/40 bg-white/5 text-white hover:bg-white/10"
                     >
-                      <ChevronLeft className="mx-auto my-auto" />
+                      Pokaż więcej
                     </button>
                   </div>
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 z-10">
-                    <button
-                      aria-label="Następna strona (dół)"
-                      onClick={() =>
-                        railBotRef.current?.scrollBy({
-                          left: railBotRef.current?.clientWidth || 0,
-                          behavior: "smooth",
-                        })
-                      }
-                      className={arrowBtn}
-                    >
-                      <ChevronRight className="mx-auto my-auto" />
-                    </button>
-                  </div>
-
-                  <div
-                    ref={railBotRef}
-                    onScroll={() => onScroll("bot")}
-                    className="overflow-x-auto snap-x snap-mandatory scroll-smooth"
-                    style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-                  >
-                    <div className="flex">
-                      {groupsBotD.map((group, gi) => (
-                        <div key={gi} className="snap-start shrink-0 w-full">
-                          <div className="grid grid-cols-3 gap-6">
-                            {group.map((p) => (
-                              <CardDesktop key={p.id} p={p} />
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
+                )}
+              </>
             )}
-            {/* /karuzele */}
           </div>
         </div>
       </div>

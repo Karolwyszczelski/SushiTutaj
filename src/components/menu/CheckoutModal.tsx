@@ -380,11 +380,23 @@ const ProductItem: React.FC<{
     return map;
   }, [productsDb]);
 
-  const prodInfo = byName.get(prod.name);
+  const byId = useMemo(() => {
+    const map = new Map<string, ProductDb>();
+    productsDb.forEach((p) => map.set(p.id, p));
+    return map;
+  }, [productsDb]);
+
+  const prodInfo =
+    (prod.product_id && byId.get(prod.product_id)) ||
+    (prod.id && byId.get(prod.id)) ||
+    (prod.baseName && byName.get(prod.baseName)) ||
+    byName.get(prod.name);
+
   const subcat = (prodInfo?.subcategory || "").toLowerCase();
   const isSet = subcat === "zestawy";
   const isSpec = subcat === "specjały";
-  const productSubcat = prodInfo?.subcategory || productCategory(prod.name);
+  const productSubcat =
+    prodInfo?.subcategory || productCategory(prod.baseName || prod.name);
 
   const singleCurrentName = useMemo(() => {
     if (isSet || isSpec) return prod.name as string;
@@ -1282,9 +1294,32 @@ export default function CheckoutModal() {
     return map;
   }, [productsDb]);
 
+  const productsById = useMemo(() => {
+    const map = new Map<string, ProductDb>();
+    productsDb.forEach((p) => map.set(p.id, p));
+    return map;
+  }, [productsDb]);
+
   const productCategory = useCallback(
     (name: string) => productsByName.get(name)?.subcategory || "",
     [productsByName]
+  );
+
+  const resolveProduct = useCallback(
+    (item: any): ProductDb | undefined => {
+      const pid = item.product_id ?? item.id;
+      if (pid && productsById.get(pid)) {
+        return productsById.get(pid);
+      }
+      if (item.baseName && productsByName.get(item.baseName)) {
+        return productsByName.get(item.baseName);
+      }
+      if (item.name && productsByName.get(item.name)) {
+        return productsByName.get(item.name);
+      }
+      return undefined;
+    },
+    [productsById, productsByName]
   );
 
   const optionsByCat = useMemo(() => {
@@ -1295,22 +1330,28 @@ export default function CheckoutModal() {
       out[cat] = out[cat] || [];
       out[cat].push(p.name);
     });
-    Object.values(out).forEach((arr) => arr.sort((a, b) => a.localeCompare(b)));
+    Object.values(out).forEach((arr) =>
+      arr.sort((a, b) => a.localeCompare(b))
+    );
     return out;
   }, [productsDb]);
 
   const baseTotal = useMemo<number>(() => {
     return items.reduce((acc: number, it: any) => {
       const qty = it.quantity || 1;
-      const priceNum = typeof it.price === "string" ? parseFloat(it.price) : it.price || 0;
-      const productDb = productsByName.get(it.name);
-      const addonsCost = (it.addons ?? []).reduce((sum: number, addon: string) => {
-        const unit = computeAddonPrice(addon, productDb || undefined);
-        return sum + unit;
-      }, 0);
+      const priceNum =
+        typeof it.price === "string" ? parseFloat(it.price) : it.price || 0;
+      const productDb = resolveProduct(it);
+      const addonsCost = (it.addons ?? []).reduce(
+        (sum: number, addon: string) => {
+          const unit = computeAddonPrice(addon, productDb || undefined);
+          return sum + unit;
+        },
+        0
+      );
       return acc + (priceNum + addonsCost) * qty;
     }, 0);
-  }, [items, productsByName]);
+  }, [items, resolveProduct]);
 
   const packagingCost = selectedOption ? 2 : 0;
   const subtotal = baseTotal + packagingCost;
@@ -1318,15 +1359,19 @@ export default function CheckoutModal() {
   const getItemLineTotal = useCallback(
     (it: any) => {
       const qty = it.quantity || 1;
-      const priceNum = typeof it.price === "string" ? parseFloat(it.price) : it.price || 0;
-      const productDb = productsByName.get(it.name);
-      const addonsCost = (it.addons ?? []).reduce((sum: number, addon: string) => {
-        const unit = computeAddonPrice(addon, productDb || undefined);
-        return sum + unit;
-      }, 0);
+      const priceNum =
+        typeof it.price === "string" ? parseFloat(it.price) : it.price || 0;
+      const productDb = resolveProduct(it);
+      const addonsCost = (it.addons ?? []).reduce(
+        (sum: number, addon: string) => {
+          const unit = computeAddonPrice(addon, productDb || undefined);
+          return sum + unit;
+        },
+        0
+      );
       return (priceNum + addonsCost) * qty;
     },
-    [productsByName]
+    [resolveProduct]
   );
 
   const calcDelivery = async (custLat: number, custLng: number) => {
@@ -1583,9 +1628,9 @@ export default function CheckoutModal() {
       }
 
       const itemsPayload = items.map((item: any, index: number) => {
-        const product = productsDb.find((p) => (p as any).name === item.name);
+        const product = resolveProduct(item);
         return {
-          product_id: product?.id,
+          product_id: product?.id ?? item.product_id ?? item.id ?? null,
           name: item.name,
           quantity: item.quantity || 1,
           unit_price: item.price,
