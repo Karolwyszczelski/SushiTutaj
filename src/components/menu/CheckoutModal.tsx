@@ -494,17 +494,17 @@ const ProductItem: React.FC<{
   };
 
    const doSetSwap = (rowFrom: string, to: string) => {
-    const current = getSetSwapCurrent(rowFrom);
-    if (!to || to === current) return;
+  const current = getSetSwapCurrent(rowFrom);
+  if (!to || to === current) return;
 
-    // faktyczna zamiana w store
-    swapIngredient(prod.name, rowFrom, to);
+  // UWAGA: swapujemy z aktualnie wybranej rolki -> nowa podmiana też działa
+  swapIngredient(prod.name, current, to);
 
-    // jednorazowa opłata za zamiany w zestawie
-    if (!(prod.addons ?? []).includes(SWAP_FEE_NAME)) {
-      addAddon(prod.name, SWAP_FEE_NAME);
-    }
-  };
+  // jednorazowa opłata za zamiany w zestawie
+  if (!(prod.addons ?? []).includes(SWAP_FEE_NAME)) {
+    addAddon(prod.name, SWAP_FEE_NAME);
+  }
+};
 
   // Tatar: tylko w Szczytnie / Przasnyszu, przystawki + tatar z łososia/tuńczyka
   const isTartar = useMemo(() => {
@@ -610,47 +610,55 @@ const ProductItem: React.FC<{
 
                // extras per rolka w zestawie
               const rowKeyBase = `${row.cat} ${row.from}`;
-              const extraKey = (ex: string) =>
-                `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — ${ex}`;
+const extraKey = (ex: string) =>
+  `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — ${ex}`;
 
-              const canUseExtraForRow = (ex: string): boolean => {
-                const rowCatLc = row.cat.toLowerCase();
-                const text = `${row.cat} ${row.from}`.toLowerCase();
+// BIERZEMY aktualnie wybraną rolkę w tym miejscu zestawu:
+const currentProduct = byName.get(current) || prodInfo;
+const rowCatLc = (currentProduct?.subcategory || row.cat).toLowerCase();
+const text = `${currentProduct?.name || row.cat} ${
+  currentProduct?.description || row.from
+}`.toLowerCase();
 
-                if (rowCatLc.includes("california")) {
-                  if (ex === "Ryba pieczona") {
-                    return isSpecialCaliforniaBakedFishProduct(
-                      `${row.cat} ${row.from}`,
-                      undefined
-                    );
-                  }
-                  return false;
-                }
+const canUseExtraForRow = (ex: string): boolean => {
+  // California
+  if (rowCatLc.includes("california")) {
+    if (ex === "Ryba pieczona") {
+      return isSpecialCaliforniaBakedFishProduct(
+        currentProduct?.name || "",
+        currentProduct?.description || ""
+      );
+    }
+    return false;
+  }
 
-                if (rowCatLc.includes("hosomaki")) {
-                  return ex === "Tempura";
-                }
+  // Hosomaki -> tylko Tempura
+  if (rowCatLc.includes("hosomaki")) {
+    return ex === "Tempura";
+  }
 
-                if (rowCatLc.includes("futomaki")) {
-                  if (ex === "Ryba pieczona") {
-                    return /surowy/i.test(text);
-                  }
-                  if (ex === "Tamago") return true;
-                  return ex === "Tempura" || ex === "Płatek sojowy";
-                }
+  // Futomaki
+  if (rowCatLc.includes("futomaki")) {
+    if (ex === "Ryba pieczona") {
+      return /surowy/i.test(text);
+    }
+    if (ex === "Tamago") return true;
+    return ex === "Tempura" || ex === "Płatek sojowy";
+  }
 
-                if (rowCatLc.includes("nigiri")) {
-                  if (ex !== "Ryba pieczona") return false;
-                  const hasFish =
-                    text.includes("łosoś") ||
-                    text.includes("losos") ||
-                    text.includes("tuńczyk") ||
-                    text.includes("tunczyk");
-                  return hasFish;
-                }
+  // Nigiri – tylko Ryba pieczona dla łosoś/tuńczyk
+  if (rowCatLc.includes("nigiri")) {
+    if (ex !== "Ryba pieczona") return false;
+    const hasFish =
+      text.includes("łosoś") ||
+      text.includes("losos") ||
+      text.includes("tuńczyk") ||
+      text.includes("tunczyk");
+    return hasFish;
+  }
 
-                return false;
-              };
+  return false;
+};
 
               return (
                 <div key={i} className="flex flex-col gap-2">
