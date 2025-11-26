@@ -629,18 +629,7 @@ export default function MenuSection() {
         } as CSSProperties
       }
     >
-      {/* boczne pasy */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0 left-0 z-0"
-        style={{ width: 50, background: "#0b0b0b" }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-y-0 right-0 z-0"
-        style={{ width: 50, background: "#0b0b0b" }}
-      />
-
+      
       {/* dekoracje desktop */}
       <div
         aria-hidden

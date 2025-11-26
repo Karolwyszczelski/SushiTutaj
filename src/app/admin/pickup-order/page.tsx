@@ -482,13 +482,16 @@ export default function PickupOrdersPage() {
     setBooted(true);
   }, [urlSlug]);
 
-  /* AUDIO */
+  /* AUDIO – pojedynczy dźwięk + pętla alarmowa */
   const newOrderAudio = useRef<HTMLAudioElement | null>(null);
+  const ringIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
     const a = new Audio("/new-order.mp3");
     a.preload = "auto";
     a.volume = 1;
     newOrderAudio.current = a;
+
     const unlock = async () => {
       try {
         a.currentTime = 0;
@@ -496,9 +499,11 @@ export default function PickupOrdersPage() {
         a.pause();
       } catch {}
     };
+
     window.addEventListener("pointerdown", unlock, { once: true });
     return () => window.removeEventListener("pointerdown", unlock);
   }, []);
+
   const playDing = useCallback(async () => {
     try {
       if (newOrderAudio.current) {
@@ -546,7 +551,6 @@ export default function PickupOrdersPage() {
         return;
       }
 
-      /* ważne: bierzemy restaurant_id z odpowiedzi API, bo httpOnly cookie nie jest dostępne w JS */
       if (json?.restaurant_id && typeof json.restaurant_id === "string") {
         setRestaurantId(json.restaurant_id);
       }
@@ -707,7 +711,6 @@ export default function PickupOrdersPage() {
 
   // 🔧 Akceptacja przez PATCH /api/orders/[id] → status + czas + powiadomienia
   const acceptAndSetTime = async (order: Order, minutes: number) => {
-    // ETA – za ile minut zamówienie będzie gotowe
     const eta = new Date(Date.now() + minutes * 60_000).toISOString();
 
     try {
@@ -719,7 +722,6 @@ export default function PickupOrdersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: "accepted",
-          // różne pola, żeby backend miał pełne dane
           deliveryTime: eta,
           delivery_time: eta,
           client_delivery_time: eta,
@@ -863,6 +865,31 @@ export default function PickupOrdersPage() {
   const histList = filtered.filter(
     (o) => o.status === "cancelled" || o.status === "completed"
   );
+
+  /* --- PĘTLA DŹWIĘKU: gra dopóki są niezaakceptowane zamówienia --- */
+  useEffect(() => {
+    const hasOpenNew = newList.length > 0;
+
+    if (hasOpenNew) {
+      if (!ringIntervalRef.current) {
+        ringIntervalRef.current = setInterval(() => {
+          void playDing();
+        }, 10000); // co 10 sekund, dopóki są nowe/pending/placed
+      }
+    } else {
+      if (ringIntervalRef.current) {
+        clearInterval(ringIntervalRef.current);
+        ringIntervalRef.current = null;
+      }
+    }
+
+    return () => {
+      if (ringIntervalRef.current) {
+        clearInterval(ringIntervalRef.current);
+        ringIntervalRef.current = null;
+      }
+    };
+  }, [newList.length, playDing]);
 
   const ProductItem: React.FC<{
     raw: any;
@@ -1303,7 +1330,7 @@ export default function PickupOrdersPage() {
         </ul>
       </div>
 
-      {/* Pasek filtrów – dopasowany do AdminPanel */}
+      {/* Pasek filtrów */}
       <div className="sticky top-0 z-20 -mx-4 mb-5 bg-white p-4 text-slate-900 sm:mx-0 sm:rounded-2xl sm:border">
         <div className="flex flex-wrap items-center gap-2">
           <select
