@@ -90,6 +90,9 @@ const RAW_SET_BAKE_ALL =
   "Zamiana całego zestawu surowego na pieczony (+5 zł)";
 const RAW_SET_BAKE_ROLL_PREFIX = "Zamiana surowej rolki na pieczoną: ";
 
+/** Dodatki przypisane do konkretnej rolki w zestawie */
+const SET_ROLL_EXTRA_PREFIX = "Dodatek do rolki: ";
+
 /* NOWE: bazowe opcje do tatara – bez dopłaty */
 const TARTAR_BASES = [
   "Podanie: na awokado",
@@ -115,6 +118,7 @@ function isSpecialCaliforniaBakedFishProduct(
 
 /* Spójne liczenie ceny dodatków (także nowe logiki pieczenia) */
 function computeAddonPrice(addon: string, product?: ProductDb | null): number {
+  // 1) Najpierw rzeczy rozpoznawane po ORYGINALNEJ nazwie dodatku
   if (SAUCES.includes(addon)) return 3;
   if (addon === SWAP_FEE_NAME) return 5;
 
@@ -129,6 +133,21 @@ function computeAddonPrice(addon: string, product?: ProductDb | null): number {
   // Domyślna cena dodatków typu Tempura / Płatek / Tamago / Ryba pieczona
   const basePrice = 4;
 
+  // 2) Dodatki per rolka w zestawie:
+  // format: "Dodatek do rolki: <cat> <opis> — <nazwa dodatku>"
+  let label = addon;
+  if (addon.startsWith(SET_ROLL_EXTRA_PREFIX)) {
+    const after = addon.slice(SET_ROLL_EXTRA_PREFIX.length).trim();
+    const parts = after.split("—");
+    const maybeExtra = (parts[1] || parts[0] || "").trim();
+    const foundBase = EXTRAS.find((ex) =>
+      maybeExtra.toLowerCase().includes(ex.toLowerCase())
+    );
+    if (foundBase) {
+      label = foundBase; // "Tempura" / "Płatek sojowy" / "Tamago" / "Ryba pieczona"
+    }
+  }
+
   if (!product) return basePrice;
 
   const subcat = (product.subcategory || "").toLowerCase();
@@ -138,7 +157,8 @@ function computeAddonPrice(addon: string, product?: ProductDb | null): number {
     subcat === "california" &&
     isSpecialCaliforniaBakedFishProduct(product.name, product.description);
 
-  if (addon === "Ryba pieczona") {
+  // Specjalna logika dla "Ryba pieczona"
+  if (label === "Ryba pieczona") {
     // Specjalna California – ryba pieczona +2 zł
     if (isSpecialCalifornia) return 2;
 
@@ -153,6 +173,7 @@ function computeAddonPrice(addon: string, product?: ProductDb | null): number {
     }
   }
 
+  // Reszta dodatków (Tempura, Płatek sojowy, Tamago itd.) – stała cena
   return basePrice;
 }
 
@@ -472,6 +493,19 @@ const ProductItem: React.FC<{
     return false;
   };
 
+   const doSetSwap = (rowFrom: string, to: string) => {
+    const current = getSetSwapCurrent(rowFrom);
+    if (!to || to === current) return;
+
+    // faktyczna zamiana w store
+    swapIngredient(prod.name, rowFrom, to);
+
+    // jednorazowa opłata za zamiany w zestawie
+    if (!(prod.addons ?? []).includes(SWAP_FEE_NAME)) {
+      addAddon(prod.name, SWAP_FEE_NAME);
+    }
+  };
+
   // Tatar: tylko w Szczytnie / Przasnyszu, przystawki + tatar z łososia/tuńczyka
   const isTartar = useMemo(() => {
     if (!prodInfo) return false;
@@ -574,6 +608,127 @@ const ProductItem: React.FC<{
                 }
               };
 
+               // extras per rolka w zestawie
+              const rowKeyBase = `${row.cat} ${row.from}`;
+              const extraKey = (ex: string) =>
+                `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — ${ex}`;
+
+              const canUseExtraForRow = (ex: string): boolean => {
+                const rowCatLc = row.cat.toLowerCase();
+                const text = `${row.cat} ${row.from}`.toLowerCase();
+
+                if (rowCatLc.includes("california")) {
+                  if (ex === "Ryba pieczona") {
+                    return isSpecialCaliforniaBakedFishProduct(
+                      `${row.cat} ${row.from}`,
+                      undefined
+                    );
+                  }
+                  return false;
+                }
+
+                if (rowCatLc.includes("hosomaki")) {
+                  return ex === "Tempura";
+                }
+
+                if (rowCatLc.includes("futomaki")) {
+                  if (ex === "Ryba pieczona") {
+                    return /surowy/i.test(text);
+                  }
+                  if (ex === "Tamago") return true;
+                  return ex === "Tempura" || ex === "Płatek sojowy";
+                }
+
+                if (rowCatLc.includes("nigiri")) {
+                  if (ex !== "Ryba pieczona") return false;
+                  const hasFish =
+                    text.includes("łosoś") ||
+                    text.includes("losos") ||
+                    text.includes("tuńczyk") ||
+                    text.includes("tunczyk");
+                  return hasFish;
+                }
+
+                return false;
+              };
+
+              return (
+                <div key={i} className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="px-2 py-1 rounded bg-gray-50 border border-gray-200">
+                      {row.qty}× {row.cat}
+                    </span>
+                    <span className="text-black/70">zamień:</span>
+                    <select
+                      className="border border-black/15 rounded px-2 py-1 bg-white"
+                      value={current}
+                      onChange={(e) => doSetSwap(row.from, e.target.value)}
+                    >
+                      {[current, ...pool.filter((n) => n !== current)].map(
+                        (n) => (
+                          <option key={n} value={n}>
+                            {withCategoryPrefix(n, row.cat)}
+                          </option>
+                        )
+                      )}
+                    </select>
+
+                    {rawRow && (
+                      <button
+                        type="button"
+                        onClick={toggleRowBake}
+                        disabled={isWholeSetBaked}
+                        className={clsx(
+                          "px-2 py-1 rounded text-[11px] border",
+                          isWholeSetBaked
+                            ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
+                            : rollBaked
+                            ? "bg-black text-white border-black"
+                            : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                        )}
+                      >
+                        {rollBaked
+                          ? "✓ Ta rolka pieczona (+2 zł)"
+                          : "+ Zamień tę rolkę na pieczoną (+2 zł)"}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Dodatki dla tej KONKRETNEJ rolki */}
+                  <div className="flex flex-wrap items-center gap-2 pl-2">
+                    <span className="text-black/70 text-[11px]">
+                      Dodatki do tej rolki:
+                    </span>
+                    {EXTRAS.map((ex) => {
+                      const key = extraKey(ex);
+                      const allowed = canUseExtraForRow(ex);
+                      const on = (prod.addons ?? []).includes(key);
+                      return (
+                        <button
+                          key={ex}
+                          type="button"
+                          onClick={() => {
+                            if (!allowed) return;
+                            if (on) removeAddon(prod.name, key);
+                            else addAddon(prod.name, key);
+                          }}
+                          className={clsx(
+                            "px-2 py-1 rounded text-[11px] border",
+                            !allowed
+                              ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
+                              : on
+                              ? "bg-black text-white border-black"
+                              : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                          )}
+                        >
+                          {on ? `✓ ${ex}` : `+ ${ex}`}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+
               return (
                 <div key={i} className="flex flex-wrap items-center gap-2">
                   <span className="px-2 py-1 rounded bg-gray-50 border border-gray-200">
@@ -583,7 +738,7 @@ const ProductItem: React.FC<{
                   <select
                     className="border border-black/15 rounded px-2 py-1 bg-white"
                     value={current}
-                    onChange={(e) => swapIngredient(prod.name, row.from, e.target.value)}
+                    onChange={(e) => doSetSwap(row.from, e.target.value)}
                   >
                     {[current, ...pool.filter((n) => n !== current)].map(
                       (n) => (
@@ -670,6 +825,7 @@ const ProductItem: React.FC<{
           </div>
         </div>
 
+        {!isSet && (
         <div>
           <div className="font-semibold mb-1">Dodatki:</div>
           <div className="flex flex-wrap gap-2">
@@ -726,6 +882,7 @@ const ProductItem: React.FC<{
             </p>
           )}
         </div>
+        )}
 
         {isTartar && (
           <div>
