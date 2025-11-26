@@ -1,7 +1,7 @@
 // src/lib/e-mail.ts
 import { Resend } from "resend";
 
-const FROM = process.env.MAIL_FROM || "no-reply@yourdomain.tld";
+const FROM = process.env.MAIL_FROM || "ply@yourdomain.tld";
 
 type SendArgs = {
   to: string | string[];
