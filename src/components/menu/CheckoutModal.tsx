@@ -74,7 +74,8 @@ type Promo =
   | null;
 
 /* Sushi sosy i dodatki */
-const SAUCES = [
+/* Sushi sosy i dodatki */
+const BASE_SAUCES = [
   "Sos sojowy",
   "Teryiaki",
   "Spicy Mayo",
@@ -82,6 +83,13 @@ const SAUCES = [
   "Sriracha",
   "Żurawina",
 ];
+
+// dodatkowe sosy do frytek z batatów (tylko Przasnysz / Szczytno)
+const BATATA_SAUCES = ["Sos czekoladowy", "Sos toffi"];
+
+// do wyceny – wszystkie sosy liczymy po 3 zł
+const ALL_SAUCES = [...BASE_SAUCES, ...BATATA_SAUCES];
+
 const EXTRAS = ["Tempura", "Płatek sojowy", "Tamago", "Ryba pieczona"];
 const SWAP_FEE_NAME = "Zamiana w zestawie";
 
@@ -118,8 +126,7 @@ function isSpecialCaliforniaBakedFishProduct(
 
 /* Spójne liczenie ceny dodatków (także nowe logiki pieczenia) */
 function computeAddonPrice(addon: string, product?: ProductDb | null): number {
-  // 1) Najpierw rzeczy rozpoznawane po ORYGINALNEJ nazwie dodatku
-  if (SAUCES.includes(addon)) return 3;
+  if (ALL_SAUCES.includes(addon)) return 3;
   if (addon === SWAP_FEE_NAME) return 5;
 
   // Bazowe opcje podania tatara – 0 zł
@@ -526,6 +533,33 @@ const ProductItem: React.FC<{
   }
 };
 
+  // Frytki z batatów z przystawek – tylko w Szczytnie i Przasnyszu
+  const isSweetPotatoFries = useMemo(() => {
+    if (!prodInfo) return false;
+
+    const city = (restaurantSlug || "").toLowerCase();
+    if (city !== "szczytno" && city !== "przasnysz") return false;
+
+    const sub = (prodInfo.subcategory || "").toLowerCase();
+    if (!sub.includes("przystawk")) return false;
+
+    const text = `${prodInfo.name} ${prodInfo.description || ""}`.toLowerCase();
+    return (
+      text.includes("frytki z batat") ||
+      text.includes("frytki batat")
+    );
+  }, [prodInfo, restaurantSlug]);
+
+  const saucesForProduct = useMemo(() => {
+    if (isSweetPotatoFries) {
+      // tu pokazujemy tylko te 4 sosy do batatów
+      return ["Spicy Mayo", "Teryiaki", "Sos czekoladowy", "Sos toffi"];
+    }
+    // standardowy zestaw sosów
+    return BASE_SAUCES;
+  }, [isSweetPotatoFries]);
+
+
   // Tatar: tylko w Szczytnie / Przasnyszu, przystawki + tatar z łososia/tuńczyka
   const isTartar = useMemo(() => {
     if (!prodInfo) return false;
@@ -830,10 +864,10 @@ const canUseExtraForRow = (ex: string): boolean => {
           </div>
         )}
 
-        <div>
+         <div>
           <div className="font-semibold mb-1">Sosy:</div>
           <div className="flex flex-wrap gap-2">
-            {SAUCES.map((s) => {
+            {saucesForProduct.map((s) => {
               const on = prod.addons?.includes(s);
               return (
                 <button
