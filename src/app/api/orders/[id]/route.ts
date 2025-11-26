@@ -103,8 +103,13 @@ export async function PATCH(request: Request, ctx: any) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const cookieStore = cookies();
-  const cookieRid = cookieStore.get("restaurant_id")?.value ?? null;
+  // TS ma fanaberie z typem cookies() w route handlers → rzutujemy na any
+  const cookieStore = cookies() as any;
+  const cookieRid =
+    cookieStore?.get?.("restaurant_id")?.value ??
+    cookieStore?.get?.("restaurant")?.value ??
+    null;
+
   const allowedRestaurantId = await resolveRestaurantId(
     session.user.id,
     cookieRid
@@ -142,8 +147,9 @@ export async function PATCH(request: Request, ctx: any) {
 
   if (body.status) updateData.status = body.status;
 
-  if (employeeTime) updateData.deliveryTime = employeeTime; // "deliveryTime" timestamptz
-  if (clientTime) updateData.client_delivery_time = clientTime; // "client_delivery_time" text
+  // "deliveryTime" (timestamptz) i "client_delivery_time" (text) z DDL
+  if (employeeTime) updateData.deliveryTime = employeeTime;
+  if (clientTime) updateData.client_delivery_time = clientTime;
 
   if (body.items !== undefined) {
     updateData.items =
@@ -173,7 +179,7 @@ export async function PATCH(request: Request, ctx: any) {
     updateData.discount_amount = body.discount_amount;
   }
 
-  // Pałeczki → istniejąca kolumna chopsticks_qty (smallint, CHECK 0–10)
+  // Pałeczki → kolumna chopsticks_qty (smallint, CHECK 0–10)
   const chopsticksRaw =
     body.chopsticks_qty ??
     body.chopsticks_count ??
@@ -316,7 +322,7 @@ export async function PATCH(request: Request, ctx: any) {
         body.payment_status === "paid" &&
         updated.payment_method === "online"
       ) {
-        // uwaga: w DB payment_method ma CHECK ('cash','online')
+        // w DB: payment_method CHECK ('cash','online')
         subject += " — płatność potwierdzona";
         headline = "Otrzymaliśmy Twoją płatność online";
         extra = "Status płatności: <b>opłacone</b>";
@@ -345,7 +351,7 @@ export async function PATCH(request: Request, ctx: any) {
             <hr style="margin:20px 0;border:none;border-top:1px solid #eee" />
             <p style="font-size:12px;color:#555;margin:0">
               Akceptacja: Regulamin v${termsV} (<a href="${TERMS_URL}">link</a>),
-              Polityka prywatności v${privV} (<a href="${PRIVACY_URL}">link</a>)
+              Polityka prywatności v${PRIVACY_VERSION} (<a href="${PRIVACY_URL}">link</a>)
             </p>
           </div>
         `;
@@ -354,7 +360,7 @@ export async function PATCH(request: Request, ctx: any) {
           to: toEmail,
           subject,
           html,
-          // from: EMAIL_FROM, // włącz jeśli Twój helper to obsługuje
+          // from: EMAIL_FROM, // odkomentuj jeśli Twój helper obsługuje "from"
         });
       }
     }
