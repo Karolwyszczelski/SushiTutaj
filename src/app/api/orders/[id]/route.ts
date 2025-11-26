@@ -32,11 +32,6 @@ const adminAuth = createClient(
   { auth: { persistSession: false } }
 );
 
-/* ====== Mail FROM ====== */
-const EMAIL_FROM = (process.env.EMAIL_FROM ||
-  process.env.RESEND_FROM ||
-  "Sushi Tutaj <no-reply@sushitutaj.pl>").replace(/^['"\s]+|['"\s]+$/g, "");
-
 /* ====== TZ i format czasu ====== */
 const APP_TZ = process.env.APP_TIMEZONE || "Europe/Warsaw";
 const timeFmt = new Intl.DateTimeFormat("pl-PL", {
@@ -84,9 +79,9 @@ async function resolveRestaurantId(
 }
 
 /* ====== PATCH ====== */
+// UWAGA: używamy luźnego typu ctx: any, żeby nie walczyć z typami Next 15
 export async function PATCH(request: Request, ctx: any) {
   const orderId = ctx?.params?.id as string | undefined;
-
   if (!orderId) {
     return NextResponse.json({ error: "Missing order id" }, { status: 400 });
   }
@@ -103,7 +98,7 @@ export async function PATCH(request: Request, ctx: any) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // TS ma fanaberie z typem cookies() w route handlers → rzutujemy na any
+  // cookies() ma różne typy między runtime’ami – rzutujemy na any
   const cookieStore = cookies() as any;
   const cookieRid =
     cookieStore?.get?.("restaurant_id")?.value ??
@@ -137,7 +132,8 @@ export async function PATCH(request: Request, ctx: any) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // Mapowanie pól do aktualizacji (tylko istniejące kolumny z Twojej tabeli)
+  /* ====== Mapowanie pól do update ====== */
+
   const employeeTime: string | undefined =
     body.deliveryTime ?? body.employee_delivery_time;
   const clientTime: string | undefined =
@@ -147,7 +143,7 @@ export async function PATCH(request: Request, ctx: any) {
 
   if (body.status) updateData.status = body.status;
 
-  // "deliveryTime" (timestamptz) i "client_delivery_time" (text) z DDL
+  // "deliveryTime" (timestamptz) i "client_delivery_time" (text) – tak masz w DDL
   if (employeeTime) updateData.deliveryTime = employeeTime;
   if (clientTime) updateData.client_delivery_time = clientTime;
 
@@ -179,7 +175,7 @@ export async function PATCH(request: Request, ctx: any) {
     updateData.discount_amount = body.discount_amount;
   }
 
-  // Pałeczki → kolumna chopsticks_qty (smallint, CHECK 0–10)
+  // Pałeczki → chopsticks_qty (smallint, CHECK 0–10)
   const chopsticksRaw =
     body.chopsticks_qty ??
     body.chopsticks_count ??
@@ -196,9 +192,10 @@ export async function PATCH(request: Request, ctx: any) {
     }
   }
 
-  // Uwaga: w tabeli orders NIE ma kolumny updated_at – nic takiego nie ustawiamy
+  // Uwaga: brak updated_at w tabeli – nic takiego nie ustawiamy
 
-  // UPDATE zamówienia
+  /* ====== UPDATE zamówienia ====== */
+
   const { data, error } = await (supabaseAdmin as any)
     .from("orders")
     .update(updateData)
@@ -222,7 +219,8 @@ export async function PATCH(request: Request, ctx: any) {
   const when: string | null =
     updated.deliveryTime ?? updated.client_delivery_time ?? null;
 
-  /* ====== SMS ====== */
+  /* ====== SMS (SMSAPI przez sendSms) ====== */
+
   const onlyTimeUpdate =
     !!employeeTime && updated.status === "accepted" && body.status !== "accepted";
 
@@ -266,15 +264,17 @@ export async function PATCH(request: Request, ctx: any) {
     }
   }
 
-  /* ====== E-mail ====== */
+  /* ====== E-mail o zamówieniu (sendEmail) ====== */
+
   try {
     let toEmail: string | undefined =
       updated.contact_email || updated.email || undefined;
     const userId: string | undefined =
       updated.user_id || updated.user || updated.userId || undefined;
 
+    // jeśli nie ma maila w orders, spróbuj dociągnąć z auth.users
     if (!toEmail && userId) {
-      // @ts-ignore — API adminAuth w supabase-js jest słabo typowane
+      // @ts-ignore — adminAuth.auth.admin jest słabo typowany w supabase-js
       const { data: userRes } = await adminAuth.auth.admin.getUserById(userId);
       toEmail = userRes?.user?.email || toEmail;
     }
@@ -322,7 +322,6 @@ export async function PATCH(request: Request, ctx: any) {
         body.payment_status === "paid" &&
         updated.payment_method === "online"
       ) {
-        // w DB: payment_method CHECK ('cash','online')
         subject += " — płatność potwierdzona";
         headline = "Otrzymaliśmy Twoją płatność online";
         extra = "Status płatności: <b>opłacone</b>";
@@ -351,16 +350,16 @@ export async function PATCH(request: Request, ctx: any) {
             <hr style="margin:20px 0;border:none;border-top:1px solid #eee" />
             <p style="font-size:12px;color:#555;margin:0">
               Akceptacja: Regulamin v${termsV} (<a href="${TERMS_URL}">link</a>),
-              Polityka prywatności v${PRIVACY_VERSION} (<a href="${PRIVACY_URL}">link</a>)
+              Polityka prywatności v${privV} (<a href="${PRIVACY_URL}">link</a>)
             </p>
           </div>
         `;
 
+        // Tu faktycznie odpala się Twoja bramka mailowa (Resend/SMTP) z lib/e-mail
         await sendEmail({
           to: toEmail,
           subject,
           html,
-          // from: EMAIL_FROM, // odkomentuj jeśli Twój helper obsługuje "from"
         });
       }
     }
