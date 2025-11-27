@@ -1,15 +1,24 @@
 // src/store/cartStore.ts
-import { create } from 'zustand';
+import { create } from "zustand";
 
 export interface CartItem {
+  /** ID produktu z bazy (Supabase) – opcjonalne */
+  id?: string;
+  /** Alias na ID produktu – używane przy payloadzie zamówienia */
+  product_id?: string;
+  /** Nazwa bazowa (np. oryginalna rolka w zestawie) – opcjonalnie */
+  baseName?: string;
+
+  /** Nazwa pozycji widoczna w koszyku */
   name: string;
-  price: number;
+  /** Cena jednostkowa (może być number albo string z bazy) */
+  price: number | string;
+  /** Ilość sztuk w koszyku */
   quantity?: number;
 
-  // Nowe pola
-  meatType?: "wołowina" | "kurczak";
-  extraMeatCount?: number;
+  /** Dodatki (sosy, „Ryba pieczona”, Tempura itd.) */
   addons?: string[];
+  /** Zamiany składników / rolek w zestawie */
   swaps?: { from: string; to: string }[];
 }
 
@@ -22,11 +31,10 @@ interface CartState {
   addItem: (item: CartItem) => void;
   removeItem: (name: string) => void;
   removeWholeItem: (name: string) => void;
-  changeMeatType: (name: string, newMeat: "wołowina"|"kurczak") => void;
-  addExtraMeat: (name: string) => void;
-  removeExtraMeat: (name: string) => void;
+
   addAddon: (name: string, addon: string) => void;
   removeAddon: (name: string, addon: string) => void;
+  /** Zamiana składnika/rolki w zestawie – nadpisuje istniejącą zamianę dla danego `from` */
   swapIngredient: (name: string, from: string, to: string) => void;
   removeSwap: (name: string, swapIndex: number) => void;
 
@@ -47,26 +55,30 @@ const useCartStore = create<CartState>((set) => ({
 
   addItem: (item) =>
     set((state) => {
+      // Łączymy pozycje po nazwie – jeśli nazwa ta sama, zwiększamy quantity
       const existing = state.items.find((i) => i.name === item.name);
       if (existing) {
         return {
           items: state.items.map((i) =>
             i.name === item.name
-              ? { ...i, quantity: (i.quantity || 1) + 1 }
+              ? {
+                  ...i,
+                  quantity: (i.quantity || 1) + (item.quantity || 1),
+                }
               : i
           ),
         };
       }
+
+      // Nowa pozycja w koszyku
       return {
         items: [
           ...state.items,
           {
             ...item,
             quantity: item.quantity || 1,
-            meatType: item.meatType || "wołowina",
-            extraMeatCount: 0,
-            addons: [],
-            swaps: []
+            addons: item.addons || [],
+            swaps: item.swaps || [],
           },
         ],
       };
@@ -89,104 +101,76 @@ const useCartStore = create<CartState>((set) => ({
     }),
 
   removeWholeItem: (name) =>
-    set((state) => {
-      const updatedItems = state.items.filter((item) => item.name !== name);
-      return { items: updatedItems };
-    }),
-
-  changeMeatType: (name, newMeat) =>
-    set((state) => {
-      const newItems = state.items.map((i) =>
-        i.name === name ? { ...i, meatType: newMeat } : i
-      );
-      return { items: newItems };
-    }),
-
-  addExtraMeat: (name) =>
-    set((state) => {
-      const newItems = state.items.map((i) => {
-        if (i.name === name) {
-          return { ...i, extraMeatCount: (i.extraMeatCount || 0) + 1 };
-        }
-        return i;
-      });
-      return { items: newItems };
-    }),
-
-  removeExtraMeat: (name) =>
-    set((state) => {
-      const newItems = state.items.map((i) => {
-        if (i.name === name && i.extraMeatCount && i.extraMeatCount > 0) {
-          return { ...i, extraMeatCount: i.extraMeatCount - 1 };
-        }
-        return i;
-      });
-      return { items: newItems };
-    }),
+    set((state) => ({
+      items: state.items.filter((item) => item.name !== name),
+    })),
 
   addAddon: (name, addon) =>
-    set((state) => {
-      const newItems = state.items.map((i) => {
-        if (i.name === name) {
-          return {
-            ...i,
-            addons: i.addons?.includes(addon)
-              ? i.addons
-              : [...(i.addons || []), addon]
-          };
-        }
-        return i;
-      });
-      return { items: newItems };
-    }),
+    set((state) => ({
+      items: state.items.map((i) => {
+        if (i.name !== name) return i;
+        const addons = Array.isArray(i.addons) ? i.addons : [];
+        if (addons.includes(addon)) return i;
+        return { ...i, addons: [...addons, addon] };
+      }),
+    })),
 
   removeAddon: (name, addon) =>
-    set((state) => {
-      const newItems = state.items.map((i) => {
-        if (i.name === name) {
-          return {
-            ...i,
-            addons: i.addons?.filter((a) => a !== addon)
-          };
-        }
-        return i;
-      });
-      return { items: newItems };
-    }),
+    set((state) => ({
+      items: state.items.map((i) =>
+        i.name === name
+          ? {
+              ...i,
+              addons: (i.addons || []).filter((a) => a !== addon),
+            }
+          : i
+      ),
+    })),
 
   swapIngredient: (name, from, to) =>
-    set((state) => {
-      const newItems = state.items.map((i) => {
-        if (i.name === name) {
-          return {
-            ...i,
-            swaps: [...(i.swaps || []), { from, to }]
-          };
-        }
-        return i;
-      });
-      return { items: newItems };
-    }),
+    set((state) => ({
+      items: state.items.map((i) => {
+        if (i.name !== name) return i;
+
+        const swaps = Array.isArray(i.swaps) ? i.swaps : [];
+        const fromLc = (from || "").toLowerCase();
+
+        // Usuwamy poprzednią zamianę dla tego samego `from` i dokładamy aktualną
+        const nextSwaps = [
+          ...swaps.filter(
+            (s) =>
+              !s ||
+              typeof s.from !== "string" ||
+              s.from.toLowerCase() !== fromLc
+          ),
+          { from, to },
+        ];
+
+        return { ...i, swaps: nextSwaps };
+      }),
+    })),
 
   removeSwap: (name, swapIndex) =>
-    set((state) => {
-      const newItems = state.items.map((i) => {
-        if (i.name === name) {
-          const newSwaps = [...(i.swaps || [])];
-          newSwaps.splice(swapIndex, 1);
-          return { ...i, swaps: newSwaps };
-        }
-        return i;
-      });
-      return { items: newItems };
-    }),
+    set((state) => ({
+      items: state.items.map((i) => {
+        if (i.name !== name) return i;
+        const swaps = Array.isArray(i.swaps) ? i.swaps : [];
+        if (swapIndex < 0 || swapIndex >= swaps.length) return i;
+        const nextSwaps = [...swaps];
+        nextSwaps.splice(swapIndex, 1);
+        return { ...i, swaps: nextSwaps };
+      }),
+    })),
 
   toggleCart: () =>
     set((state) => ({
       isOpen: !state.isOpen,
     })),
 
-  clearCart: () => set({ items: [] }),
+  clearCart: () =>
+    set({
+      items: [],
+    }),
 
   goToStep: (step) => set({ checkoutStep: step }),
   nextStep: () => set((state) => ({ checkoutStep: state.checkoutStep + 1 })),

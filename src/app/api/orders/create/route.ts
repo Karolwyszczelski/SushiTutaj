@@ -8,6 +8,23 @@ import { toZonedTime } from "date-fns-tz";
 import { trackingUrl } from "@/lib/orderLink";
 import { sendEmail } from "@/lib/e-mail";
 import { sendSms } from "@/lib/sms";
+import { computeAddonPriceBackend } from "@/lib/addons";
+import { buildKitchenNote } from "@/lib/kitchenNote";
+
+function recomputeTotalFromItems(itemsPayload: any[]): number {
+  return itemsPayload.reduce((acc, it) => {
+    const qty = it.quantity || 1;
+    const base =
+      typeof it.unit_price === "string"
+        ? parseFloat(it.unit_price)
+        : it.unit_price || 0;
+    const addonsCost = (it.options?.addons ?? []).reduce(
+      (sum: number, addon: string) => sum + computeAddonPriceBackend(addon),
+      0
+    );
+    return acc + (base + addonsCost) * qty;
+  }, 0);
+}
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -31,7 +48,7 @@ type Range = [h: number, m: number, H: number, M: number];
 
 const SCHEDULE: Record<string, Partial<Record<Day, Range>> & { default?: Range }> =
   {
-    // Ciechanów: pon–czw i niedz 12:00–20:30, pt 12:00–21:30, sob 12:00–20:30
+    // Ciechanów: pon–niedz 12:00–20:30, pt 12:00–21:30
     ciechanow: {
       0: [12, 0, 20, 30],
       1: [12, 0, 20, 30],
@@ -562,7 +579,19 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2.3) restaurant_id z DB po slugu
+    // 2.1) Metoda realizacji
+    const fulfill_method =
+      n.selected_option === "delivery" ? "delivery" : "takeaway";
+
+    // 2.2) Opłata za opakowanie – tak jak na froncie (selectedOption ? 2 : 0)
+    const packagingFee = n.selected_option ? 2 : 0;
+
+    // 2.3) Suma pozycji (produkty + addony) – backend liczy tak jak frontend
+    const itemsTotal = recomputeTotalFromItems(n.itemsArray);
+    // Baza do progów min/free_over – produkty + opakowanie, bez dostawy
+    const baseWithoutDelivery = itemsTotal + packagingFee;
+
+    // 2.4) restaurant_id z DB po slugu
     const { data: restRow, error: restErr } = await supabaseAdmin
       .from("restaurants")
       .select("id, slug, lat, lng")
@@ -585,7 +614,7 @@ export async function POST(req: Request) {
 
     const restaurant_id = restRow.id;
 
-    // 2.4) blokowane adresy per restauracja (tylko dostawa)
+    // 2.5) blokowane adresy per restauracja (tylko dostawa)
     if (n.selected_option === "delivery") {
       const street = (n.street || n.address || "").toString();
       const flat = (n.flat_number || "").toString();
@@ -628,9 +657,6 @@ export async function POST(req: Request) {
         }
       }
     }
-
-    const fulfill_method =
-      n.selected_option === "delivery" ? "delivery" : "takeaway";
 
     // 2.6) Strefa dostawy – per restauracja
     if (n.selected_option === "delivery") {
@@ -687,12 +713,8 @@ export async function POST(req: Request) {
         );
       }
 
-      const base = Math.max(
-        0,
-        Number(n.total_price || 0) - Number(n.delivery_cost || 0)
-      );
-
-      if (base < Number(zone.min_order_value || 0)) {
+      // Minimalna wartość zamówienia – tak jak na froncie: produkty + opakowanie
+      if (baseWithoutDelivery < Number(zone.min_order_value || 0)) {
         return NextResponse.json(
           {
             error: `Minimalna wartość zamówienia to ${Number(
@@ -719,17 +741,34 @@ export async function POST(req: Request) {
       let serverCost =
         pricingType === "per_km" ? perKmRateRaw * distance_km : flatCostRaw;
 
-      if (zone.free_over != null && base >= Number(zone.free_over)) {
+      // Darmowa dostawa powyżej progu – próg liczony od produktów + opakowanie (jak na froncie)
+      if (zone.free_over != null && baseWithoutDelivery >= Number(zone.free_over)) {
         serverCost = 0;
       }
 
       const rounded = Math.max(0, Math.round(serverCost * 100) / 100);
       n.delivery_cost = rounded;
-      n.total_price = Math.max(
-        0,
-        Math.round((base + rounded) * 100) / 100
-      );
     }
+
+    // 2.7) Finalne przeliczenie total_price na backendzie
+    const deliveryCostFinal =
+      n.selected_option === "delivery" ? Number(n.delivery_cost || 0) : 0;
+
+    const grossBeforeDiscount =
+      itemsTotal + packagingFee + deliveryCostFinal;
+
+    const discountRaw = Number(n.discount_amount || 0);
+    const discountClamped = Math.max(
+      0,
+      Math.min(discountRaw, grossBeforeDiscount)
+    );
+
+    const serverTotal =
+      Math.max(0, Math.round((grossBeforeDiscount - discountClamped) * 100)) /
+      100;
+
+    n.discount_amount = discountClamped;
+    n.total_price = serverTotal;
 
     // 3) Produkty
     const productIds = n.itemsArray
@@ -760,6 +799,9 @@ export async function POST(req: Request) {
         clientDeliveryForDb = clientDeliveryForDb.slice(0, 10);
       }
     }
+
+    // 5.1) Notatka dla kuchni – rozpisane pieczenia/dodatki/zestawy
+    const kitchen_note = buildKitchenNote(normalizedItems as any);
 
     // 6) Insert orders
     const itemsForOrdersColumn = JSON.stringify(normalizedItems);
@@ -797,6 +839,7 @@ export async function POST(req: Request) {
         discount_amount: n.discount_amount,
         legal_accept: n.legal_accept,
         chopsticks_qty: n.chopsticks_qty,
+        kitchen_note,
       })
       .select("id, selected_option, total_price, name")
       .single();

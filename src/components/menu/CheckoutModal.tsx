@@ -47,6 +47,19 @@ const CITY_REVIEW_QR_URLS: Record<string, string> = {
   pultusk: process.env.NEXT_PUBLIC_REVIEW_QR_PULTUSK || THANKS_QR_URL,
 };
 
+/** Telefony do lokali – używane w sekcji "Nie możesz znaleźć swojego adresu?" */
+const CITY_PHONE: Record<string, string> = {
+  ciechanow: "+48 780 072 372",
+  przasnysz: "+48 518 166 888",
+  szczytno: "+48 510 700 995",
+};
+
+/** Zwraca numer telefonu dla aktualnego miasta (albo null, jeśli nie ma) */
+function getRestaurantPhone(slug: string): string | null {
+  const s = (slug || "").toLowerCase();
+  return CITY_PHONE[s] || null;
+}
+
 /** WYMÓG: adres musi być wybrany z Autocomplete (posiadamy współrzędne) */
 const REQUIRE_AUTOCOMPLETE = true;
 
@@ -1044,35 +1057,36 @@ const ProductItem: React.FC<{
             </div>
 
             {subcat === "california" && (
-              <p className="text-[11px] text-black/60 mt-1">
-                California = rolki z ryżem na zewnątrz. Standardowo nie dodajemy
-                do nich dodatków – wyjątek stanowi wybrana pozycja z łososiem
-                surowym, paluszkiem krabowym i krewetką obłożoną łososiem, gdzie
-                dostępna jest opcja „Ryba pieczona” (+2 zł).
-              </p>
-            )}
-            {subcat === "hosomaki" && (
-              <p className="text-[11px] text-black/60 mt-1">
-                Hosomaki (Hoso) = cienkie rolki z jednym składnikiem. Można dodać
-                jedynie Tempurę, a w zamianach wybierasz tylko inne Hosomaki.
-              </p>
-            )}
-            {subcat === "futomaki" && (
-              <p className="text-[11px] text-black/60 mt-1">
-                Futomaki (Futo) = grubsze rolki z kilkoma składnikami. Dostępne
-                dodatki: Tempura, Płatek sojowy, Tamago, a przy rolkach surowych
-                także „Ryba pieczona”.
-              </p>
-            )}
-            {isSet && (
-              <p className="text-[11px] text-black/60 mt-1">
-                W zestawach zamieniasz rolki tylko w obrębie kategorii (Futomaki ↔
-                Futomaki, Hosomaki ↔ Hosomaki, California ↔ California, Nigiri ↔
-                Nigiri). Jeśli w składzie zestawu są Futomaki, możesz dodać
-                Tamago, a w zestawach surowych dostępna jest też opcja „Ryba
-                pieczona”.
-              </p>
-            )}
+  <p className="text-[11px] text-black/60 mt-1">
+    California = rolki z ryżem na zewnątrz. Standardowo nie dodajemy do nich dodatków –
+    wyjątek stanowią wybrane pozycje z surowym łososiem, paluszkiem krabowym i/lub
+    krewetką obłożoną łososiem. Tylko przy takich pozycjach dostępna jest opcja
+    „Ryba pieczona” (+2 zł).
+  </p>
+)}
+
+{subcat === "hosomaki" && (
+  <p className="text-[11px] text-black/60 mt-1">
+    Hosomaki (Hoso) = cienkie rolki z jednym składnikiem. Można dodać jedynie Tempurę,
+    a przy zamianach wybierasz wyłącznie inne Hosomaki.
+  </p>
+)}
+
+{subcat === "futomaki" && (
+  <p className="text-[11px] text-black/60 mt-1">
+    Futomaki (Futo) = grubsze rolki z kilkoma składnikami. Dostępne dodatki:
+    Tempura, Płatek sojowy, Tamago, a przy rolkach surowych także „Ryba pieczona”.
+  </p>
+)}
+
+{isSet && (
+  <p className="text-[11px] text-black/60 mt-1">
+    W zestawach zamieniasz rolki tylko w obrębie tej samej kategorii
+    (Futomaki ↔ Futomaki, Hosomaki ↔ Hosomaki, California ↔ California, Nigiri ↔ Nigiri).
+    Jeśli w zestawie są Futomaki, możesz dodać Tamago, a w zestawach z surową rybą
+    dostępna jest opcja „Ryba pieczona” dla wybranych rolek.
+  </p>
+)}
           </div>
         )}
 
@@ -1289,6 +1303,7 @@ export default function CheckoutModal() {
 
   const { slug: restaurantSlug, label: restaurantCityLabel } = getRestaurantCityFromPath();
   const thanksQrUrl = CITY_REVIEW_QR_URLS[restaurantSlug] || THANKS_QR_URL;
+  const restaurantPhone = getRestaurantPhone(restaurantSlug);
 
   const openInfo = useMemo(() => isOpenFor(restaurantSlug), [restaurantSlug]);
   const timeMin = openInfo.range ? `${pad(openInfo.range[0])}:${pad(openInfo.range[1])}` : "12:00";
@@ -2118,14 +2133,16 @@ export default function CheckoutModal() {
 
                             {/* INFO: gdy nie ma adresu na liście */}
     <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-black/70">
-      <span>Nie możesz znaleźć swojego adresu?</span>
-      <a
-        href="tel:+48123456789" // TODO: podmień na właściwy numer lokalu
-        className="inline-flex items-center justify-center rounded-full border border-black/15 px-3 py-1 font-semibold hover:bg-gray-100 text-black"
-      >
-        Zadzwoń do nas
-      </a>
-    </div>
+  <span>Nie możesz znaleźć swojego adresu?</span>
+  {restaurantPhone && (
+    <a
+      href={`tel:${restaurantPhone.replace(/\s+/g, "")}`}
+      className="inline-flex items-center justify-center rounded-full border border-black/15 px-3 py-1 font-semibold hover:bg-gray-100 text-black"
+    >
+      Zadzwoń do nas
+    </a>
+  )}
+</div>
 
                             <p className="text-xs text-black/60">
                               Najpierw wybierz adres z listy Google – dopiero wtedy pola poniżej
