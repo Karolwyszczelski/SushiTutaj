@@ -93,20 +93,26 @@ const ALL_SAUCES = [...BASE_SAUCES, ...BATATA_SAUCES];
 
 const EXTRAS = ["Tempura", "Płatek sojowy", "Tamago", "Ryba pieczona"];
 const SWAP_FEE_NAME = "Zamiana w zestawie";
+
+/** Cennik dodatków (poza sosami) */
 const EXTRA_PRICES: Record<string, number> = {
   Tempura: 4,
   "Płatek sojowy": 4,
   Tamago: 4,
-  "Ryba pieczona": 2, // <= tu ustawiamy 2 zł
+  "Ryba pieczona": 2, // zawsze 2 zł
 };
 
 /* NOWE: nazwy addonów dla pieczenia zestawów/rolek */
-const RAW_SET_BAKE_ALL =
-  "Zamiana całego zestawu surowego na pieczony (+5 zł)";
+const RAW_SET_BAKE_ALL = "Zamiana całego zestawu na pieczony";
+const RAW_SET_BAKE_ALL_LEGACY =
+  "Zamiana całego zestawu surowego na pieczony (+5 zł)"; // dla starych zamówień
 const RAW_SET_BAKE_ROLL_PREFIX = "Zamiana surowej rolki na pieczoną: ";
 
 /** Dodatki przypisane do konkretnej rolki w zestawie */
 const SET_ROLL_EXTRA_PREFIX = "Dodatek do rolki: ";
+
+/** Addon oznaczający powiększenie zestawu (np. +6 szt za 1 zł) */
+const SET_UPGRADE_ADDON = "Powiększenie zestawu";
 
 /* NOWE: bazowe opcje do tatara – bez dopłaty */
 const TARTAR_BASES = [
@@ -114,6 +120,72 @@ const TARTAR_BASES = [
   "Podanie: na ryżu",
   "Podanie: na chipsach krewetkowych",
 ];
+
+/** Dopłata za wersję pieczoną całego zestawu – per zestaw (z menu) */
+const SET_BAKE_PRICES: Record<string, number> = {
+  "zestaw 2": 2,
+  "zestaw 5": 6,
+  "zestaw 7": 2,
+  "zestaw 10": 2,
+  "zestaw 11": 8,
+  "zestaw 12": 4,
+  "zestaw 13": 8,
+};
+
+type SetUpgradeInfo = {
+  basePieces: number;
+  extraPieces: number;
+  totalPieces: number;
+  price: number; // dopłata w zł
+};
+
+/**
+ * Parsuje opis typu:
+ * "28 szt + 6 szt za 1 zł = 34 szt 129 zł ..."
+ * "72 szt + 14 szt za 2 zł = 86 szt 279 zł ..."
+ */
+function parseSetUpgradeInfo(
+  product?: ProductDb | null
+): SetUpgradeInfo | null {
+  if (!product?.description) return null;
+  const text = product.description.toLowerCase().replace(",", ".");
+
+  const re =
+    /(\d+)\s*szt[^+\d]*\+\s*(\d+)\s*szt\s*za\s*(\d+)\s*zł[^=]*=\s*(\d+)\s*szt/;
+  const m = text.match(re);
+  if (!m) return null;
+
+  const basePieces = Number(m[1]);
+  const extraPieces = Number(m[2]);
+  const price = Number(m[3]);
+  const totalPieces = Number(m[4]);
+
+  if (
+    !Number.isFinite(basePieces) ||
+    !Number.isFinite(extraPieces) ||
+    !Number.isFinite(price)
+  ) {
+    return null;
+  }
+
+  return { basePieces, extraPieces, totalPieces, price };
+}
+
+function getSetUpgradePrice(product?: ProductDb | null): number | null {
+  const info = parseSetUpgradeInfo(product || null);
+  return info ? info.price : null;
+}
+
+function getSetBakePriceForProduct(product?: ProductDb | null): number | null {
+  if (!product) return null;
+  const name = product.name.toLowerCase();
+  for (const key of Object.keys(SET_BAKE_PRICES)) {
+    if (name.startsWith(key)) {
+      return SET_BAKE_PRICES[key];
+    }
+  }
+  return null;
+}
 
 /* Helper: rozpoznanie specjalnej California z opcją Ryby pieczonej +2 zł
    – po składnikach, bez wymogu słowa "California" w nazwie */
@@ -153,8 +225,17 @@ function computeAddonPrice(addon: string, product?: ProductDb | null): number {
   // Bazowe opcje podania tatara – 0 zł
   if (TARTAR_BASES.includes(addon)) return 0;
 
-  // całe surowe zestawy (1/3/8 itd.) -> pieczone
-  if (addon === RAW_SET_BAKE_ALL) return 5;
+  // Wersja pieczona całego zestawu – cena zależy od konkretnego zestawu
+  if (addon === RAW_SET_BAKE_ALL || addon === RAW_SET_BAKE_ALL_LEGACY) {
+    const p = getSetBakePriceForProduct(product || null);
+    return typeof p === "number" ? p : 5;
+  }
+
+  // Powiększony zestaw (np. "+6 szt za 1 zł", "+14 szt za 2 zł")
+  if (addon === SET_UPGRADE_ADDON) {
+    const p = getSetUpgradePrice(product || null);
+    return typeof p === "number" ? p : 1; // fallback 1 zł
+  }
 
   // pojedyncza surowa rolka w zestawie -> pieczona
   if (addon.startsWith(RAW_SET_BAKE_ROLL_PREFIX)) return 2;
@@ -178,8 +259,8 @@ function computeAddonPrice(addon: string, product?: ProductDb | null): number {
     }
   }
 
-  const price = EXTRA_PRICES[label as keyof typeof EXTRA_PRICES];
-  if (typeof price === "number") return price;
+  const extraPrice = EXTRA_PRICES[label as keyof typeof EXTRA_PRICES];
+  if (typeof extraPrice === "number") return extraPrice;
 
   // Fallback – gdyby pojawił się nieskonfigurowany addon
   return 4;
@@ -425,18 +506,54 @@ const ProductItem: React.FC<{
     [isSet, prodInfo?.description]
   );
 
-  // surowy zestaw 1 / 3 / 8
-  let isRawSet1_3_8 = false;
-  if (isSet && prodInfo) {
-    const nameL = prodInfo.name.toLowerCase();
-    const descL = (prodInfo.description || "").toLowerCase();
-    const isRaw = descL.includes("surowy") || nameL.includes("surowy");
-    if (isRaw && /(zestaw|set)\s*(1|3|8)\b/i.test(nameL)) {
-      isRawSet1_3_8 = true;
-    }
-  }
+  const normalizeSetRowKey = (
+    row: { qty: number; cat: string; from: string }
+  ) => {
+    const cat = (row.cat || "").trim();
+    const from = (row.from || "").trim();
+    if (!from) return cat;
 
-  const isWholeSetBaked = (prod.addons ?? []).includes(RAW_SET_BAKE_ALL);
+    // rozbijamy po "+" bo w zestawach często są miksy typu
+    // "krewetka + łosoś surowy"
+    const parts = from.split("+").map((p) => p.trim()).filter(Boolean);
+
+    const isFishPart = (s: string) => {
+      const l = s.toLowerCase();
+      return (
+        l.includes("łosoś") ||
+        l.includes("losos") ||
+        l.includes("tuńczyk") ||
+        l.includes("tunczyk")
+      );
+    };
+
+    if (parts.length > 1) {
+      const fishParts = parts.filter(isFishPart);
+      if (fishParts.length === 1) {
+        // preferujemy część z łososiem / tuńczykiem
+        return `${cat} ${fishParts[0]}`.replace(/\s+/g, " ").trim();
+      }
+      if (fishParts.length > 1) {
+        return `${cat} ${fishParts.join(" + ")}`.replace(/\s+/g, " ").trim();
+      }
+    }
+
+    // fallback: cały opis, ale znormalizowane spacje
+    return `${cat} ${from}`.replace(/\s+/g, " ").trim();
+  };
+
+  // dopłata za wersję pieczoną całego zestawu (jeśli jest przewidziana w menu)
+  const setBakePrice = isSet ? getSetBakePriceForProduct(prodInfo) : null;
+
+  // info o powiększeniu (np. 28 szt + 6 szt za 1 zł = 34 szt)
+  const setUpgradeInfo = isSet ? parseSetUpgradeInfo(prodInfo) : null;
+
+  const isWholeSetBaked =
+    (prod.addons ?? []).includes(RAW_SET_BAKE_ALL) ||
+    (prod.addons ?? []).includes(RAW_SET_BAKE_ALL_LEGACY);
+
+  const isSetUpgraded = (prod.addons ?? []).includes(SET_UPGRADE_ADDON);
+
   const isRawRow = (row: { qty: number; cat: string; from: string }) =>
     /surowy/i.test(row.from);
 
@@ -607,16 +724,28 @@ const ProductItem: React.FC<{
   const toggleWholeSetBake = () => {
     const on = isWholeSetBaked;
     if (on) {
+      // zdejmujemy oba możliwe labele, na wszelki wypadek
       removeAddon(prod.name, RAW_SET_BAKE_ALL);
+      removeAddon(prod.name, RAW_SET_BAKE_ALL_LEGACY);
     } else {
       addAddon(prod.name, RAW_SET_BAKE_ALL);
+      // przy wersji pieczonej całego zestawu wyłączamy pieczenie pojedynczych rolek
       setRows.forEach((row) => {
-        const rollKey = `${row.cat} ${row.from}`;
-        const label = RAW_SET_BAKE_ROLL_PREFIX + rollKey;
+        const rowKeyBase = normalizeSetRowKey(row);
+        const label = RAW_SET_BAKE_ROLL_PREFIX + rowKeyBase;
         if ((prod.addons ?? []).includes(label)) {
           removeAddon(prod.name, label);
         }
       });
+    }
+  };
+
+  const setSetSize = (upgraded: boolean) => {
+    if (!setUpgradeInfo) return;
+    if (upgraded) {
+      if (!isSetUpgraded) addAddon(prod.name, SET_UPGRADE_ADDON);
+    } else {
+      if (isSetUpgraded) removeAddon(prod.name, SET_UPGRADE_ADDON);
     }
   };
 
@@ -637,7 +766,7 @@ const ProductItem: React.FC<{
         </span>
       </div>
 
-      <div className="text-xs text-black/80 space-y-3">
+              <div className="text-xs text-black/80 space-y-3">
         {isSet && setRows.length > 0 && (
           <div className="space-y-2">
             <div className="font-semibold">Zamiany w zestawie</div>
@@ -649,71 +778,73 @@ const ProductItem: React.FC<{
               );
               const current = getSetSwapCurrent(row.from);
 
-              const rollKey = `${row.cat} ${row.from}`;
-              const rollAddonLabel = RAW_SET_BAKE_ROLL_PREFIX + rollKey;
-              const rawRow = isRawRow(row);
-              const rollBaked = (prod.addons ?? []).includes(rollAddonLabel);
+              // znormalizowany klucz tej rolki w zestawie
+      const rowKeyBase = normalizeSetRowKey(row);
 
-              const toggleRowBake = () => {
-                if (!rawRow || isWholeSetBaked) return;
-                if (rollBaked) {
-                  removeAddon(prod.name, rollAddonLabel);
-                } else {
-                  addAddon(prod.name, rollAddonLabel);
+      // pieczenie konkretnej rolki w zestawie
+      const rollAddonLabel = RAW_SET_BAKE_ROLL_PREFIX + rowKeyBase;
+      const rawRow = isRawRow(row);
+      const rollBaked = (prod.addons ?? []).includes(rollAddonLabel);
+
+      const toggleRowBake = () => {
+        if (!rawRow || isWholeSetBaked) return;
+        if (rollBaked) {
+          removeAddon(prod.name, rollAddonLabel);
+        } else {
+          addAddon(prod.name, rollAddonLabel);
+        }
+      };
+
+      // Dodatki per konkretna rolka w zestawie – ten sam znormalizowany klucz
+      const extraKey = (ex: string) =>
+        `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — ${ex}`;
+
+              // BIERZEMY aktualnie wybraną rolkę w tym miejscu zestawu:
+              const currentProduct = byName.get(current) || prodInfo;
+              const rowCatLc = (currentProduct?.subcategory || row.cat).toLowerCase();
+              const text = `${currentProduct?.name || row.cat} ${
+                currentProduct?.description || row.from
+              }`.toLowerCase();
+
+              const canUseExtraForRow = (ex: string): boolean => {
+                // California
+                if (rowCatLc.includes("california")) {
+                  if (ex === "Ryba pieczona") {
+                    return isSpecialCaliforniaBakedFishProduct(
+                      currentProduct?.name || "",
+                      currentProduct?.description || ""
+                    );
+                  }
+                  return false;
                 }
+
+                // Hosomaki -> tylko Tempura
+                if (rowCatLc.includes("hosomaki")) {
+                  return ex === "Tempura";
+                }
+
+                // Futomaki
+                if (rowCatLc.includes("futomaki")) {
+                  if (ex === "Ryba pieczona") {
+                    return /surowy/i.test(text);
+                  }
+                  if (ex === "Tamago") return true;
+                  return ex === "Tempura" || ex === "Płatek sojowy";
+                }
+
+                // Nigiri – tylko Ryba pieczona dla łosoś/tuńczyk
+                if (rowCatLc.includes("nigiri")) {
+                  if (ex !== "Ryba pieczona") return false;
+                  const hasFish =
+                    text.includes("łosoś") ||
+                    text.includes("losos") ||
+                    text.includes("tuńczyk") ||
+                    text.includes("tunczyk");
+                  return hasFish;
+                }
+
+                return false;
               };
-
-               // extras per rolka w zestawie
-              const rowKeyBase = `${row.cat} ${row.from}`;
-const extraKey = (ex: string) =>
-  `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — ${ex}`;
-
-// BIERZEMY aktualnie wybraną rolkę w tym miejscu zestawu:
-const currentProduct = byName.get(current) || prodInfo;
-const rowCatLc = (currentProduct?.subcategory || row.cat).toLowerCase();
-const text = `${currentProduct?.name || row.cat} ${
-  currentProduct?.description || row.from
-}`.toLowerCase();
-
-const canUseExtraForRow = (ex: string): boolean => {
-  // California
-  if (rowCatLc.includes("california")) {
-    if (ex === "Ryba pieczona") {
-      return isSpecialCaliforniaBakedFishProduct(
-        currentProduct?.name || "",
-        currentProduct?.description || ""
-      );
-    }
-    return false;
-  }
-
-  // Hosomaki -> tylko Tempura
-  if (rowCatLc.includes("hosomaki")) {
-    return ex === "Tempura";
-  }
-
-  // Futomaki
-  if (rowCatLc.includes("futomaki")) {
-    if (ex === "Ryba pieczona") {
-      return /surowy/i.test(text);
-    }
-    if (ex === "Tamago") return true;
-    return ex === "Tempura" || ex === "Płatek sojowy";
-  }
-
-  // Nigiri – tylko Ryba pieczona dla łosoś/tuńczyk
-  if (rowCatLc.includes("nigiri")) {
-    if (ex !== "Ryba pieczona") return false;
-    const hasFish =
-      text.includes("łosoś") ||
-      text.includes("losos") ||
-      text.includes("tuńczyk") ||
-      text.includes("tunczyk");
-    return hasFish;
-  }
-
-  return false;
-};
 
               return (
                 <div key={i} className="flex flex-col gap-2">
@@ -793,16 +924,53 @@ const canUseExtraForRow = (ex: string): boolean => {
               );
             })}
 
+            {/* Rozmiar zestawu: standard vs powiększony (+szt za 1–2 zł) */}
+            {setUpgradeInfo && (
+              <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-2 space-y-1">
+                <div className="font-semibold text-[11px]">
+                  Rozmiar zestawu:
+                </div>
+                <div className="flex flex-wrap gap-2 text-[11px]">
+                  <button
+                    type="button"
+                    onClick={() => setSetSize(false)}
+                    className={clsx(
+                      "px-2 py-1 rounded border",
+                      !isSetUpgraded
+                        ? "bg-black text-white border-black"
+                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                    )}
+                  >
+                    Standard – {setUpgradeInfo.basePieces} szt
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSetSize(true)}
+                    className={clsx(
+                      "px-2 py-1 rounded border",
+                      isSetUpgraded
+                        ? "bg-black text-white border-black"
+                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                    )}
+                  >
+                    Powiększony – {setUpgradeInfo.totalPieces} szt (
+                    +{setUpgradeInfo.extraPieces} szt za{" "}
+                    {setUpgradeInfo.price} zł)
+                  </button>
+                </div>
+              </div>
+            )}
+
             <p className="text-[11px] text-black/60">
               Zamiany tylko w obrębie tej samej kategorii (Futomaki ↔ Futomaki,
               Hosomaki ↔ Hosomaki itd.). Bez specjałów. Dodajemy pozycję „
               {SWAP_FEE_NAME}”.
             </p>
 
-            {isRawSet1_3_8 && (
+            {isSet && setBakePrice != null && (
               <div className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-2 space-y-1">
                 <div className="font-semibold text-[11px]">
-                  Opcja dla zestawu surowego 1 / 3 / 8:
+                  Wersja pieczona całego zestawu:
                 </div>
                 <label className="flex items-center gap-2 text-[11px]">
                   <input
@@ -810,12 +978,15 @@ const canUseExtraForRow = (ex: string): boolean => {
                     checked={isWholeSetBaked}
                     onChange={toggleWholeSetBake}
                   />
-                  <span>Zamień cały zestaw na pieczony (+5 zł)</span>
+                  <span>
+                    Zamień cały zestaw na pieczony (+{setBakePrice} zł)
+                  </span>
                 </label>
                 {isWholeSetBaked && (
                   <p className="text-[10px] text-black/60">
-                    Dla całego zestawu naliczana jest jedna opłata +5 zł.
-                    Indywidualne zamiany rolek są w tym wariancie nieaktywne.
+                    Dla całego zestawu naliczana jest jedna dopłata +
+                    {setBakePrice} zł. Indywidualne pieczenie pojedynczych
+                    rolek w tym wariancie jest wyłączone.
                   </p>
                 )}
               </div>
@@ -823,7 +994,7 @@ const canUseExtraForRow = (ex: string): boolean => {
           </div>
         )}
 
-         <div>
+        <div>
           <div className="font-semibold mb-1">Sosy:</div>
           <div className="flex flex-wrap gap-2">
             {saucesForProduct.map((s) => {
@@ -847,62 +1018,62 @@ const canUseExtraForRow = (ex: string): boolean => {
         </div>
 
         {!isSet && (
-        <div>
-          <div className="font-semibold mb-1">Dodatki:</div>
-          <div className="flex flex-wrap gap-2">
-            {EXTRAS.map((ex) => {
-              const allowed = canUseExtra(ex);
-              const on = prod.addons?.includes(ex);
-              return (
-                <button
-                  key={ex}
-                  onClick={() => allowed && toggleAddon(ex)}
-                  className={clsx(
-                    "px-2 py-1 rounded text-xs border",
-                    !allowed
-                      ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
-                      : on
-                      ? "bg-black text-white border-black"
-                      : "bg-white text-black hover:bg-gray-50 border-gray-200"
-                  )}
-                >
-                  {on ? `✓ ${ex}` : `+ ${ex}`}
-                </button>
-              );
-            })}
-          </div>
+          <div>
+            <div className="font-semibold mb-1">Dodatki:</div>
+            <div className="flex flex-wrap gap-2">
+              {EXTRAS.map((ex) => {
+                const allowed = canUseExtra(ex);
+                const on = prod.addons?.includes(ex);
+                return (
+                  <button
+                    key={ex}
+                    onClick={() => allowed && toggleAddon(ex)}
+                    className={clsx(
+                      "px-2 py-1 rounded text-xs border",
+                      !allowed
+                        ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
+                        : on
+                        ? "bg-black text-white border-black"
+                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                    )}
+                  >
+                    {on ? `✓ ${ex}` : `+ ${ex}`}
+                  </button>
+                );
+              })}
+            </div>
 
-          {subcat === "california" && (
-            <p className="text-[11px] text-black/60 mt-1">
-              California = rolki z ryżem na zewnątrz. Standardowo nie dodajemy
-              do nich dodatków – wyjątek stanowi wybrana pozycja z łososiem
-              surowym, paluszkiem krabowym i krewetką obłożoną łososiem, gdzie
-              dostępna jest opcja „Ryba pieczona” (+2 zł).
-            </p>
-          )}
-          {subcat === "hosomaki" && (
-            <p className="text-[11px] text-black/60 mt-1">
-              Hosomaki (Hoso) = cienkie rolki z jednym składnikiem. Można dodać
-              jedynie Tempurę, a w zamianach wybierasz tylko inne Hosomaki.
-            </p>
-          )}
-          {subcat === "futomaki" && (
-            <p className="text-[11px] text-black/60 mt-1">
-              Futomaki (Futo) = grubsze rolki z kilkoma składnikami. Dostępne
-              dodatki: Tempura, Płatek sojowy, Tamago, a przy rolkach surowych
-              także „Ryba pieczona”.
-            </p>
-          )}
-          {isSet && (
-            <p className="text-[11px] text-black/60 mt-1">
-              W zestawach zamieniasz rolki tylko w obrębie kategorii (Futomaki ↔
-              Futomaki, Hosomaki ↔ Hosomaki, California ↔ California, Nigiri ↔
-              Nigiri). Jeśli w składzie zestawu są Futomaki, możesz dodać
-              Tamago, a w zestawach surowych dostępna jest też opcja „Ryba
-              pieczona”.
-            </p>
-          )}
-        </div>
+            {subcat === "california" && (
+              <p className="text-[11px] text-black/60 mt-1">
+                California = rolki z ryżem na zewnątrz. Standardowo nie dodajemy
+                do nich dodatków – wyjątek stanowi wybrana pozycja z łososiem
+                surowym, paluszkiem krabowym i krewetką obłożoną łososiem, gdzie
+                dostępna jest opcja „Ryba pieczona” (+2 zł).
+              </p>
+            )}
+            {subcat === "hosomaki" && (
+              <p className="text-[11px] text-black/60 mt-1">
+                Hosomaki (Hoso) = cienkie rolki z jednym składnikiem. Można dodać
+                jedynie Tempurę, a w zamianach wybierasz tylko inne Hosomaki.
+              </p>
+            )}
+            {subcat === "futomaki" && (
+              <p className="text-[11px] text-black/60 mt-1">
+                Futomaki (Futo) = grubsze rolki z kilkoma składnikami. Dostępne
+                dodatki: Tempura, Płatek sojowy, Tamago, a przy rolkach surowych
+                także „Ryba pieczona”.
+              </p>
+            )}
+            {isSet && (
+              <p className="text-[11px] text-black/60 mt-1">
+                W zestawach zamieniasz rolki tylko w obrębie kategorii (Futomaki ↔
+                Futomaki, Hosomaki ↔ Hosomaki, California ↔ California, Nigiri ↔
+                Nigiri). Jeśli w składzie zestawu są Futomaki, możesz dodać
+                Tamago, a w zestawach surowych dostępna jest też opcja „Ryba
+                pieczona”.
+              </p>
+            )}
+          </div>
         )}
 
         {isTartar && (
@@ -954,6 +1125,7 @@ const canUseExtraForRow = (ex: string): boolean => {
     </div>
   );
 };
+
 
 function PromoSection({
   promo,
