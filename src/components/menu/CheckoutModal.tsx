@@ -93,6 +93,12 @@ const ALL_SAUCES = [...BASE_SAUCES, ...BATATA_SAUCES];
 
 const EXTRAS = ["Tempura", "Płatek sojowy", "Tamago", "Ryba pieczona"];
 const SWAP_FEE_NAME = "Zamiana w zestawie";
+const EXTRA_PRICES: Record<string, number> = {
+  Tempura: 4,
+  "Płatek sojowy": 4,
+  Tamago: 4,
+  "Ryba pieczona": 2, // <= tu ustawiamy 2 zł
+};
 
 /* NOWE: nazwy addonów dla pieczenia zestawów/rolek */
 const RAW_SET_BAKE_ALL =
@@ -140,7 +146,6 @@ function isSpecialCaliforniaBakedFishProduct(
   return hasSalmon && isRaw && hasCrab && hasShrimp;
 }
 
-/* Spójne liczenie ceny dodatków (także nowe logiki pieczenia) */
 function computeAddonPrice(addon: string, product?: ProductDb | null): number {
   if (ALL_SAUCES.includes(addon)) return 3;
   if (addon === SWAP_FEE_NAME) return 5;
@@ -148,17 +153,19 @@ function computeAddonPrice(addon: string, product?: ProductDb | null): number {
   // Bazowe opcje podania tatara – 0 zł
   if (TARTAR_BASES.includes(addon)) return 0;
 
-  // całe surowe zestawy 1/3/8 -> pieczone
+  // całe surowe zestawy (1/3/8 itd.) -> pieczone
   if (addon === RAW_SET_BAKE_ALL) return 5;
+
   // pojedyncza surowa rolka w zestawie -> pieczona
   if (addon.startsWith(RAW_SET_BAKE_ROLL_PREFIX)) return 2;
 
-  // Domyślna cena dodatków typu Tempura / Płatek / Tamago / Ryba pieczona
-  const basePrice = 4;
+  // ----- Dodatki typu Tempura / Płatek sojowy / Tamago / Ryba pieczona -----
+  // Mogą występować:
+  // - jako sam addon ("Tempura", "Ryba pieczona")
+  // - jako addon per rolka w zestawie: "Dodatek do rolki: <cat> <opis> — <nazwa dodatku>"
 
-  // 2) Dodatki per rolka w zestawie:
-  // format: "Dodatek do rolki: <cat> <opis> — <nazwa dodatku>"
   let label = addon;
+
   if (addon.startsWith(SET_ROLL_EXTRA_PREFIX)) {
     const after = addon.slice(SET_ROLL_EXTRA_PREFIX.length).trim();
     const parts = after.split("—");
@@ -171,33 +178,11 @@ function computeAddonPrice(addon: string, product?: ProductDb | null): number {
     }
   }
 
-  if (!product) return basePrice;
+  const price = EXTRA_PRICES[label as keyof typeof EXTRA_PRICES];
+  if (typeof price === "number") return price;
 
-  const subcat = (product.subcategory || "").toLowerCase();
-  const nameAndDesc = `${product.name} ${product.description || ""}`.toLowerCase();
-
-  const isSpecialCalifornia =
-    subcat === "california" &&
-    isSpecialCaliforniaBakedFishProduct(product.name, product.description);
-
-  // Specjalna logika dla "Ryba pieczona"
-  if (label === "Ryba pieczona") {
-    // Specjalna California – ryba pieczona +2 zł
-    if (isSpecialCalifornia) return 2;
-
-    // Nigiri z łososiem / tuńczykiem – opalana ryba +2 zł
-    if (subcat === "nigiri") {
-      const hasFish =
-        nameAndDesc.includes("łosoś") ||
-        nameAndDesc.includes("losos") ||
-        nameAndDesc.includes("tuńczyk") ||
-        nameAndDesc.includes("tunczyk");
-      if (hasFish) return 2;
-    }
-  }
-
-  // Reszta dodatków (Tempura, Płatek sojowy, Tamago itd.) – stała cena
-  return basePrice;
+  // Fallback – gdyby pojawił się nieskonfigurowany addon
+  return 4;
 }
 
 /* helper dla widoczności elementu (używany przez Turnstile) */
@@ -1964,12 +1949,12 @@ export default function CheckoutModal() {
       <span>Nie możesz znaleźć swojego adresu?</span>
       <a
         href="tel:+48123456789" // TODO: podmień na właściwy numer lokalu
-        className="inline-flex items-center justify-center rounded-full border border-black/15 px-3 py-1 font-semibold hover:bg-gray-100"
+        className="inline-flex items-center justify-center rounded-full border border-black/15 px-3 py-1 font-semibold hover:bg-gray-100 text-black"
       >
         Zadzwoń do nas
       </a>
     </div>
-    
+
                             <p className="text-xs text-black/60">
                               Najpierw wybierz adres z listy Google – dopiero wtedy pola poniżej
                               odblokują się do edycji.

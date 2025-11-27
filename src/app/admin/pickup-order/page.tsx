@@ -193,6 +193,7 @@ const normalizeProduct = (raw: Any) => {
     raw.item?.name,
     raw.product?.title,
   ].filter((x) => typeof x === "string" && x.trim()) as string[];
+
   const deep = deepFindName(raw);
   const name = (shallow[0] || deep || "(bez nazwy)") as string;
 
@@ -206,12 +207,33 @@ const normalizeProduct = (raw: Any) => {
   );
   const quantity = toNumber(raw.quantity ?? raw.qty ?? raw.amount ?? 1, 1) || 1;
 
+  // SWAPY z koszyka: options.swaps albo raw.swaps
+  const swapsRaw =
+    (Array.isArray((raw as any).swaps) && (raw as any).swaps) ||
+    (Array.isArray((raw as any).options?.swaps) &&
+      (raw as any).options.swaps) ||
+    [];
+
+  const swapLabels = (swapsRaw as any[])
+    .map((s) => {
+      if (!s) return null;
+      const from = typeof s.from === "string" ? s.from.trim() : "";
+      const to = typeof s.to === "string" ? s.to.trim() : "";
+      if (!from && !to) return null;
+      if (from && to) return `Zamiana: ${from} → ${to}`;
+      if (to) return `Zamiana na: ${to}`;
+      return `Zamiana: ${from}`;
+    })
+    .filter(Boolean) as string[];
+
   const addons = [
     ...collectStrings(raw.addons),
     ...collectStrings(raw.extras),
-    ...collectStrings(raw.options),
+    // jeśli backend wrzuca dodatki do options.addons
+    ...collectStrings((raw as any).options?.addons),
     ...collectStrings(raw.selected_addons),
     ...collectStrings(raw.toppings),
+    ...swapLabels,
   ].filter((s) => s && s !== "0");
 
   const ingredients = collectStrings(raw.ingredients).length
@@ -235,6 +257,8 @@ const normalizeProduct = (raw: Any) => {
   const note =
     (typeof raw.note === "string" && raw.note) ||
     (typeof raw.comment === "string" && raw.comment) ||
+    (typeof (raw as any).options?.note === "string" &&
+      (raw as any).options.note) ||
     undefined;
 
   return {
@@ -1103,7 +1127,7 @@ export default function PickupOrdersPage() {
               </span>
             </div>
 
-            {/* Pałeczki – tylko odczyt z bazy */}
+             {/* Pałeczki – tylko odczyt z bazy */}
             <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-slate-800">
@@ -1114,9 +1138,14 @@ export default function PickupOrdersPage() {
                 </span>
               </div>
               <p className="mt-1 text-[11px] text-slate-500">
-                Wartość pochodzi z zamówienia klienta (kolumna{" "}
-                <code>chopsticks_qty</code> w tabeli{" "}
-                <code>orders</code>).
+                Klient{" "}
+                {sticks > 0
+                  ? `poprosił o ${sticks} szt. pałeczek.`
+                  : "nie potrzebuje pałeczek."}
+              </p>
+              <p className="mt-0.5 text-[10px] text-slate-400">
+                Wartość pochodzi z zamówienia klienta (pole{" "}
+                <code>chopsticks_qty</code> w tabeli <code>orders</code>).
               </p>
             </div>
           </div>
