@@ -68,6 +68,7 @@ type ProductDb = {
   name: string;
   subcategory: string | null;
   description: string | null;
+  restaurant_id?: string | null;
 };
 type Promo =
   | { code: string; type: "percent" | "amount"; value: number }
@@ -108,20 +109,35 @@ const TARTAR_BASES = [
   "Podanie: na chipsach krewetkowych",
 ];
 
-/* Helper: rozpoznanie specjalnej California z opcją Ryby pieczonej +2 zł */
+/* Helper: rozpoznanie specjalnej California z opcją Ryby pieczonej +2 zł
+   – po składnikach, bez wymogu słowa "California" w nazwie */
 function isSpecialCaliforniaBakedFishProduct(
   name: string,
   description?: string | null
 ): boolean {
   const text = `${name} ${description || ""}`.toLowerCase();
-  if (!text.includes("california")) return false;
 
-  return (
-    text.includes("łosoś") &&
-    text.includes("surow") &&
-    text.includes("paluszek krabowy") &&
-    text.includes("krewet")
-  );
+  // łosoś + info, że jest surowy
+  const hasSalmon =
+    text.includes("łosoś") || text.includes("losos");
+  const isRaw =
+    text.includes("surowy") ||
+    text.includes("surowe") ||
+    text.includes("surowa") ||
+    text.includes("surow");
+
+  // paluszek krabowy / krab – różne odmiany
+  const hasCrab =
+    text.includes("paluszek krabowy") ||
+    text.includes("paluszki krabowe") ||
+    text.includes("paluszkiem krabowym") ||
+    text.includes("krabowy") ||
+    text.includes("krab");
+
+  // krewetka / krewetki – łapiemy po "krewet"
+  const hasShrimp = text.includes("krewet");
+
+  return hasSalmon && isRaw && hasCrab && hasShrimp;
 }
 
 /* Spójne liczenie ceny dodatków (także nowe logiki pieczenia) */
@@ -521,17 +537,17 @@ const ProductItem: React.FC<{
   };
 
    const doSetSwap = (rowFrom: string, to: string) => {
-  const current = getSetSwapCurrent(rowFrom);
-  if (!to || to === current) return;
+    const current = getSetSwapCurrent(rowFrom);
+    if (!to || to === current) return;
 
-  // UWAGA: swapujemy z aktualnie wybranej rolki -> nowa podmiana też działa
-  swapIngredient(prod.name, current, to);
+    // ważne: backend/store trzyma zamianę po ORYGINALNEJ nazwie z opisu zestawu
+    swapIngredient(prod.name, rowFrom, to);
 
-  // jednorazowa opłata za zamiany w zestawie
-  if (!(prod.addons ?? []).includes(SWAP_FEE_NAME)) {
-    addAddon(prod.name, SWAP_FEE_NAME);
-  }
-};
+    // jednorazowa opłata za zamiany w zestawie
+    if (!(prod.addons ?? []).includes(SWAP_FEE_NAME)) {
+      addAddon(prod.name, SWAP_FEE_NAME);
+    }
+  };
 
   // Frytki z batatów z przystawek – tylko w Szczytnie i Przasnyszu
   const isSweetPotatoFries = useMemo(() => {
@@ -788,48 +804,6 @@ const canUseExtraForRow = (ex: string): boolean => {
                       );
                     })}
                   </div>
-                </div>
-              );
-
-              return (
-                <div key={i} className="flex flex-wrap items-center gap-2">
-                  <span className="px-2 py-1 rounded bg-gray-50 border border-gray-200">
-                    {row.qty}× {row.cat}
-                  </span>
-                  <span className="text-black/70">zamień:</span>
-                  <select
-                    className="border border-black/15 rounded px-2 py-1 bg-white"
-                    value={current}
-                    onChange={(e) => doSetSwap(row.from, e.target.value)}
-                  >
-                    {[current, ...pool.filter((n) => n !== current)].map(
-                      (n) => (
-                        <option key={n} value={n}>
-                          {withCategoryPrefix(n, row.cat)}
-                        </option>
-                      )
-                    )}
-                  </select>
-
-                  {rawRow && (
-                    <button
-                      type="button"
-                      onClick={toggleRowBake}
-                      disabled={isWholeSetBaked}
-                      className={clsx(
-                        "px-2 py-1 rounded text-[11px] border",
-                        isWholeSetBaked
-                          ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
-                          : rollBaked
-                          ? "bg-black text-white border-black"
-                          : "bg-white text-black hover:bg-gray-50 border-gray-200"
-                      )}
-                    >
-                      {rollBaked
-                        ? "✓ Ta rolka pieczona (+2 zł)"
-                        : "+ Zamień tę rolkę na pieczoną (+2 zł)"}
-                    </button>
-                  )}
                 </div>
               );
             })}
@@ -1185,20 +1159,23 @@ export default function CheckoutModal() {
     }
   }, [isLoggedIn, session]);
 
-  useEffect(() => {
+    useEffect(() => {
     let cancelled = false;
 
     const load = async () => {
-      const prodRes = await supabase
-        .from("products")
-        .select("id,name,subcategory,description");
+      // Jeżeli nie ma sluga (np. strona główna) – bierz wszystkie produkty jak do tej pory
+      if (!restaurantSlug) {
+        const prodRes = await supabase
+          .from("products")
+          .select("id,name,subcategory,description,restaurant_id");
 
-      if (!cancelled && !prodRes.error && prodRes.data) {
-        setProductsDb((prodRes.data as ProductDb[]) || []);
+        if (!cancelled && !prodRes.error && prodRes.data) {
+          setProductsDb((prodRes.data as ProductDb[]) || []);
+        }
+        return;
       }
 
-      if (!restaurantSlug) return;
-
+      // 1) restauracja po slugu
       const restRes = await supabase
         .from("restaurants")
         .select("id, lat, lng")
@@ -1206,19 +1183,28 @@ export default function CheckoutModal() {
         .maybeSingle();
 
       if (cancelled || restRes.error || !restRes.data) return;
-
       const rest: any = restRes.data;
 
       if (!cancelled && rest.lat && rest.lng) {
         setRestLoc({ lat: rest.lat, lng: rest.lng });
       }
 
-      const dzRes = await supabase
-        .from("delivery_zones")
-        .select("*")
-        .eq("restaurant_id", rest.id)
-        .order("min_distance_km", { ascending: true });
+      // 2) dane zależne od restauracji: produkty + strefy dostawy
+      const [prodRes, dzRes] = await Promise.all([
+        supabase
+          .from("products")
+          .select("id,name,subcategory,description,restaurant_id")
+          .eq("restaurant_id", rest.id),
+        supabase
+          .from("delivery_zones")
+          .select("*")
+          .eq("restaurant_id", rest.id)
+          .order("min_distance_km", { ascending: true }),
+      ]);
 
+      if (!cancelled && !prodRes.error && prodRes.data) {
+        setProductsDb((prodRes.data as ProductDb[]) || []);
+      }
       if (!cancelled && !dzRes.error && dzRes.data) {
         setZones(dzRes.data as Zone[]);
       }
@@ -1356,17 +1342,24 @@ export default function CheckoutModal() {
     [productsById, productsByName]
   );
 
-  const optionsByCat = useMemo(() => {
+ const optionsByCat = useMemo(() => {
     const out: Record<string, string[]> = {};
+
     productsDb.forEach((p) => {
       const cat = (p.subcategory || "").toLowerCase();
       if (!cat || cat === "specjały" || cat === "zestawy") return;
-      out[cat] = out[cat] || [];
-      out[cat].push(p.name);
+
+      const arr = (out[cat] ||= []);
+      if (!arr.includes(p.name)) {
+        // unikamy duplikatów nazw w obrębie kategorii
+        arr.push(p.name);
+      }
     });
+
     Object.values(out).forEach((arr) =>
       arr.sort((a, b) => a.localeCompare(b))
     );
+
     return out;
   }, [productsDb]);
 
@@ -1965,6 +1958,18 @@ export default function CheckoutModal() {
                               setPostalCode={setPostalCode}
                               setFlatNumber={setFlatNumber}
                             />
+
+                            {/* INFO: gdy nie ma adresu na liście */}
+    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-black/70">
+      <span>Nie możesz znaleźć swojego adresu?</span>
+      <a
+        href="tel:+48123456789" // TODO: podmień na właściwy numer lokalu
+        className="inline-flex items-center justify-center rounded-full border border-black/15 px-3 py-1 font-semibold hover:bg-gray-100"
+      >
+        Zadzwoń do nas
+      </a>
+    </div>
+    
                             <p className="text-xs text-black/60">
                               Najpierw wybierz adres z listy Google – dopiero wtedy pola poniżej
                               odblokują się do edycji.
