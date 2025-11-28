@@ -22,7 +22,9 @@ interface Product {
   subcategory: string | null;
   position: number | null;
   image_url: string | null;
+  // flagi dostępności
   available: boolean;
+  is_active: boolean;
   price_cents: number | null;
 }
 type Closure = {
@@ -294,7 +296,7 @@ export default function AdminMenuPage() {
         supabase
           .from("products")
           .select(
-            "id,restaurant_id,name,description,subcategory,position,image_url,available,price_cents"
+            "id,restaurant_id,name,description,subcategory,position,image_url,available,is_active,price_cents"
           )
           .eq("restaurant_id", restaurantId)
           .order("subcategory", { ascending: true, nullsFirst: true })
@@ -405,25 +407,39 @@ export default function AdminMenuPage() {
 
   /* 4) Akcje */
   const toggleAvailability = async (id: string, current: boolean) => {
-    setTogglingId(id);
+  setTogglingId(id);
+
+  // optymistycznie zmieniamy oba pola w stanie
+  setProducts((prev) =>
+    prev.map((p) =>
+      p.id === id
+        ? { ...p, available: !current, is_active: !current }
+        : p
+    )
+  );
+
+  try {
+    const { error } = await supabase
+      .from("products")
+      .update({ available: !current, is_active: !current })
+      .eq("id", id);
+
+    if (error) throw error;
+  } catch (e: any) {
+    alert(`Nie udało się zmienić dostępności: ${e.message || e}`);
+
+    // rollback lokalnego stanu jeśli błąd
     setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, available: !current } : p))
+      prev.map((p) =>
+        p.id === id
+          ? { ...p, available: current, is_active: current }
+          : p
+      )
     );
-    try {
-      const { error } = await supabase
-        .from("products")
-        .update({ available: !current })
-        .eq("id", id);
-      if (error) throw error;
-    } catch (e: any) {
-      alert(`Nie udało się zmienić dostępności: ${e.message || e}`);
-      setProducts((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, available: current } : p))
-      );
-    } finally {
-      setTogglingId(null);
-    }
-  };
+  } finally {
+    setTogglingId(null);
+  }
+};
 
   const flipOrdering = async () => {
     if (orderingOpen == null || !restaurantId) return;

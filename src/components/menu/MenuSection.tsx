@@ -351,19 +351,32 @@ export default function MenuSection() {
   }, [restaurantId, supabase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const visible = useMemo(() => {
-    const term = norm(q.trim());
-    return products.filter((p) => {
-      const inCat =
-        activeCat === "Wszystko" || (p.subcategory || "Inne") === activeCat;
-      if (!inCat) return false;
-      if (!term) return true;
-      return (
-        norm(p.name).includes(term) ||
-        norm(p.description || "").includes(term) ||
-        norm(p.subcategory || "").includes(term)
-      );
-    });
-  }, [products, activeCat, q]);
+  const term = norm(q.trim());
+
+  return products.filter((p) => {
+    // 1) produkt wyłączony w panelu – w ogóle go nie pokazujemy
+    if (p.available === false) return false;
+
+    // 2) filtr kategorii
+    const inCat =
+      activeCat === "Wszystko" || (p.subcategory || "Inne") === activeCat;
+    if (!inCat) return false;
+
+    // 3) brak frazy – wszystko z danej kategorii
+    if (!term) return true;
+
+    // 4) wyszukiwanie po nazwie / opisie / kategorii
+    const name = norm(p.name || "");
+    const desc = norm(p.description || "");
+    const sub = norm(p.subcategory || "");
+
+    return (
+      name.includes(term) ||
+      desc.includes(term) ||
+      sub.includes(term)
+    );
+  });
+}, [products, activeCat, q]);
 
   // limit widocznych pozycji: desktop 8, mobile 4
   useEffect(() => {
