@@ -53,6 +53,14 @@ function mkHref(city: string, p?: string): UrlObject {
   return { pathname: mkPath(city, p) };
 }
 
+// specjalny href dla linku „MENU” – sekcja #menu na stronie miasta / głównej
+function mkMenuHref(city: string): UrlObject {
+  return {
+    pathname: mkPath(city), // "/" albo "/szczytno"
+    hash: "menu", // da "#menu"
+  };
+}
+
 export default function Header() {
   const pathname = usePathname() || "/";
   const router = useRouter();
@@ -103,9 +111,15 @@ export default function Header() {
     { label: "KONTAKT", path: "kontakt" },
     { label: "REGULAMIN", path: "regulamin" },
     { label: "PRYWATNOŚĆ", path: "polityka-prywatnosci" },
-  ];
+  ] as const;
 
   const isActive = (p?: string) => {
+    // MENU: aktywne na /menu oraz na /{city}
+    if (p === "menu") {
+      const rootCity = mkPath(city);
+      const rootMenu = mkPath("", "menu");
+      return pathname === rootMenu || pathname === rootCity;
+    }
     const path = mkPath(city, p);
     return pathname === path || pathname.startsWith(path + "/");
   };
@@ -144,7 +158,10 @@ export default function Header() {
           {/* center: desktop nav */}
           <nav className="hidden md:flex items-center justify-center gap-8 text-sm">
             {links.map((l) => {
-              const hrefObj = mkHref(city, l.path);
+              const hrefObj =
+                l.path === "menu"
+                  ? mkMenuHref(city)
+                  : mkHref(city, l.path);
               const active = isActive(l.path);
               return (
                 <Link
@@ -196,7 +213,7 @@ export default function Header() {
                           );
                         }}
                         className={clsx(
-                          "w-full text-left px-4 py-2 text-sm hover:bg-white/10 text-white/80",
+                          "w-full text-left px-4 py-2 text-sm hover:bg:white/10 text-white/80",
                           city === c.slug && "bg-white/10 text-white/80"
                         )}
                       >
@@ -240,7 +257,7 @@ export default function Header() {
                           );
                         }}
                         className={clsx(
-                          "w-full text-center px-4 py-2 text-sm text-white/80 hover:bg-white/10",
+                          "w-full text-center px-4 py-2 text-sm text:white/80 hover:bg-white/10",
                           city === c.slug && "bg-white/10 text-white/80"
                         )}
                       >
@@ -304,7 +321,11 @@ export default function Header() {
               {links.map((l) => (
                 <Link
                   key={l.path}
-                  href={mkHref(city, l.path)}
+                  href={
+                    l.path === "menu"
+                      ? mkMenuHref(city)
+                      : mkHref(city, l.path)
+                  }
                   onClick={() => setOpen(false)}
                   className="tracking-wide"
                 >
