@@ -544,9 +544,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1.2) Godziny per miasto
+    // 1.2) Aktualny czas PL
+    const now = nowPL();
+
+    // 1.3) Godziny per miasto (stały grafik)
     {
-      const { open, label } = isOpenFor(restaurantSlug, nowPL());
+      const { open, label } = isOpenFor(restaurantSlug, now);
       if (!open) {
         return NextResponse.json(
           {
@@ -586,15 +589,15 @@ export async function POST(req: Request) {
     // 2.2) Opłata za opakowanie – tak jak na froncie (selectedOption ? 2 : 0)
     const packagingFee = n.selected_option ? 2 : 0;
 
-    // 2.3) Suma pozycji (produkty + addony) – backend liczy tak jak frontend
+    // 2.3) Suma pozycji (produkty + addony)
     const itemsTotal = recomputeTotalFromItems(n.itemsArray);
     // Baza do progów min/free_over – produkty + opakowanie, bez dostawy
     const baseWithoutDelivery = itemsTotal + packagingFee;
 
-    // 2.4) restaurant_id z DB po slugu
+    // 2.4) restaurant_id z DB po slugu (+ aktywność lokalu)
     const { data: restRow, error: restErr } = await supabaseAdmin
       .from("restaurants")
-      .select("id, slug, lat, lng")
+      .select("id, slug, lat, lng, active")
       .eq("slug", restaurantSlug)
       .maybeSingle();
 
@@ -614,7 +617,65 @@ export async function POST(req: Request) {
 
     const restaurant_id = restRow.id;
 
-    // 2.5) blokowane adresy per restauracja (tylko dostawa)
+    // 2.5) Globalne wyłączenie zamówień w lokalu (przycisk w panelu)
+    if (restRow.active === false) {
+      return NextResponse.json(
+        {
+          error:
+            "Ten lokal chwilowo nie przyjmuje zamówień online. Spróbuj ponownie później lub skontaktuj się z restauracją.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // 2.6) Przerwy dzienne z restaurant_closures (per restauracja, dzisiaj)
+    try {
+      const todayStr = `${now.getFullYear()}-${pad(
+        now.getMonth() + 1
+      )}-${pad(now.getDate())}`;
+      const { data: cls, error: clsErr } = await supabaseAdmin
+        .from("restaurant_closures")
+        .select("start_time,end_time,reason")
+        .eq("restaurant_id", restaurant_id)
+        .eq("date", todayStr)
+        .order("start_time", { ascending: true });
+
+      if (clsErr) {
+        console.error(
+          "[orders.create] restaurant_closures error:",
+          (clsErr as any)?.message || clsErr
+        );
+      } else if (cls && cls.length > 0) {
+        const nowMinutes = now.getHours() * 60 + now.getMinutes();
+
+        const activeClosure = (cls as any[]).find((c) => {
+          if (!c.start_time || !c.end_time) return false;
+          const [sh, sm = "0"] = String(c.start_time).split(":");
+          const [eh, em = "0"] = String(c.end_time).split(":");
+          const startM = Number(sh) * 60 + Number(sm);
+          const endM = Number(eh) * 60 + Number(em);
+          if (!Number.isFinite(startM) || !Number.isFinite(endM)) return false;
+          return nowMinutes >= startM && nowMinutes <= endM;
+        });
+
+        if (activeClosure) {
+          const label = `${String(activeClosure.start_time).slice(
+            0,
+            5
+          )}–${String(activeClosure.end_time).slice(0, 5)}`;
+          return NextResponse.json(
+            {
+              error: `Aktualnie trwa przerwa w przyjmowaniu zamówień (${label}). Spróbuj ponownie później.`,
+            },
+            { status: 400 }
+          );
+        }
+      }
+    } catch (e) {
+      console.error("[orders.create] restaurant_closures check error:", e);
+    }
+
+    // 2.7) Blokowane adresy per restauracja (tylko dostawa)
     if (n.selected_option === "delivery") {
       const street = (n.street || n.address || "").toString();
       const flat = (n.flat_number || "").toString();
@@ -628,28 +689,27 @@ export async function POST(req: Request) {
       if (fullAddress) {
         const normalized = fullAddress.toLowerCase();
 
-        const { data: blocked, error: blockedErr } = await supabaseAdmin
-          .from("blocked_addresses")
-          .select("pattern, note, active")
+        const { data: blocks, error: blocksErr } = await supabaseAdmin
+          .from("address_blocks")
+          .select("pattern, type, is_active")
           .eq("restaurant_id", restaurant_id)
-          .eq("active", true);
+          .eq("is_active", true);
 
-        if (blockedErr) {
+        if (blocksErr) {
           console.error(
-            "[orders.create] blocked_addresses error:",
-            (blockedErr as any)?.message || blockedErr
+            "[orders.create] address_blocks error:",
+            (blocksErr as any)?.message || blocksErr
           );
-        } else if (blocked && blocked.length > 0) {
-          const matched = blocked.find((b) =>
-            normalized.includes((b.pattern || "").toLowerCase())
+        } else if (blocks && blocks.length > 0) {
+          const matched = (blocks as any[]).find((b) =>
+            normalized.includes(String(b.pattern || "").toLowerCase())
           );
 
           if (matched) {
             return NextResponse.json(
               {
                 error:
-                  matched.note ||
-                  "Na ten adres nie przyjmujemy w tej chwili zamówień. Prosimy o kontakt telefoniczny z lokalem.",
+                  "Na ten adres nie realizujemy aktualnie dostawy z wybranego lokalu. Skontaktuj się proszę telefonicznie z restauracją.",
               },
               { status: 409 }
             );
@@ -658,7 +718,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 2.6) Strefa dostawy – per restauracja
+    // 2.8) Strefa dostawy – per restauracja
     if (n.selected_option === "delivery") {
       if (n.delivery_lat == null || n.delivery_lng == null) {
         return NextResponse.json(
@@ -713,7 +773,7 @@ export async function POST(req: Request) {
         );
       }
 
-      // Minimalna wartość zamówienia – tak jak na froncie: produkty + opakowanie
+      // Minimalna wartość zamówienia – produkty + opakowanie (bez dostawy)
       if (baseWithoutDelivery < Number(zone.min_order_value || 0)) {
         return NextResponse.json(
           {
@@ -741,7 +801,7 @@ export async function POST(req: Request) {
       let serverCost =
         pricingType === "per_km" ? perKmRateRaw * distance_km : flatCostRaw;
 
-      // Darmowa dostawa powyżej progu – próg liczony od produktów + opakowanie (jak na froncie)
+      // Darmowa dostawa powyżej progu – próg liczony od produktów + opakowanie
       if (zone.free_over != null && baseWithoutDelivery >= Number(zone.free_over)) {
         serverCost = 0;
       }
@@ -750,7 +810,7 @@ export async function POST(req: Request) {
       n.delivery_cost = rounded;
     }
 
-    // 2.7) Finalne przeliczenie total_price na backendzie
+    // 2.9) Finalne przeliczenie total_price na backendzie
     const deliveryCostFinal =
       n.selected_option === "delivery" ? Number(n.delivery_cost || 0) : 0;
 
@@ -800,7 +860,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 5.1) Notatka dla kuchni – rozpisane pieczenia/dodatki/zestawy
+    // 5.1) Notatka dla kuchni
     const kitchen_note = buildKitchenNote(normalizedItems as any);
 
     // 6) Insert orders
@@ -905,7 +965,7 @@ export async function POST(req: Request) {
         const html = `
           <div style="font-family:Inter,Arial,sans-serif;line-height:1.5;color:#111">
             <h2 style="margin:0 0 8px">Potwierdzenie zamówienia #${newOrderId}</h2>
-            <p style="margin:0 0 16px">Dziękujemy za zamówienie w Sushi Tutaj.</p>
+            <p style="margin:0 0 16px">Dziękujemy za zamówienie.</p>
             <p style="margin:16px 0">
               <a href="${urlTrack}" style="display:inline-block;padding:12px 18px;background:#111;color:#fff;border-radius:8px;text-decoration:none">
                 Sprawdź status i czas dostawy
@@ -925,7 +985,7 @@ export async function POST(req: Request) {
 
         await sendEmail({
           to: n.contact_email,
-          subject: `Sushi Tutaj • Potwierdzenie zamówienia #${newOrderId}`,
+          subject: `Potwierdzenie zamówienia #${newOrderId}`,
           html,
         });
       }
@@ -947,7 +1007,7 @@ export async function POST(req: Request) {
           : String(orderRow.total_price ?? "0");
 
       const msg =
-        `Sushi Tutaj: Przyjęliśmy zamówienie #${newOrderId}. Kwota: ${totalLabel} zł. ` +
+        `Przyjęliśmy Twoje zamówienie #${newOrderId}. Kwota: ${totalLabel} zł. ` +
         `Status/śledzenie: ${urlTrackShort}`;
       await sendSms(n.phone, msg);
     } catch (smsErr) {

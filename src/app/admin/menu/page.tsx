@@ -382,7 +382,28 @@ export default function AdminMenuPage() {
     };
   }, [restaurantId, supabase, fetchAll]);
 
-  /* 3) Akcje */
+  /* 3) Helper: nazwa z kategorią przed nazwą */
+  const displayNameWithCategory = useCallback((p: Product): string => {
+    const cat = (p.subcategory || "").trim();
+    const name = (p.name || "").trim();
+    if (!cat) return name;
+
+    const lcName = name.toLowerCase();
+    const lcCat = cat.toLowerCase();
+
+    // jeśli nazwa już zaczyna się od kategorii – nie duplikujemy
+    if (
+      lcName.startsWith(lcCat + " ") ||
+      lcName.startsWith(lcCat + "-") ||
+      lcName.startsWith(lcCat + ":")
+    ) {
+      return name;
+    }
+
+    return `${cat} ${name}`;
+  }, []);
+
+  /* 4) Akcje */
   const toggleAvailability = async (id: string, current: boolean) => {
     setTogglingId(id);
     setProducts((prev) =>
@@ -459,13 +480,11 @@ export default function AdminMenuPage() {
     }
   };
 
-  /* 4) Filtry */
+  /* 5) Filtry */
   const categories = useMemo(
     () =>
       Array.from(
-        new Set(
-          products.map((p) => p.subcategory || "Bez kategorii")
-        )
+        new Set(products.map((p) => p.subcategory || "Bez kategorii"))
       )
         .filter(Boolean)
         .sort(),
@@ -513,7 +532,7 @@ export default function AdminMenuPage() {
   const handleSaved = (u: Product) =>
     setProducts((prev) => prev.map((p) => (p.id === u.id ? u : p)));
 
-  /* 5) UI */
+  /* 6) UI */
   return (
     <div className="min-h-screen bg-slate-50 p-6 text-slate-900">
       {!restaurantId && (
@@ -756,7 +775,7 @@ export default function AdminMenuPage() {
                       {i + 1}
                     </td>
                     <td className="px-6 py-4 text-sm font-medium text-slate-900">
-                      {it.name}
+                      {displayNameWithCategory(it)}
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-700">
                       {fmtPrice(it.price_cents)}
@@ -853,7 +872,7 @@ export default function AdminMenuPage() {
             >
               <div className="flex items-start justify-between">
                 <div className="text-lg font-semibold text-slate-900">
-                  {it.name}
+                  {displayNameWithCategory(it)}
                 </div>
                 <div className="text-sm font-medium text-slate-700">
                   {fmtPrice(it.price_cents)}
