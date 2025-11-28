@@ -729,39 +729,43 @@ const ProductItem: React.FC<{
   }, [isSweetPotatoFries]);
 
   // Tatar: tylko w Szczytnie / Przasnyszu, przystawki + tatar z łososia/tuńczyka
-  const isTartar = useMemo(() => {
-    if (!prodInfo) return false;
-    const sub = (prodInfo.subcategory || "").toLowerCase();
-    if (!sub.includes("przystawki")) return false;
+ // Tatar: tylko w Szczytnie / Przasnyszu, przystawki + tatar z łososia/tuńczyka
+const isTartar = useMemo(() => {
+  if (!prodInfo) return false;
 
-    const city = (restaurantSlug || "").toLowerCase();
-    if (city !== "szczytno" && city !== "przasnysz") return false;
+  const sub = (prodInfo.subcategory || "").toLowerCase();
+  // ważne: fragment "przystawk" łapie "Przystawka", "Przystawki" itd.
+  if (!sub.includes("przystawk")) return false;
 
-    const text = `${prodInfo.name} ${prodInfo.description || ""}`.toLowerCase();
-    if (!text.includes("tatar")) return false;
+  const city = (restaurantSlug || "").toLowerCase();
+  if (city !== "szczytno" && city !== "przasnysz") return false;
 
-    const hasFish =
-      text.includes("łosoś") ||
-      text.includes("losos") ||
-      text.includes("tuńczyk") ||
-      text.includes("tunczyk");
-    return hasFish;
-  }, [prodInfo, restaurantSlug]);
+  const text = `${prodInfo.name} ${prodInfo.description || ""}`.toLowerCase();
+  if (!text.includes("tatar")) return false;
 
-  const tartarSelectedBase = useMemo(() => {
-    if (!isTartar) return null;
-    const addons = Array.isArray(prod.addons) ? prod.addons : [];
-    return TARTAR_BASES.find((b) => addons.includes(b)) || null;
-  }, [isTartar, prod.addons]);
+  const hasFish =
+    text.includes("łosoś") ||
+    text.includes("losos") ||
+    text.includes("tuńczyk") ||
+    text.includes("tunczyk");
 
-  const setTartarBase = (base: string) => {
-    if (!isTartar) return;
-    // zawsze jedna baza – wyczyść pozostałe i ustaw wybraną
-    TARTAR_BASES.forEach((b) => {
-      if (prod.addons?.includes(b)) removeAddon(prod.name, b);
-    });
-    addAddon(prod.name, base);
-  };
+  return hasFish;
+}, [prodInfo, restaurantSlug]);
+
+const tartarSelectedBase = useMemo<string | null>(() => {
+  if (!isTartar) return null;
+  const addons = Array.isArray(prod.addons) ? prod.addons : [];
+  return TARTAR_BASES.find((b) => addons.includes(b)) ?? null;
+}, [isTartar, prod.addons]);
+
+const setTartarBase = (base: string) => {
+  if (!isTartar) return;
+  // zawsze jedna baza – wyczyść pozostałe i ustaw wybraną
+  TARTAR_BASES.forEach((b) => {
+    if (prod.addons?.includes(b)) removeAddon(prod.name, b);
+  });
+  addAddon(prod.name, base);
+};
 
   const toggleAddon = (a: string) => {
     const on = (prod.addons ?? []).includes(a);
