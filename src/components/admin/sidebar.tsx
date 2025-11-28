@@ -69,8 +69,8 @@ const MENU: MenuItem[] = [
     roles: ["admin", "employee"],
   },
   {
-    label: "Burger miesiąca",
-    href: "/admin/burger-miesiaca",
+    label: "Zestaw Miesiąca",
+    href: "/admin/zestaw-miesiaca",
     Icon: Star,
     roles: ["admin"],
   },

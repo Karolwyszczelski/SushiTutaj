@@ -33,9 +33,9 @@ export async function GET(req: Request) {
   const offset = Math.max(0, toInt(url.searchParams.get("offset"), 0));
   const slugParam = (url.searchParams.get("restaurant") || "").toLowerCase() || null;
 
-  // >>> ZMIANA TU: cookies() jest Promise -> await <<<
-  const cookieStore = await cookies();
-  let rid = normalizeUuid(cookieStore.get("restaurant_id")?.value || null);
+  // >>> cookies() jest Promise -> trzeba poczekać na wynik <<<
+const cookieStore = await cookies();
+let rid = normalizeUuid(cookieStore.get("restaurant_id")?.value || null);
 
   // Slug -> id (jawny typ, by uniknąć `never`)
   if (slugParam) {
@@ -78,7 +78,9 @@ export async function GET(req: Request) {
     items,
     delivery_cost, phone, address, street, flat_number, city,
     payment_method, payment_status,
-    client_delivery_time, deliveryTime
+    client_delivery_time, deliveryTime,
+    reservation_id, reservation_date, reservation_time,
+    chopsticks_qty
   `;
 
   let q = supabase
@@ -113,6 +115,8 @@ export async function GET(req: Request) {
     payment_status: o.payment_status ?? null,
     client_delivery_time: o.client_delivery_time ?? null,
     deliveryTime: o.deliveryTime ?? null,
+    reservation_id: o.reservation_id ?? null,
+    chopsticks_qty: o.chopsticks_qty ?? null,
   }));
 
   return NextResponse.json(

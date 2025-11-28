@@ -16,7 +16,6 @@ import QRCode from "react-qr-code";
 import { useSession } from "@supabase/auth-helpers-react";
 import { createClient } from "@supabase/supabase-js";
 import { toZonedTime } from "date-fns-tz";
-
 import useIsClient from "@/lib/useIsClient";
 import useCartStore from "@/store/cartStore";
 import AddressAutocomplete from "@/components/menu/AddressAutocomplete";
@@ -1331,11 +1330,19 @@ export default function CheckoutModal() {
 
   // zamiast useSearchParams – czytamy query przez window.location.search
   const [reservationId, setReservationId] = useState<string | null>(null);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const r = params.get("reservation");
-    setReservationId(r);
+    if (!r) {
+      setReservationId(null);
+      return;
+    }
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      r.trim()
+    );
+    setReservationId(isUuid ? r.trim() : null);
   }, []);
 
   const [notes, setNotes] = useState<{ [key: number]: string }>({});
@@ -2129,6 +2136,7 @@ export default function CheckoutModal() {
             addons: item.addons,
             swaps: item.swaps,
             note: notes[index] || "",
+          restaurant: slug, 
           },
         };
       });

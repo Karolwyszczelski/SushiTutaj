@@ -37,6 +37,11 @@ interface Order {
   payment_method?: PaymentMethod;
   payment_status?: PaymentStatus;
 
+  // rezerwacja
+  reservation_id?: string | null;
+  reservation_date?: string | null;
+  reservation_time?: string | null;
+
   // liczba pałeczek – tylko do odczytu
   chopsticks?: number | null;
 }
@@ -343,17 +348,29 @@ const normalizeProduct = (raw: Any) => {
       (source as any).options.swaps) ||
     [];
 
-  const swapLabels = (swapsRaw as any[])
+  type SwapDetail = { from?: string; to?: string; label: string };
+
+  const swapDetails: SwapDetail[] = (swapsRaw as any[])
     .map((s) => {
       if (!s) return null;
       const from = typeof s.from === "string" ? s.from.trim() : "";
       const to = typeof s.to === "string" ? s.to.trim() : "";
       if (!from && !to) return null;
-      if (from && to) return `Zamiana: ${from} → ${to}`;
-      if (to) return `Zamiana na: ${to}`;
-      return `Zamiana: ${from}`;
+
+      let label: string;
+      if (from && to) label = `Zamiana: ${from} → ${to}`;
+      else if (to) label = `Zamiana na: ${to}`;
+      else label = `Zamiana: ${from}`;
+
+      return {
+        from: from || undefined,
+        to: to || undefined,
+        label,
+      };
     })
-    .filter(Boolean) as string[];
+    .filter(Boolean) as SwapDetail[];
+
+  const swapLabels = swapDetails.map((s) => s.label);
 
   // surowe etykiety dodatków
   const rawAddons = [
@@ -412,6 +429,7 @@ const normalizeProduct = (raw: Any) => {
     note,
     isSet,
     swaps: swapLabels,
+    swapDetails, // <-- NOWE: struktura z from/to
     setMeta: isSet && setMeta ? setMeta : null,
     tartarBases,
     _raw: source,
@@ -761,6 +779,11 @@ export default function PickupOrdersPage() {
           selected_option: o.selected_option,
           payment_method: fromDBPaymentMethod(o.payment_method),
           payment_status: fromDBPaymentStatus(o.payment_status),
+
+          // rezerwacja
+          reservation_id: o.reservation_id ?? null,
+          reservation_date: o.reservation_date ?? null,
+          reservation_time: o.reservation_time ?? null,
 
           // liczba pałeczek tylko do odczytu
           chopsticks: chopsticksRaw ?? 0,
@@ -1157,7 +1180,7 @@ export default function PickupOrdersPage() {
               </div>
             )}
 
-            {isSet && p.setMeta && (
+           {isSet && p.setMeta && (
               <>
                 <div className="mt-1">
                   <b>Zamiany w zestawie:</b>{" "}
@@ -1193,21 +1216,105 @@ export default function PickupOrdersPage() {
                   </div>
                 )}
 
-                {p.setMeta.rollExtras.length > 0 && (
-                  <div>
-                    <b>Dodatki do poszczególnych rolek:</b>
-                    <ul className="ml-5 list-disc">
-                      {p.setMeta.rollExtras.map((row, i) => (
-                        <li key={i}>
-                          <span className="font-medium">
-                            {row.roll}:
-                          </span>{" "}
-                          {row.extras.join(", ")}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                {/* Rolki – pełne szczegóły: zamiana / pieczenie / dodatki */}
+                {(() => {
+                  type RollInfo = {
+                    name: string;
+                    extras: string[];
+                    baked: boolean;
+                    swappedFrom?: string;
+                  };
+
+                  const map = new Map<string, RollInfo>();
+
+                  const ensure = (nameRaw: string | undefined | null) => {
+                    const name = (nameRaw || "").trim();
+                    if (!name) return null;
+                    if (!map.has(name)) {
+                      map.set(name, {
+                        name,
+                        extras: [],
+                        baked: false,
+                      });
+                    }
+                    return map.get(name)!;
+                  };
+
+                  // dodatki przypisane do konkretnych rolek
+                  for (const row of p.setMeta!.rollExtras || []) {
+                    const ri = ensure(row.roll);
+                    if (!ri) continue;
+                    ri.extras.push(...row.extras);
+                  }
+
+                  // pieczone rolki
+                  if (p.setMeta!.bakedWholeSet) {
+                    for (const ri of map.values()) {
+                      ri.baked = true;
+                    }
+                  } else {
+                    for (const name of p.setMeta!.bakedRolls || []) {
+                      const ri = ensure(name);
+                      if (!ri) continue;
+                      ri.baked = true;
+                    }
+                  }
+
+                  // szczegóły zamian – używamy structured swapDetails
+                  const swapDetails =
+                    (p as any).swapDetails as
+                      | { from?: string; to?: string; label: string }[]
+                      | undefined;
+
+                  if (swapDetails && swapDetails.length) {
+                    for (const s of swapDetails) {
+                      const target = (s.to || s.from || "").trim();
+                      if (!target) continue;
+                      const ri = ensure(target);
+                      if (!ri) continue;
+                      if (s.from && s.to && s.from !== s.to) {
+                        ri.swappedFrom = s.from;
+                      }
+                    }
+                  }
+
+                  const rows = Array.from(map.values());
+                  if (!rows.length) return null;
+
+                  return (
+                    <div className="mt-1">
+                      <b>Rolki – szczegóły:</b>
+                      <ul className="ml-5 list-disc">
+                        {rows.map((ri, i) => {
+                          const parts: string[] = [];
+                          if (ri.swappedFrom) {
+                            parts.push(`zamiast: ${ri.swappedFrom}`);
+                          }
+                          if (p.setMeta!.bakedWholeSet || ri.baked) {
+                            parts.push("pieczona");
+                          }
+                          if (ri.extras.length) {
+                            parts.push(
+                              `dodatki: ${ri.extras.join(", ")}`
+                            );
+                          }
+                          const text =
+                            parts.length > 0
+                              ? parts.join(" · ")
+                              : "bez zmian";
+                          return (
+                            <li key={i}>
+                              <span className="font-medium">
+                                {ri.name}:
+                              </span>{" "}
+                              {text}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  );
+                })()}
               </>
             )}
 
@@ -1252,6 +1359,8 @@ export default function PickupOrdersPage() {
               <h3 className="text-lg font-bold tracking-tight text-slate-900">
                 {getOptionLabel(o.selected_option)}
               </h3>
+
+              {/* Status zamówienia */}
               <Badge
                 tone={
                   o.status === "accepted"
@@ -1265,6 +1374,33 @@ export default function PickupOrdersPage() {
               >
                 {o.status.toUpperCase()}
               </Badge>
+
+              {/* REZERWACJA: jeśli zamówienie ma reservation_id */}
+              {o.reservation_id && (
+                (() => {
+                  let timeLabel: string | null = null;
+
+                  if (o.clientDelivery && o.clientDelivery !== "asap") {
+                    const dt = new Date(o.clientDelivery);
+                    if (!Number.isNaN(dt.getTime())) {
+                      timeLabel = dt.toLocaleTimeString("pl-PL", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      });
+                    }
+                  } else if (o.reservation_time) {
+                    // fallback – jeśli kiedyś zapiszesz samą godzinę w osobnym polu
+                    timeLabel = o.reservation_time;
+                  }
+
+                  return (
+                    <Badge tone="green">
+                      Rezerwacja{timeLabel ? ` · ${timeLabel}` : ""}
+                    </Badge>
+                  );
+                })()
+              )}
+
               {paymentBadge(o)}
             </div>
             <div className="text-sm text-slate-700">

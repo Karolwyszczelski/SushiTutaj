@@ -267,17 +267,25 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
         throw new Error(jr?.error || "Błąd zapisu");
       }
 
-      // jeżeli użytkownik wybrał „Zarezerwuj i przejdź do zamówienia”
+       // jeżeli użytkownik wybrał „Zarezerwuj i przejdź do zamówienia”
       if (goToOrder) {
         const reservationId: string | undefined =
           jr?.id || jr?.reservation_id || jr?.reservationId;
 
-        if (reservationId && restaurantSlug) {
-          // przekierowanie do menu z ID rezerwacji w query – tam możesz spiąć zamówienie z rezerwacją
-          const target = `/${restaurantSlug}/#menu?reservation=${encodeURIComponent(
-            reservationId
-          )}`;
-          window.location.href = target;
+        if (reservationId) {
+          // jeśli znamy lokal → /{slug}?reservation=...#menu
+          if (restaurantSlug) {
+            const target = `/${restaurantSlug}?reservation=${encodeURIComponent(
+              reservationId
+            )}#menu`;
+            window.location.href = target;
+          } else {
+            // fallback: globalne /menu z tą samą logiką
+            const target = `/menu?reservation=${encodeURIComponent(
+              reservationId
+            )}#menu`;
+            window.location.href = target;
+          }
           return;
         }
       }

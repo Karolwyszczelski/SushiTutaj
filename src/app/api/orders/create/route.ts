@@ -796,13 +796,6 @@ export async function POST(req: Request) {
         );
       }
 
-      await pushAdminNotification(
-        restaurant_id,
-        "error",
-        "Błąd współrzędnych restauracji",
-        "Nie skonfigurowano współrzędnych restauracji."
-      );
-
       const restLat = num(restRow.lat, null);
       const restLng = num(restRow.lng, null);
 
