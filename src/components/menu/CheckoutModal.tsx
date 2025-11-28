@@ -515,20 +515,37 @@ function withCategoryPrefix(name: string, subcategory?: string | null): string {
 
 function parseSetComposition(desc?: string | null) {
   if (!desc) return [] as { qty: number; cat: string; from: string }[];
-  // przykład: "16 szt, SUROWY: 6x Futomaki łosoś philadelphia surowy, 8x Hosomaki ogórek, ..."
+
+  // przykład: "16 szt, SUROWY: 6x Futomaki łosoś philadelphia surowy, 8x Hosomaki ogórek, ... +6x Futomaki krewetka w tempurze za 1 zł!"
   const listPart = desc.split(":").slice(1).join(":") || desc;
-  const chunks = listPart.split(/[,;]/).map((c) => c.trim());
+
+  const chunks = listPart
+    .split(/[,;\n]/)
+    .map((c) => c.trim())
+    .filter(Boolean);
+
   const rows: { qty: number; cat: string; from: string }[] = [];
-  const re = /^(\d+)\s*x\s*(Futomaki|California|Hosomaki|Nigiri)\s+(.+)$/i;
+
+  // NOWE: dopuszczamy opcjonalny "+" / bullet na początku, np. "+6x Futomaki ..."
+  const re =
+    /^[+\-–•]?\s*(\d+)\s*x\s*(Futomaki|California|Hosomaki|Nigiri)\s+(.+)$/i;
+
   chunks.forEach((c) => {
     const m = c.match(re);
-    if (m) {
-      const qty = parseInt(m[1], 10) || 1;
-      const cat = m[2];
-      const from = m[3].replace(/\s+za\s+1\s*zł.*$/i, "").trim();
-      rows.push({ qty, cat, from });
-    }
+    if (!m) return;
+
+    const qty = parseInt(m[1], 10) || 1;
+    const cat = m[2];
+
+    // obcinamy końcówkę typu "za 1 zł!" / "za 1zl"
+    const from = m[3]
+      .replace(/\s+za\s*1\s*z[łl].*$/i, "")
+      .trim();
+
+    if (!from) return;
+    rows.push({ qty, cat, from });
   });
+
   return rows;
 }
 
