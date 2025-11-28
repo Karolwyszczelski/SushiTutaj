@@ -2,17 +2,21 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+type BlockType = "address" | "phone" | "email";
+
 type BlockedAddress = {
   id: string;
   pattern: string;
   note: string | null;
   active: boolean;
+  type: BlockType;
 };
 
 const emptyEntry: Omit<BlockedAddress, "id"> = {
   pattern: "",
   note: "",
   active: true,
+  type: "address",
 };
 
 export default function BlockedAddressesForm() {
@@ -20,13 +24,32 @@ export default function BlockedAddressesForm() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [draft, setDraft] = useState(emptyEntry);
+  const [draft, setDraft] = useState<BlockedAddress>(emptyEntry as any);
   const [error, setError] = useState<string | null>(null);
 
   const sorted = useMemo(
     () => [...rows].sort((a, b) => a.pattern.localeCompare(b.pattern)),
     [rows]
   );
+
+  const inputCls =
+    "h-9 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-900 " +
+    "shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300";
+
+  const checkboxCls =
+    "h-4 w-4 rounded border-slate-400 text-sky-600 focus:ring-sky-500";
+
+  const patternHint = (type: BlockType) => {
+    switch (type) {
+      case "phone":
+        return 'Np. "501234567" albo końcówka numeru, np. "4567".';
+      case "email":
+        return 'Np. "jan@spam.com" albo sama domena "@spam.com".';
+      case "address":
+      default:
+        return 'Np. "ul. Leśna 12 Ciechanów" albo fragment adresu, który ma blokować.';
+    }
+  };
 
   async function load() {
     setLoading(true);
@@ -36,12 +59,22 @@ export default function BlockedAddressesForm() {
         cache: "no-store",
       });
       if (!r.ok) {
-        setError("Nie udało się pobrać listy blokowanych adresów.");
+        setError("Nie udało się pobrać listy blokowanych wpisów.");
         setLoading(false);
         return;
       }
       const j = await r.json();
-      setRows((j.addresses || []) as BlockedAddress[]);
+      const list = (j.addresses || []) as any[];
+
+      setRows(
+        list.map((row) => ({
+          id: row.id,
+          pattern: row.pattern ?? "",
+          note: row.note ?? "",
+          active: row.active ?? row.is_active ?? true,
+          type: (row.type as BlockType) || "address",
+        }))
+      );
     } catch (e) {
       console.error(e);
       setError("Błąd połączenia z API.");
@@ -56,23 +89,30 @@ export default function BlockedAddressesForm() {
 
   async function create() {
     if (!draft.pattern.trim()) {
-      setError("Wzorzec adresu nie może być pusty.");
+      setError("Wzorzec nie może być pusty.");
       return;
     }
     setCreating(true);
     setError(null);
     try {
+      const payload = {
+        pattern: draft.pattern.trim(),
+        note: draft.note?.trim() || null,
+        active: draft.active,
+        type: draft.type,
+      };
+
       const r = await fetch("/api/admin/blocked-addresses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
+        body: JSON.stringify(payload),
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
         setError(j?.error || "Błąd zapisu.");
         return;
       }
-      setDraft(emptyEntry);
+      setDraft(emptyEntry as any);
       await load();
     } finally {
       setCreating(false);
@@ -83,7 +123,14 @@ export default function BlockedAddressesForm() {
     setSavingId(row.id);
     setError(null);
     try {
-      const { id, ...payload } = row;
+      const { id, ...rest } = row;
+      const payload = {
+        pattern: rest.pattern.trim(),
+        note: rest.note?.trim() || null,
+        active: rest.active,
+        type: rest.type,
+      };
+
       const r = await fetch(`/api/admin/blocked-addresses/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -120,13 +167,6 @@ export default function BlockedAddressesForm() {
     );
   }
 
-  const inputCls =
-    "h-9 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-900 " +
-    "shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300";
-
-  const checkboxCls =
-    "h-4 w-4 rounded border-slate-400 text-sky-600 focus:ring-sky-500";
-
   return (
     <div className="space-y-4">
       {error && (
@@ -138,14 +178,14 @@ export default function BlockedAddressesForm() {
       {/* Lista blokad */}
       <div className="rounded-md border bg-white">
         <div className="border-b p-3 font-semibold">
-          Blokowane adresy (dla aktualnej restauracji)
+          Blokowane adresy / telefony / e-maile (dla aktualnej restauracji)
         </div>
         <div className="divide-y">
           {loading ? (
             <div className="p-4 text-sm text-slate-600">Ładowanie…</div>
           ) : sorted.length === 0 ? (
             <div className="p-4 text-sm text-slate-600">
-              Brak zablokowanych adresów.
+              Brak zablokowanych wpisów.
             </div>
           ) : (
             sorted.map((row) => (
@@ -153,10 +193,9 @@ export default function BlockedAddressesForm() {
                 key={row.id}
                 className="grid grid-cols-1 gap-3 p-3 md:grid-cols-12 md:items-center"
               >
+                {/* Wzorzec */}
                 <div className="md:col-span-4 flex flex-col gap-1">
-                  <span className="text-[12px] text-slate-600">
-                    Wzorzec adresu
-                  </span>
+                  <span className="text-[12px] text-slate-600">Wzorzec</span>
                   <input
                     type="text"
                     className={inputCls}
@@ -166,23 +205,42 @@ export default function BlockedAddressesForm() {
                     }
                   />
                   <p className="mt-1 text-[11px] text-slate-500">
-                    Np. &quot;ul. Leśna 12 Ciechanów&quot; albo fragment, który
-                    ma blokować.
+                    {patternHint(row.type || "address")}
                   </p>
                 </div>
 
-                <div className="md:col-span-5 flex flex-col gap-1">
+                {/* Notatka */}
+                <div className="md:col-span-3 flex flex-col gap-1">
                   <span className="text-[12px] text-slate-600">Notatka</span>
                   <input
                     type="text"
                     className={inputCls}
                     value={row.note ?? ""}
                     onChange={(e) =>
-                      editLocal(row.id, "note", e.target.value || null)
+                      editLocal(row.id, "note", e.target.value || "")
                     }
                   />
                 </div>
 
+                {/* Typ blokady */}
+                <div className="md:col-span-2 flex flex-col gap-1">
+                  <span className="text-[12px] text-slate-600">
+                    Rodzaj blokady
+                  </span>
+                  <select
+                    className={inputCls}
+                    value={row.type || "address"}
+                    onChange={(e) =>
+                      editLocal(row.id, "type", e.target.value as BlockType)
+                    }
+                  >
+                    <option value="address">Adres</option>
+                    <option value="phone">Telefon</option>
+                    <option value="email">E-mail</option>
+                  </select>
+                </div>
+
+                {/* Aktywna */}
                 <label className="md:col-span-1 flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -195,6 +253,7 @@ export default function BlockedAddressesForm() {
                   <span>Aktywna</span>
                 </label>
 
+                {/* Akcje */}
                 <div className="md:col-span-2 flex gap-2">
                   <button
                     onClick={() => save(row)}
@@ -220,8 +279,9 @@ export default function BlockedAddressesForm() {
       <div className="rounded-md border bg-white">
         <div className="border-b p-3 font-semibold">Dodaj blokadę</div>
         <div className="grid grid-cols-1 gap-3 p-3 md:grid-cols-12 md:items-center">
+          {/* Wzorzec */}
           <div className="md:col-span-4 flex flex-col gap-1">
-            <span className="text-[12px] text-slate-600">Wzorzec adresu</span>
+            <span className="text-[12px] text-slate-600">Wzorzec</span>
             <input
               type="text"
               className={inputCls}
@@ -229,10 +289,15 @@ export default function BlockedAddressesForm() {
               onChange={(e) =>
                 setDraft({ ...draft, pattern: e.target.value })
               }
-              placeholder='np. "ul. Leśna 12 Ciechanów"'
+              placeholder='np. "ul. Leśna 12 Ciechanów" / "501234567" / "@spam.com"'
             />
+            <p className="mt-1 text-[11px] text-slate-500">
+              {patternHint(draft.type)}
+            </p>
           </div>
-          <div className="md:col-span-5 flex flex-col gap-1">
+
+          {/* Notatka */}
+          <div className="md:col-span-3 flex flex-col gap-1">
             <span className="text-[12px] text-slate-600">Notatka</span>
             <input
               type="text"
@@ -244,6 +309,24 @@ export default function BlockedAddressesForm() {
               placeholder="info dla obsługi, np. powód blokady"
             />
           </div>
+
+          {/* Typ blokady */}
+          <div className="md:col-span-2 flex flex-col gap-1">
+            <span className="text-[12px] text-slate-600">Rodzaj blokady</span>
+            <select
+              className={inputCls}
+              value={draft.type}
+              onChange={(e) =>
+                setDraft({ ...draft, type: e.target.value as BlockType })
+              }
+            >
+              <option value="address">Adres</option>
+              <option value="phone">Telefon</option>
+              <option value="email">E-mail</option>
+            </select>
+          </div>
+
+          {/* Aktywna */}
           <label className="md:col-span-1 flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -255,6 +338,8 @@ export default function BlockedAddressesForm() {
             />
             <span>Aktywna</span>
           </label>
+
+          {/* Dodaj */}
           <div className="md:col-span-2">
             <button
               onClick={create}

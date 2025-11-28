@@ -675,47 +675,69 @@ export async function POST(req: Request) {
       console.error("[orders.create] restaurant_closures check error:", e);
     }
 
-    // 2.7) Blokowane adresy per restauracja (tylko dostawa)
-    if (n.selected_option === "delivery") {
-      const street = (n.street || n.address || "").toString();
-      const flat = (n.flat_number || "").toString();
-      const city = (n.city || "").toString();
+     // 2.7) Blokady adres / telefon / e-mail per restauracja
+    try {
+      const { data: blocks, error: blocksErr } = await supabaseAdmin
+        .from("address_blocks")
+        .select("pattern, type, is_active")
+        .eq("restaurant_id", restaurant_id)
+        .eq("is_active", true);
 
-      const fullAddress = [street, flat, city]
-        .filter((x) => x && x.trim().length > 0)
-        .join(" ")
-        .trim();
+      if (blocksErr) {
+        console.error(
+          "[orders.create] address_blocks error:",
+          (blocksErr as any)?.message || blocksErr
+        );
+      } else if (blocks && blocks.length > 0) {
+        const addrStr = [
+          n.street || n.address || "",
+          n.flat_number || "",
+          n.city || "",
+        ]
+          .filter((x) => String(x).trim().length > 0)
+          .join(" ")
+          .toLowerCase();
 
-      if (fullAddress) {
-        const normalized = fullAddress.toLowerCase();
+        const phoneDigits = (n.phone || "").replace(/\D/g, "");
+        const emailLower = (n.contact_email || "").toString().toLowerCase();
 
-        const { data: blocks, error: blocksErr } = await supabaseAdmin
-          .from("address_blocks")
-          .select("pattern, type, is_active")
-          .eq("restaurant_id", restaurant_id)
-          .eq("is_active", true);
+        const matched = (blocks as any[]).find((b) => {
+          const rawPattern = String(b.pattern || "");
+          if (!rawPattern.trim()) return false;
 
-        if (blocksErr) {
-          console.error(
-            "[orders.create] address_blocks error:",
-            (blocksErr as any)?.message || blocksErr
-          );
-        } else if (blocks && blocks.length > 0) {
-          const matched = (blocks as any[]).find((b) =>
-            normalized.includes(String(b.pattern || "").toLowerCase())
-          );
+          const type = (b.type as string) || "address";
 
-          if (matched) {
-            return NextResponse.json(
-              {
-                error:
-                  "Na ten adres nie realizujemy aktualnie dostawy z wybranego lokalu. Skontaktuj się proszę telefonicznie z restauracją.",
-              },
-              { status: 409 }
+          if (type === "phone") {
+            const patDigits = rawPattern.replace(/\D/g, "");
+            if (!patDigits) return false;
+            return phoneDigits && phoneDigits.includes(patDigits);
+          }
+
+          if (type === "email") {
+            return (
+              !!emailLower &&
+              emailLower.includes(rawPattern.toLowerCase())
             );
           }
+
+          // domyślnie address
+          return (
+            !!addrStr && addrStr.includes(rawPattern.toLowerCase())
+          );
+        });
+
+        if (matched) {
+          return NextResponse.json(
+            {
+              error:
+                "Nie możemy przyjąć zamówienia dla podanych danych kontaktowych. Skontaktuj się proszę bezpośrednio z restauracją.",
+            },
+            { status: 409 }
+          );
         }
       }
+    } catch (e) {
+      console.error("[orders.create] address_blocks check error:", e);
     }
 
     // 2.8) Strefa dostawy – per restauracja
