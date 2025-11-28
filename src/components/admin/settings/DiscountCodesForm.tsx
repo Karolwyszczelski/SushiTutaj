@@ -177,79 +177,92 @@ export default function DiscountCodesForm() {
     setEditing({ ...editing, [field]: value } as FormState);
   };
 
-  const handleSave = async () => {
-    if (!editing || !restaurantId) return;
-    setSaving(true);
-    setError(null);
+ const handleSave = async () => {
+  if (!editing || !restaurantId) return;
+  setSaving(true);
+  setError(null);
 
-    const valueNum = numOrNull(editing.value);
-    const minOrderNum = numOrNull(editing.minOrder);
+  const valueNum = numOrNull(editing.value);
+  const minOrderNum = numOrNull(editing.minOrder);
 
-    const payload: Partial<DiscountCodeRow> = {
-      code: editing.requireCode ? editing.code.trim() || null : null,
-      description: editing.description.trim() || null,
-      active: editing.active,
-      type: editing.type,
-      value: valueNum,
-      min_order: minOrderNum,
-      expires_at: editing.expiresAt
-        ? new Date(editing.expiresAt).toISOString()
-        : null,
-      require_code: editing.requireCode,
-      apply_scope: editing.applyScope,
-      include_categories:
-        editing.applyScope === "include_categories"
-          ? parseList(editing.includeCategories)
-          : null,
-      exclude_categories:
-        editing.applyScope === "exclude_categories"
-          ? parseList(editing.excludeCategories)
-          : null,
-      include_products:
-        editing.applyScope === "include_products"
-          ? parseList(editing.includeProducts)
-          : null,
-      exclude_products:
-        editing.applyScope === "exclude_products"
-          ? parseList(editing.excludeProducts)
-          : null,
-      restaurant_id: restaurantId,
-    };
+  // <<< NOWE: zawsze zwracamy tablice, nigdy null >>>
+  const includeCategoriesArr =
+    editing.applyScope === "include_categories"
+      ? parseList(editing.includeCategories) ?? []
+      : [];
 
-    try {
-      if (editing.id) {
-        const { error } = await supabase
-          .from("discount_codes")
-          .update(payload)
-          .eq("id", editing.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from("discount_codes")
-          .insert(payload);
-        if (error) throw error;
-      }
+  const excludeCategoriesArr =
+    editing.applyScope === "exclude_categories"
+      ? parseList(editing.excludeCategories) ?? []
+      : [];
 
-      // odśwież listę
-      const { data: codes, error: codesErr } = await supabase
-        .from("discount_codes")
-        .select("*")
-        .eq("restaurant_id", restaurantId)
-        .order("created_at", { ascending: false });
+  const includeProductsArr =
+    editing.applyScope === "include_products"
+      ? parseList(editing.includeProducts) ?? []
+      : [];
 
-      if (codesErr) {
-        setError("Zapisano, ale nie udało się odświeżyć listy.");
-      } else {
-        setRows((codes || []) as DiscountCodeRow[]);
-      }
+  const excludeProductsArr =
+    editing.applyScope === "exclude_products"
+      ? parseList(editing.excludeProducts) ?? []
+      : [];
+  // >>>>>
 
-      setEditing(null);
-    } catch (e: any) {
-      setError(e?.message || "Nie udało się zapisać kodu rabatowego.");
-    } finally {
-      setSaving(false);
-    }
+  const payload: Partial<DiscountCodeRow> = {
+    code: editing.requireCode ? editing.code.trim() || null : null,
+    description: editing.description.trim() || null,
+    active: editing.active,
+    type: editing.type,
+    value: valueNum,
+    min_order: minOrderNum,
+    expires_at: editing.expiresAt
+      ? new Date(editing.expiresAt).toISOString()
+      : null,
+    require_code: editing.requireCode,
+    apply_scope: editing.applyScope,
+
+    // <<< TU wstawiamy już przygotowane tablice >>>
+    include_categories: includeCategoriesArr,
+    exclude_categories: excludeCategoriesArr,
+    include_products: includeProductsArr,
+    exclude_products: excludeProductsArr,
+    // >>>>>
+
+    restaurant_id: restaurantId,
   };
+
+  try {
+    if (editing.id) {
+      const { error } = await supabase
+        .from("discount_codes")
+        .update(payload)
+        .eq("id", editing.id);
+      if (error) throw error;
+    } else {
+      const { error } = await supabase
+        .from("discount_codes")
+        .insert(payload);
+      if (error) throw error;
+    }
+
+    const { data: codes, error: codesErr } = await supabase
+      .from("discount_codes")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .order("created_at", { ascending: false });
+
+    if (codesErr) {
+      setError("Zapisano, ale nie udało się odświeżyć listy.");
+    } else {
+      setRows((codes || []) as DiscountCodeRow[]);
+    }
+
+    setEditing(null);
+  } catch (e: any) {
+    setError(e?.message || "Nie udało się zapisać kodu rabatowego.");
+  } finally {
+    setSaving(false);
+  }
+};
 
   const handleDelete = async (id: string) => {
     if (!id) return;
