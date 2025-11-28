@@ -29,7 +29,7 @@ const ORB = {
   innerSize: "calc(var(--orb-size) - 2 * var(--orb-stroke) - 50px)",
   innerColor: "#810404",
 };
-const IMG = { scale: 1.50, x: "0px", y: "-20px" };
+const IMG = { scale: 1.15, x: "0px", y: "-20px" };
 const DECOR_BL = { src: "/assets/hero-decor.png", w: "400px", h: "400px", x: "-100px", y: "-100px", z: 999, opacity: "1" };
 const DECOR_TR = { src: "/assets/hero-decor-top.png", w: "400px", h: "400px", x: "-100px", y: "-140px", z: 2, opacity: "1" };
 const LEFT_PNG = { src: "/assets/hero-left.svg", w: "200px", h: "200px", x: "440px", y: "-20px", z: 4, opacity: "1", scale: 1, rot: "0deg" };

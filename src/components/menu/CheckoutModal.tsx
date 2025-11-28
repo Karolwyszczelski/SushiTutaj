@@ -1,5 +1,5 @@
-// src/components/menu/CheckoutModal.tsx
 "use client";
+
 
 import React, {
   useState,
@@ -83,11 +83,49 @@ type ProductDb = {
   description: string | null;
   restaurant_id?: string | null;
 };
+
+/* —— RABATY —— */
+type ApplyScope =
+  | "all"
+  | "include_categories"
+  | "exclude_categories"
+  | "include_products"
+  | "exclude_products";
+
+type DiscountCodeRow = {
+  id: string;
+  code: string | null;
+  active: boolean | null;
+  type: "percent" | "amount" | null;
+  value: number | null;
+  min_order: number | null;
+  expires_at: string | null;
+  restaurant_id: string | null;
+  description?: string | null;
+  require_code: boolean | null;
+  apply_scope: ApplyScope | null;
+  include_categories: string[] | null;
+  exclude_categories: string[] | null;
+  include_products: string[] | null;
+  exclude_products: string[] | null;
+};
+
 type Promo =
-  | { code: string; type: "percent" | "amount"; value: number }
+  | {
+      id: string;
+      code: string | null;
+      type: "percent" | "amount";
+      value: number;
+      apply_scope: ApplyScope;
+      include_categories: string[] | null;
+      exclude_categories: string[] | null;
+      include_products: string[] | null;
+      exclude_products: string[] | null;
+      min_order: number | null;
+      require_code: boolean;
+    }
   | null;
 
-/* Sushi sosy i dodatki */
 /* Sushi sosy i dodatki */
 const BASE_SAUCES = [
   "Sos sojowy",
@@ -590,7 +628,7 @@ const ProductItem: React.FC<{
   const lineTotal = (priceNum + addonsCost) * (prod.quantity || 1);
 
   // Czy dany extra jest dozwolony dla tego produktu
- const canUseExtra = (extra: string): boolean => {
+  const canUseExtra = (extra: string): boolean => {
     if (isSet) {
       // w zestawach patrzymy po nazwach z opisu zestawu
       const hasFuto = setRows.some((row) => /futo/i.test(row.cat));
@@ -651,7 +689,7 @@ const ProductItem: React.FC<{
     return false;
   };
 
-   const doSetSwap = (rowFrom: string, to: string) => {
+  const doSetSwap = (rowFrom: string, to: string) => {
     const current = getSetSwapCurrent(rowFrom);
     if (!to || to === current) return;
 
@@ -689,7 +727,6 @@ const ProductItem: React.FC<{
     // standardowy zestaw sosów
     return BASE_SAUCES;
   }, [isSweetPotatoFries]);
-
 
   // Tatar: tylko w Szczytnie / Przasnyszu, przystawki + tatar z łososia/tuńczyka
   const isTartar = useMemo(() => {
@@ -779,7 +816,7 @@ const ProductItem: React.FC<{
         </span>
       </div>
 
-              <div className="text-xs text-black/80 space-y-3">
+      <div className="text-xs text-black/80 space-y-3">
         {isSet && setRows.length > 0 && (
           <div className="space-y-2">
             <div className="font-semibold">Zamiany w zestawie</div>
@@ -792,25 +829,25 @@ const ProductItem: React.FC<{
               const current = getSetSwapCurrent(row.from);
 
               // znormalizowany klucz tej rolki w zestawie
-      const rowKeyBase = normalizeSetRowKey(row);
+              const rowKeyBase = normalizeSetRowKey(row);
 
-      // pieczenie konkretnej rolki w zestawie
-      const rollAddonLabel = RAW_SET_BAKE_ROLL_PREFIX + rowKeyBase;
-      const rawRow = isRawRow(row);
-      const rollBaked = (prod.addons ?? []).includes(rollAddonLabel);
+              // pieczenie konkretnej rolki w zestawie
+              const rollAddonLabel = RAW_SET_BAKE_ROLL_PREFIX + rowKeyBase;
+              const rawRow = isRawRow(row);
+              const rollBaked = (prod.addons ?? []).includes(rollAddonLabel);
 
-      const toggleRowBake = () => {
-        if (!rawRow || isWholeSetBaked) return;
-        if (rollBaked) {
-          removeAddon(prod.name, rollAddonLabel);
-        } else {
-          addAddon(prod.name, rollAddonLabel);
-        }
-      };
+              const toggleRowBake = () => {
+                if (!rawRow || isWholeSetBaked) return;
+                if (rollBaked) {
+                  removeAddon(prod.name, rollAddonLabel);
+                } else {
+                  addAddon(prod.name, rollAddonLabel);
+                }
+              };
 
-      // Dodatki per konkretna rolka w zestawie – ten sam znormalizowany klucz
-      const extraKey = (ex: string) =>
-        `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — ${ex}`;
+              // Dodatki per konkretna rolka w zestawie – ten sam znormalizowany klucz
+              const extraKey = (ex: string) =>
+                `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — ${ex}`;
 
               // BIERZEMY aktualnie wybraną rolkę w tym miejscu zestawu:
               const currentProduct = byName.get(current) || prodInfo;
@@ -1057,36 +1094,40 @@ const ProductItem: React.FC<{
             </div>
 
             {subcat === "california" && (
-  <p className="text-[11px] text-black/60 mt-1">
-    California = rolki z ryżem na zewnątrz. Standardowo nie dodajemy do nich dodatków –
-    wyjątek stanowią wybrane pozycje z surowym łososiem, paluszkiem krabowym i/lub
-    krewetką obłożoną łososiem. Tylko przy takich pozycjach dostępna jest opcja
-    „Ryba pieczona” (+2 zł).
-  </p>
-)}
+              <p className="text-[11px] text-black/60 mt-1">
+                California = rolki z ryżem na zewnątrz. Standardowo nie dodajemy
+                do nich dodatków – wyjątek stanowią wybrane pozycje z surowym
+                łososiem, paluszkiem krabowym i/lub krewetką obłożoną łososiem.
+                Tylko przy takich pozycjach dostępna jest opcja „Ryba pieczona”
+                (+2 zł).
+              </p>
+            )}
 
-{subcat === "hosomaki" && (
-  <p className="text-[11px] text-black/60 mt-1">
-    Hosomaki (Hoso) = cienkie rolki z jednym składnikiem. Można dodać jedynie Tempurę,
-    a przy zamianach wybierasz wyłącznie inne Hosomaki.
-  </p>
-)}
+            {subcat === "hosomaki" && (
+              <p className="text-[11px] text-black/60 mt-1">
+                Hosomaki (Hoso) = cienkie rolki z jednym składnikiem. Można
+                dodać jedynie Tempurę, a przy zamianach wybierasz wyłącznie inne
+                Hosomaki.
+              </p>
+            )}
 
-{subcat === "futomaki" && (
-  <p className="text-[11px] text-black/60 mt-1">
-    Futomaki (Futo) = grubsze rolki z kilkoma składnikami. Dostępne dodatki:
-    Tempura, Płatek sojowy, Tamago, a przy rolkach surowych także „Ryba pieczona”.
-  </p>
-)}
+            {subcat === "futomaki" && (
+              <p className="text-[11px] text-black/60 mt-1">
+                Futomaki (Futo) = grubsze rolki z kilkoma składnikami. Dostępne
+                dodatki: Tempura, Płatek sojowy, Tamago, a przy rolkach surowych
+                także „Ryba pieczona”.
+              </p>
+            )}
 
-{isSet && (
-  <p className="text-[11px] text-black/60 mt-1">
-    W zestawach zamieniasz rolki tylko w obrębie tej samej kategorii
-    (Futomaki ↔ Futomaki, Hosomaki ↔ Hosomaki, California ↔ California, Nigiri ↔ Nigiri).
-    Jeśli w zestawie są Futomaki, możesz dodać Tamago, a w zestawach z surową rybą
-    dostępna jest opcja „Ryba pieczona” dla wybranych rolek.
-  </p>
-)}
+            {isSet && (
+              <p className="text-[11px] text-black/60 mt-1">
+                W zestawach zamieniasz rolki tylko w obrębie tej samej kategorii
+                (Futomaki ↔ Futomaki, Hosomaki ↔ Hosomaki, California ↔
+                California, Nigiri ↔ Nigiri). Jeśli w zestawie są Futomaki,
+                możesz dodać Tamago, a w zestawach z surową rybą dostępna jest
+                opcja „Ryba pieczona” dla wybranych rolek.
+              </p>
+            )}
           </div>
         )}
 
@@ -1140,7 +1181,6 @@ const ProductItem: React.FC<{
   );
 };
 
-
 function PromoSection({
   promo,
   promoError,
@@ -1155,10 +1195,21 @@ function PromoSection({
   const [localCode, setLocalCode] = useState("");
   const deferred = useDeferredValue(localCode);
   const handleApply = useCallback(() => onApply(deferred), [deferred, onApply]);
+  const isManual = promo?.require_code ?? false;
+
+  useEffect(() => {
+    if (promo && promo.require_code && promo.code) {
+      setLocalCode(promo.code);
+    } else if (!promo) {
+      setLocalCode("");
+    }
+  }, [promo]);
 
   return (
     <div className="mt-3">
-      <h4 className="font-semibold text-black mb-2">Kod promocyjny</h4>
+      <h4 className="font-semibold text-black mb-2">
+        {promo && !promo.require_code ? "Promocja" : "Kod promocyjny"}
+      </h4>
       <div className="flex gap-2">
         <input
           type="text"
@@ -1166,25 +1217,38 @@ function PromoSection({
           onChange={(e) => setLocalCode(e.target.value)}
           placeholder="Wpisz kod"
           className="flex-1 border border-black/15 rounded-xl px-3 py-2 text-sm bg-white"
+          disabled={isManual}
         />
-        {!promo ? (
+        {isManual ? (
+          <button
+            onClick={onClear}
+            className="px-3 py-2 rounded-xl text-sm border border-black/15"
+          >
+            Usuń
+          </button>
+        ) : (
           <button
             onClick={handleApply}
             className={`px-3 py-2 rounded-xl text-sm font-semibold ${accentBtn}`}
           >
             Zastosuj
           </button>
-        ) : (
-          <button onClick={onClear} className="px-3 py-2 rounded-xl text-sm border border-black/15">
-            Usuń
-          </button>
         )}
       </div>
       {promoError && <p className="text-xs text-red-600 mt-1">{promoError}</p>}
       {promo && (
         <p className="text-xs text-green-700 mt-1">
-          Zastosowano kod <b>{promo.code}</b> —{" "}
-          {promo.type === "percent" ? `${promo.value}%` : `${promo.value.toFixed(2)} zł`} rabatu.
+          {promo.require_code ? (
+            <>
+              Zastosowano kod <b>{promo.code}</b> —{" "}
+            </>
+          ) : (
+            <>Zastosowano promocję automatyczną — </>
+          )}
+          {promo.type === "percent"
+            ? `${promo.value}%`
+            : `${promo.value.toFixed(2)} zł`}{" "}
+          rabatu.
         </p>
       )}
     </div>
@@ -1278,6 +1342,7 @@ export default function CheckoutModal() {
   const [productsDb, setProductsDb] = useState<ProductDb[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [restLoc, setRestLoc] = useState<{ lat: number; lng: number } | null>(null);
+  const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [deliveryInfo, setDeliveryInfo] = useState<{ cost: number; eta: string } | null>(null);
 
   const [legalAccepted, setLegalAccepted] = useState(false);
@@ -1331,7 +1396,7 @@ export default function CheckoutModal() {
     }
   }, [isLoggedIn, session]);
 
-    useEffect(() => {
+  useEffect(() => {
     let cancelled = false;
 
     const load = async () => {
@@ -1357,8 +1422,11 @@ export default function CheckoutModal() {
       if (cancelled || restRes.error || !restRes.data) return;
       const rest: any = restRes.data;
 
-      if (!cancelled && rest.lat && rest.lng) {
-        setRestLoc({ lat: rest.lat, lng: rest.lng });
+      if (!cancelled) {
+        if (rest.lat && rest.lng) {
+          setRestLoc({ lat: rest.lat, lng: rest.lng });
+        }
+        setRestaurantId(rest.id as string);
       }
 
       // 2) dane zależne od restauracji: produkty + strefy dostawy
@@ -1514,7 +1582,7 @@ export default function CheckoutModal() {
     [productsById, productsByName]
   );
 
- const optionsByCat = useMemo(() => {
+  const optionsByCat = useMemo(() => {
     const out: Record<string, string[]> = {};
 
     productsDb.forEach((p) => {
@@ -1573,6 +1641,68 @@ export default function CheckoutModal() {
     [resolveProduct]
   );
 
+  const isProductEligibleForPromo = useCallback(
+    (prodDb: ProductDb, p: NonNullable<Promo>): boolean => {
+      const norm = (s: string) => s.toLowerCase().trim();
+      const scope = p.apply_scope || "all";
+      const cat = norm(prodDb.subcategory || "");
+      const name = norm(prodDb.name || "");
+      const slug = name.replace(/\s+/g, "-");
+
+      const matchAny = (list: string[] | null) => {
+        if (!list || list.length === 0) return false;
+        return list.some((raw) => {
+          const token = norm(raw);
+          if (!token) return false;
+          return (
+            cat === token ||
+            name === token ||
+            slug === token ||
+            name.includes(token) ||
+            slug.includes(token)
+          );
+        });
+      };
+
+      const inCatInclude = matchAny(p.include_categories);
+      const inCatExclude = matchAny(p.exclude_categories);
+      const inProdInclude = matchAny(p.include_products);
+      const inProdExclude = matchAny(p.exclude_products);
+
+      switch (scope) {
+        case "include_categories":
+          return inCatInclude;
+        case "exclude_categories":
+          return !inCatExclude;
+        case "include_products":
+          return inProdInclude;
+        case "exclude_products":
+          return !inProdExclude;
+        case "all":
+        default:
+          if (inCatExclude || inProdExclude) return false;
+          return true;
+      }
+    },
+    []
+  );
+
+  const computeDiscountBase = useCallback(
+    (p: NonNullable<Promo>): number => {
+      return items.reduce((sum, it: any) => {
+        const prodDb = resolveProduct(it);
+        if (!prodDb) return sum;
+        if (!isProductEligibleForPromo(prodDb, p)) return sum;
+        const qty = it.quantity || 1;
+        const priceNum =
+          typeof it.price === "string" ? parseFloat(it.price) : it.price || 0;
+        // UWAGA: rabat liczony tylko od ceny produktu (bez dodatków)
+        return sum + priceNum * qty;
+      }, 0);
+    },
+    [items, resolveProduct, isProductEligibleForPromo]
+  );
+
   const calcDelivery = async (custLat: number, custLng: number) => {
     if (!restLoc) return;
     try {
@@ -1619,11 +1749,15 @@ export default function CheckoutModal() {
 
   const discount = useMemo(() => {
     if (!promo) return 0;
-    const base = subtotal + (deliveryInfo?.cost || 0);
+    const base = computeDiscountBase(promo as NonNullable<Promo>);
+    if (base <= 0) return 0;
     const val =
-      promo.type === "percent" ? base * (Number(promo.value) / 100) : Number(promo.value || 0);
-    return Math.max(0, Math.min(val, base));
-  }, [promo, subtotal, deliveryInfo]);
+      promo.type === "percent"
+        ? base * (Number(promo.value) / 100)
+        : Number(promo.value || 0);
+    const totalCap = baseTotal + packagingCost + (deliveryInfo?.cost || 0);
+    return Math.max(0, Math.min(val, totalCap));
+  }, [promo, computeDiscountBase, baseTotal, packagingCost, deliveryInfo]);
 
   const totalWithDelivery = Math.max(0, subtotal + (deliveryInfo?.cost || 0) - discount);
   const shouldHideOrderActions = Boolean(TURNSTILE_SITE_KEY && turnstileError);
@@ -1648,46 +1782,191 @@ export default function CheckoutModal() {
     setPromoError(null);
     const code = codeRaw.trim();
     if (!code) return;
-    const currentBase = subtotal + (deliveryInfo?.cost || 0);
+    if (!restaurantId) {
+      setPromoError("Brak przypisanej restauracji do zamówienia.");
+      return;
+    }
     try {
       const { data, error } = await supabase
         .from("discount_codes")
         .select("*")
-        .ilike("code", code)
+        .eq("restaurant_id", restaurantId)
         .eq("active", true)
+        .eq("require_code", true)
+        .ilike("code", code)
         .maybeSingle();
 
-      if (!error && data) {
-        const nowIso = new Date().toISOString();
-        if (data.expires_at && data.expires_at < nowIso) throw new Error("Kod wygasł.");
-        if (typeof data.min_order === "number" && currentBase < data.min_order) {
-          throw new Error(`Minimalna wartość zamówienia to ${data.min_order.toFixed(2)} zł.`);
+      if (error) throw error;
+
+      if (!data) {
+        // fallback na ewentualny stary endpoint /api/promo/validate
+        const currentTotal = baseTotal + packagingCost + (deliveryInfo?.cost || 0);
+        const resp = await safeFetch("/api/promo/validate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, total: currentTotal }),
+        });
+        if (resp?.valid) {
+          const type = resp.type === "amount" ? "amount" : "percent";
+          const valueNum = Number(resp.value || 0);
+          if (valueNum <= 0) throw new Error("Nieprawidłowa wartość kodu.");
+          const legacyPromo: NonNullable<Promo> = {
+            id: "legacy",
+            code: resp.code || code,
+            type,
+            value: valueNum,
+            apply_scope: "all",
+            include_categories: null,
+            exclude_categories: null,
+            include_products: null,
+            exclude_products: null,
+            min_order: null,
+            require_code: true,
+          };
+          setPromo(legacyPromo);
+          return;
         }
-        const type = data.type === "amount" ? "amount" : "percent";
-        const value = Number(data.value || 0);
-        if (value <= 0) throw new Error("Nieprawidłowa wartość kodu.");
-        setPromo({ code: data.code, type, value });
-        return;
+        throw new Error(resp?.message || "Kod nieprawidłowy.");
       }
-      const resp = await safeFetch("/api/promo/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, total: currentBase }),
-      });
-      if (resp?.valid) {
-        setPromo({ code: resp.code, type: resp.type, value: Number(resp.value) });
-        return;
+
+      const row = data as DiscountCodeRow;
+      const promoState = {
+        id: row.id,
+        code: row.code,
+        type: row.type === "amount" ? "amount" : "percent",
+        value: Number(row.value || 0),
+        apply_scope: (row.apply_scope as ApplyScope) || "all",
+        include_categories: row.include_categories || null,
+        exclude_categories: row.exclude_categories || null,
+        include_products: row.include_products || null,
+        exclude_products: row.exclude_products || null,
+        min_order: row.min_order,
+        require_code: true,
+      } as NonNullable<Promo>;
+
+      if (promoState.value <= 0) {
+        throw new Error("Nieprawidłowa wartość kodu.");
       }
-      throw new Error(resp?.message || "Kod nieprawidłowy.");
+
+      const baseForThis = computeDiscountBase(promoState);
+      if (baseForThis <= 0) {
+        throw new Error("Kod nie dotyczy żadnych produktów w koszyku.");
+      }
+
+      const now = new Date();
+      if (row.expires_at && new Date(row.expires_at) < now) {
+        throw new Error("Kod wygasł.");
+      }
+
+      if (
+        typeof row.min_order === "number" &&
+        row.min_order > 0 &&
+        baseForThis < row.min_order
+      ) {
+        throw new Error(
+          `Minimalna wartość zamówienia dla tego kodu to ${row.min_order.toFixed(
+            2
+          )} zł (liczona tylko z cen produktów).`
+        );
+      }
+
+      setPromo(promoState);
     } catch (e: any) {
       setPromo(null);
       setPromoError(e.message || "Nie udało się zastosować kodu.");
     }
   };
+
   const clearPromo = () => {
     setPromo(null);
     setPromoError(null);
   };
+
+  // Automatyczne promocje (require_code = false)
+  useEffect(() => {
+    if (!restaurantId || items.length === 0) {
+      // przy pustym koszyku zostawiamy ewentualny ręczny kod, ale czyścimy auto
+      setPromo((current) => (current && current.require_code ? current : null));
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadAuto = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("discount_codes")
+          .select("*")
+          .eq("restaurant_id", restaurantId)
+          .eq("active", true)
+          .eq("require_code", false);
+
+        if (error || !data) return;
+
+        const rows = data as DiscountCodeRow[];
+        let best: NonNullable<Promo> | null = null;
+        let bestDiscount = 0;
+
+        rows.forEach((row) => {
+          const promoState = {
+            id: row.id,
+            code: row.code,
+            type: row.type === "amount" ? "amount" : "percent",
+            value: Number(row.value || 0),
+            apply_scope: (row.apply_scope as ApplyScope) || "all",
+            include_categories: row.include_categories || null,
+            exclude_categories: row.exclude_categories || null,
+            include_products: row.include_products || null,
+            exclude_products: row.exclude_products || null,
+            min_order: row.min_order,
+            require_code: false,
+          } as NonNullable<Promo>;
+
+          if (promoState.value <= 0) return;
+
+          const base = computeDiscountBase(promoState);
+          if (base <= 0) return;
+
+          const now = new Date();
+          if (row.expires_at && new Date(row.expires_at) < now) return;
+
+          if (
+            typeof row.min_order === "number" &&
+            row.min_order > 0 &&
+            base < row.min_order
+          ) {
+            return;
+          }
+
+          const disc =
+            promoState.type === "percent"
+              ? base * (promoState.value / 100)
+              : promoState.value;
+
+          if (disc > bestDiscount) {
+            bestDiscount = disc;
+            best = promoState;
+          }
+        });
+
+        if (cancelled) return;
+
+        setPromo((current) => {
+          // ręcznie wpisany kod ma priorytet
+          if (current && current.require_code) return current;
+          return best;
+        });
+      } catch {
+        // brak auto-promki = cisza
+      }
+    };
+
+    loadAuto();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurantId, items, computeDiscountBase]);
 
   const ensureFreshToken = async () => {
     if (!TURNSTILE_SITE_KEY) return true;
@@ -1799,7 +2078,7 @@ export default function CheckoutModal() {
         delivery_cost: deliveryInfo?.cost || 0,
         total_price: totalWithDelivery,
         discount_amount: discount || 0,
-        promo_code: promo?.code || null,
+        promo_code: promo?.code || (promo && !promo.require_code ? "AUTO" : null),
         legal_accept: {
           terms_version: TERMS_VERSION,
           privacy_version: TERMS_VERSION,
@@ -1995,13 +2274,13 @@ export default function CheckoutModal() {
                           {items.map((item, idx) => (
                             <div key={idx} className="space-y-1">
                               <ProductItem
-  prod={item}
-  productCategory={productCategory}
-  productsDb={productsDb}
-  optionsByCat={optionsByCat}
-  restaurantSlug={restaurantSlug}
-  helpers={productHelpers}
-/>
+                                prod={item}
+                                productCategory={productCategory}
+                                productsDb={productsDb}
+                                optionsByCat={optionsByCat}
+                                restaurantSlug={restaurantSlug}
+                                helpers={productHelpers}
+                              />
                               <textarea
                                 className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
                                 placeholder="Notatka do produktu"
@@ -2132,17 +2411,17 @@ export default function CheckoutModal() {
                             />
 
                             {/* INFO: gdy nie ma adresu na liście */}
-    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-black/70">
-  <span>Nie możesz znaleźć swojego adresu?</span>
-  {restaurantPhone && (
-    <a
-      href={`tel:${restaurantPhone.replace(/\s+/g, "")}`}
-      className="inline-flex items-center justify-center rounded-full border border-black/15 px-3 py-1 font-semibold hover:bg-gray-100 text-black"
-    >
-      Zadzwoń do nas
-    </a>
-  )}
-</div>
+                            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-black/70">
+                              <span>Nie możesz znaleźć swojego adresu?</span>
+                              {restaurantPhone && (
+                                <a
+                                  href={`tel:${restaurantPhone.replace(/\s+/g, "")}`}
+                                  className="inline-flex items-center justify-center rounded-full border border-black/15 px-3 py-1 font-semibold hover:bg-gray-100 text-black"
+                                >
+                                  Zadzwoń do nas
+                                </a>
+                              )}
+                            </div>
 
                             <p className="text-xs text-black/60">
                               Najpierw wybierz adres z listy Google – dopiero wtedy pola poniżej
@@ -2397,13 +2676,13 @@ export default function CheckoutModal() {
                             {items.map((item, idx) => (
                               <div key={idx} className="space-y-1">
                                 <ProductItem
-  prod={item}
-  productCategory={productCategory}
-  productsDb={productsDb}
-  optionsByCat={optionsByCat}
-  restaurantSlug={restaurantSlug}
-  helpers={productHelpers}
-/>
+                                  prod={item}
+                                  productCategory={productCategory}
+                                  productsDb={productsDb}
+                                  optionsByCat={optionsByCat}
+                                  restaurantSlug={restaurantSlug}
+                                  helpers={productHelpers}
+                                />
                                 <textarea
                                   className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
                                   placeholder="Notatka do produktu"

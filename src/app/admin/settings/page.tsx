@@ -5,6 +5,7 @@ import { Tab } from "@headlessui/react";
 import TableLayoutForm from "@/components/admin/settings/TableLayoutForm";
 import DeliveryZonesForm from "@/components/admin/settings/DeliveryZonesForm";
 import BlockedAddressesForm from "@/components/admin/settings/BlockedAddressesForm";
+import DiscountCodesForm from "@/components/admin/settings/DiscountCodesForm";
 
 function classNames(...classes: string[]) {
   return classes.filter(Boolean).join(" ");
@@ -62,6 +63,18 @@ export default function SettingsPage() {
           >
             Blokowane adresy
           </Tab>
+          <Tab
+            className={({ selected }) =>
+              classNames(
+                "flex-1 rounded-lg px-3 py-2 text-center font-medium outline-none transition",
+                selected
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              )
+            }
+          >
+            Promocje &amp; rabaty
+          </Tab>
         </Tab.List>
 
         <Tab.Panels className="mt-4">
@@ -80,6 +93,12 @@ export default function SettingsPage() {
           <Tab.Panel className="focus:outline-none">
             <div className="rounded-2xl border bg-white p-5 shadow-sm">
               <BlockedAddressesForm />
+            </div>
+          </Tab.Panel>
+
+          <Tab.Panel className="focus:outline-none">
+            <div className="rounded-2xl border bg-white p-5 shadow-sm">
+              <DiscountCodesForm />
             </div>
           </Tab.Panel>
         </Tab.Panels>
