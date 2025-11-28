@@ -854,51 +854,60 @@ const setTartarBase = (base: string) => {
                 `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — ${ex}`;
 
               // BIERZEMY aktualnie wybraną rolkę w tym miejscu zestawu:
-              const currentProduct = byName.get(current) || prodInfo;
-              const rowCatLc = (currentProduct?.subcategory || row.cat).toLowerCase();
-              const text = `${currentProduct?.name || row.cat} ${
-                currentProduct?.description || row.from
-              }`.toLowerCase();
+const currentProduct =
+  byName.get(current) || byName.get(row.from) || prodInfo;
 
-              const canUseExtraForRow = (ex: string): boolean => {
-                // California
-                if (rowCatLc.includes("california")) {
-                  if (ex === "Ryba pieczona") {
-                    return isSpecialCaliforniaBakedFishProduct(
-                      currentProduct?.name || "",
-                      currentProduct?.description || ""
-                    );
-                  }
-                  return false;
-                }
+// kategorię bierzemy z opisu zestawu (row.cat),
+// bo produkt "Zestaw X" ma subcategory = "zestawy"
+const rowCatLc = (row.cat || "").toLowerCase();
 
-                // Hosomaki -> tylko Tempura
-                if (rowCatLc.includes("hosomaki")) {
-                  return ex === "Tempura";
-                }
+// tekst do sprawdzania "surowy", "łosoś" itd.
+const text = `${currentProduct?.name || row.cat} ${
+  currentProduct?.description || row.from
+}`.toLowerCase();
 
-                // Futomaki
-                if (rowCatLc.includes("futomaki")) {
-                  if (ex === "Ryba pieczona") {
-                    return /surowy/i.test(text);
-                  }
-                  if (ex === "Tamago") return true;
-                  return ex === "Tempura" || ex === "Płatek sojowy";
-                }
+const canUseExtraForRow = (ex: string): boolean => {
+  // === California ===
+  if (rowCatLc.includes("california")) {
+    if (ex === "Ryba pieczona") {
+      return isSpecialCaliforniaBakedFishProduct(
+        currentProduct?.name || "",
+        currentProduct?.description || ""
+      );
+    }
+    // inne EXTRAS wyłączone dla California w zestawach
+    return false;
+  }
 
-                // Nigiri – tylko Ryba pieczona dla łosoś/tuńczyk
-                if (rowCatLc.includes("nigiri")) {
-                  if (ex !== "Ryba pieczona") return false;
-                  const hasFish =
-                    text.includes("łosoś") ||
-                    text.includes("losos") ||
-                    text.includes("tuńczyk") ||
-                    text.includes("tunczyk");
-                  return hasFish;
-                }
+  // === Hosomaki / Hoso ===
+  if (rowCatLc.includes("hosomaki") || rowCatLc.includes("hoso")) {
+    // Hoso mają tylko Tempurę
+    return ex === "Tempura";
+  }
 
-                return false;
-              };
+  // === Futomaki / Futo ===
+  if (rowCatLc.includes("futomaki") || rowCatLc.includes("futo")) {
+    if (ex === "Ryba pieczona") {
+      // tylko przy surowych futomakach
+      return /surowy/i.test(text);
+    }
+    if (ex === "Tamago") return true;
+    return ex === "Tempura" || ex === "Płatek sojowy";
+  }
+
+  // === Nigiri – tę logikę zostawiamy bez zmian ===
+  if (rowCatLc.includes("nigiri")) {
+    if (ex !== "Ryba pieczona") return false;
+    const hasFish =
+      text.includes("łosoś") ||
+      text.includes("losos") ||
+      text.includes("tuńczyk") ||
+      text.includes("tunczyk");
+    return hasFish;
+  }
+
+  return false;
+};
 
               return (
                 <div key={i} className="flex flex-col gap-2">

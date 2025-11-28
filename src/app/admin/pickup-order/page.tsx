@@ -177,41 +177,170 @@ const deepFindName = (root: Any): string | undefined => {
   return undefined;
 };
 
+/* --------- Stałe z logiki CheckoutModal dla zestawów / sushi --------- */
+
+const RAW_SET_BAKE_ALL = "Zamiana całego zestawu na pieczony";
+const RAW_SET_BAKE_ALL_LEGACY =
+  "Zamiana całego zestawu surowego na pieczony (+5 zł)";
+const RAW_SET_BAKE_ROLL_PREFIX = "Zamiana surowej rolki na pieczoną: ";
+const SET_ROLL_EXTRA_PREFIX = "Dodatek do rolki: ";
+const SET_UPGRADE_ADDON = "Powiększenie zestawu";
+const SWAP_FEE_NAME = "Zamiana w zestawie";
+const TARTAR_BASES = [
+  "Podanie: na awokado",
+  "Podanie: na ryżu",
+  "Podanie: na chipsach krewetkowych",
+];
+
+type SetRollExtra = {
+  roll: string;
+  extras: string[];
+};
+type SetMeta = {
+  hasSwapFee: boolean;
+  bakedWholeSet: boolean;
+  bakedRolls: string[];
+  setUpgrade: boolean;
+  rollExtras: SetRollExtra[];
+};
+
+/** Wyciąga informacje o dodatkach specyficznych dla zestawów z listy stringów */
+const parseSetAddonsFromAddons = (
+  allAddons: string[]
+): { plain: string[]; setMeta: SetMeta | null; tartarBases: string[] } => {
+  const plain: string[] = [];
+  const rollExtrasMap = new Map<string, string[]>();
+  const bakedRolls: string[] = [];
+  let bakedWholeSet = false;
+  let setUpgrade = false;
+  let hasSwapFee = false;
+  const tartarBases: string[] = [];
+
+  for (const rawLabel of allAddons) {
+    const a = (rawLabel || "").trim();
+    if (!a) continue;
+
+    // cały zestaw pieczony
+    if (a === RAW_SET_BAKE_ALL || a === RAW_SET_BAKE_ALL_LEGACY) {
+      bakedWholeSet = true;
+      continue;
+    }
+
+    // pojedyncza rolka pieczona
+    if (a.startsWith(RAW_SET_BAKE_ROLL_PREFIX)) {
+      const roll = a.slice(RAW_SET_BAKE_ROLL_PREFIX.length).trim();
+      if (roll) bakedRolls.push(roll);
+      continue;
+    }
+
+    // powiększony zestaw
+    if (a === SET_UPGRADE_ADDON) {
+      setUpgrade = true;
+      // etykieta jest czytelna – zostawiamy też w "plain"
+      plain.push(a);
+      continue;
+    }
+
+    // opłata za zamiany w zestawie
+    if (a === SWAP_FEE_NAME) {
+      hasSwapFee = true;
+      plain.push(a);
+      continue;
+    }
+
+    // baza podania tatara
+    if (TARTAR_BASES.includes(a)) {
+      tartarBases.push(a);
+      // nie dublujemy już w plain
+      continue;
+    }
+
+    // dodatek do konkretnej rolki w zestawie
+    if (a.startsWith(SET_ROLL_EXTRA_PREFIX)) {
+      const rest = a.slice(SET_ROLL_EXTRA_PREFIX.length).trim();
+      const [rollLabelRaw, extraLabelRaw] = rest.split("—");
+      const rollLabel = (rollLabelRaw || "").trim();
+      const extraLabel = (extraLabelRaw || "").trim();
+      if (rollLabel && extraLabel) {
+        const arr = rollExtrasMap.get(rollLabel) || [];
+        arr.push(extraLabel);
+        rollExtrasMap.set(rollLabel, arr);
+      } else {
+        // nie udało się sparsować – traktuj jak zwykły dodatek
+        plain.push(a);
+      }
+      continue;
+    }
+
+    // wszystko inne zostaje zwykłym dodatkiem
+    plain.push(a);
+  }
+
+  const rollExtras: SetRollExtra[] = Array.from(
+    rollExtrasMap.entries()
+  ).map(([roll, extras]) => ({
+    roll,
+    extras,
+  }));
+
+  const hasAnySetMeta =
+    bakedWholeSet || bakedRolls.length || setUpgrade || rollExtras.length;
+
+  const setMeta: SetMeta | null = hasAnySetMeta
+    ? {
+        hasSwapFee,
+        bakedWholeSet,
+        bakedRolls,
+        setUpgrade,
+        rollExtras,
+      }
+    : null;
+
+  return { plain, setMeta, tartarBases };
+};
+
 const normalizeProduct = (raw: Any) => {
+  // jeżeli przychodzi już "spłaszczony" obiekt z _raw – używamy oryginału
+  const source: Any =
+    raw && typeof raw === "object" && (raw as any)._raw
+      ? (raw as any)._raw
+      : raw;
+
   const shallow = [
-    raw.name,
-    raw.product_name,
-    raw.productName,
-    raw.title,
-    raw.label,
-    raw.menu_item_name,
-    raw.item_name,
-    raw.nazwa,
-    raw.nazwa_pl,
-    typeof raw.product === "string" ? raw.product : undefined,
-    raw.product?.name,
-    raw.item?.name,
-    raw.product?.title,
+    source.name,
+    source.product_name,
+    source.productName,
+    source.title,
+    source.label,
+    source.menu_item_name,
+    source.item_name,
+    source.nazwa,
+    source.nazwa_pl,
+    typeof source.product === "string" ? source.product : undefined,
+    source.product?.name,
+    source.item?.name,
+    source.product?.title,
   ].filter((x) => typeof x === "string" && x.trim()) as string[];
 
-  const deep = deepFindName(raw);
+  const deep = deepFindName(source);
   const name = (shallow[0] || deep || "(bez nazwy)") as string;
 
   const price = toNumber(
-    raw.price ??
-      raw.unit_price ??
-      raw.total_price ??
-      raw.amount_price ??
-      raw.item?.price ??
+    source.price ??
+      source.unit_price ??
+      source.total_price ??
+      source.amount_price ??
+      source.item?.price ??
       0
   );
-  const quantity = toNumber(raw.quantity ?? raw.qty ?? raw.amount ?? 1, 1) || 1;
+  const quantity =
+    toNumber(source.quantity ?? source.qty ?? source.amount ?? 1, 1) || 1;
 
-  // SWAPY z koszyka: options.swaps albo raw.swaps
+  // SWAPY z koszyka: options.swaps albo source.swaps
   const swapsRaw =
-    (Array.isArray((raw as any).swaps) && (raw as any).swaps) ||
-    (Array.isArray((raw as any).options?.swaps) &&
-      (raw as any).options.swaps) ||
+    (Array.isArray((source as any).swaps) && (source as any).swaps) ||
+    (Array.isArray((source as any).options?.swaps) &&
+      (source as any).options.swaps) ||
     [];
 
   const swapLabels = (swapsRaw as any[])
@@ -226,40 +355,52 @@ const normalizeProduct = (raw: Any) => {
     })
     .filter(Boolean) as string[];
 
-  const addons = [
-    ...collectStrings(raw.addons),
-    ...collectStrings(raw.extras),
+  // surowe etykiety dodatków
+  const rawAddons = [
+    ...collectStrings(source.addons),
+    ...collectStrings(source.extras),
     // jeśli backend wrzuca dodatki do options.addons
-    ...collectStrings((raw as any).options?.addons),
-    ...collectStrings(raw.selected_addons),
-    ...collectStrings(raw.toppings),
-    ...swapLabels,
+    ...collectStrings((source as any).options?.addons),
+    ...collectStrings(source.selected_addons),
+    ...collectStrings(source.toppings),
   ].filter((s) => s && s !== "0");
 
-  const ingredients = collectStrings(raw.ingredients).length
-    ? collectStrings(raw.ingredients)
+  const { plain, setMeta, tartarBases } = parseSetAddonsFromAddons(
+    rawAddons
+  );
+
+  // to, co pokazujemy jako "Dodatki" w skrócie – bez technicznych etykiet dla rolek
+  const addons = [...plain, ...swapLabels];
+
+  const ingredients = collectStrings(source.ingredients).length
+    ? collectStrings(source.ingredients)
     : collectStrings(
-        raw.components ??
-          raw.composition ??
-          raw.sklad ??
-          raw.skladniki ??
-          raw.ingredients_list ??
-          raw.product?.ingredients
+        source.components ??
+          source.composition ??
+          source.sklad ??
+          source.skladniki ??
+          source.ingredients_list ??
+          source.product?.ingredients
       );
 
   const description =
-    (typeof raw.description === "string" && raw.description) ||
-    (typeof raw.opis === "string" && raw.opis) ||
-    (typeof raw.product?.description === "string" &&
-      raw.product.description) ||
+    (typeof source.description === "string" && source.description) ||
+    (typeof source.opis === "string" && source.opis) ||
+    (typeof source.product?.description === "string" &&
+      source.product.description) ||
     undefined;
 
   const note =
-    (typeof raw.note === "string" && raw.note) ||
-    (typeof raw.comment === "string" && raw.comment) ||
-    (typeof (raw as any).options?.note === "string" &&
-      (raw as any).options.note) ||
+    (typeof source.note === "string" && source.note) ||
+    (typeof source.comment === "string" && source.comment) ||
+    (typeof (source as any).options?.note === "string" &&
+      (source as any).options.note) ||
     undefined;
+
+  const isSet =
+    /^zestaw\b/i.test(name) ||
+    /^set\b/i.test(name) ||
+    /zestaw\s+\d+/i.test(name);
 
   return {
     name,
@@ -269,7 +410,11 @@ const normalizeProduct = (raw: Any) => {
     ingredients,
     description,
     note,
-    _raw: raw,
+    isSet,
+    swaps: swapLabels,
+    setMeta: isSet && setMeta ? setMeta : null,
+    tartarBases,
+    _raw: source,
   };
 };
 
@@ -401,6 +546,22 @@ const asInt = (v: any): number | null => {
   return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : null;
 };
 
+const CHOPSTICKS_KEYS = [
+  "chopsticks_qty",
+  "chopsticksQty",
+  "chopsticksqty",
+  "chopsticks_count",
+  "chopsticksCount",
+  "chopsticks",
+  "paleczki",
+  "paleczki_count",
+  "paleczkiCount",
+  "sticks",
+  "ilosc_paleczek",
+  "ilosc_paleczki",
+  "ilosc_pałeczek",
+];
+
 const readNestedInt = (obj: any, keys: string[]): number | null => {
   for (const k of keys) {
     if (obj && typeof obj === "object" && k in obj) {
@@ -413,16 +574,7 @@ const readNestedInt = (obj: any, keys: string[]): number | null => {
 
 const extractChopsticksFromOrderRaw = (o: any): number | null => {
   // top-level
-  const top = readNestedInt(o, [
-    "chopsticks_qty",
-    "chopsticks_count",
-    "chopsticks",
-    "paleczki",
-    "paleczki_count",
-    "sticks",
-    "ilosc_paleczek",
-    "ilosc_pałeczek",
-  ]);
+  const top = readNestedInt(o, CHOPSTICKS_KEYS);
   if (top !== null) return top;
 
   // meta / options / data
@@ -436,16 +588,7 @@ const extractChopsticksFromOrderRaw = (o: any): number | null => {
     o?.summary,
   ].filter(Boolean);
   for (const d of deepCandidates) {
-    const n = readNestedInt(d, [
-      "chopsticks_qty",
-      "chopsticks_count",
-      "chopsticks",
-      "paleczki",
-      "paleczki_count",
-      "sticks",
-      "ilosc_paleczek",
-      "ilosc_pałeczek",
-    ]);
+    const n = readNestedInt(d, CHOPSTICKS_KEYS);
     if (n !== null) return n;
   }
 
@@ -454,12 +597,7 @@ const extractChopsticksFromOrderRaw = (o: any): number | null => {
     const items = typeof o?.items === "string" ? JSON.parse(o.items) : o?.items;
     if (items && typeof items === "object") {
       const n =
-        readNestedInt(items, [
-          "chopsticks_qty",
-          "chopsticks_count",
-          "chopsticks",
-          "paleczki",
-        ]) ??
+        readNestedInt(items, CHOPSTICKS_KEYS) ??
         (Array.isArray(items)
           ? items.reduce<number | null>(
               (acc, it) => acc ?? extractChopsticksFromOrderRaw(it),
@@ -592,6 +730,8 @@ export default function PickupOrdersPage() {
       const mapped: Order[] = raw.map((o: any) => {
         const chopsticksRaw =
           asInt(o.chopsticks_qty) ??
+          asInt(o.chopsticksQty) ??
+          asInt(o.chopsticksqty) ??
           asInt(o.chopsticks) ??
           extractChopsticksFromOrderRaw(o);
 
@@ -904,6 +1044,8 @@ export default function PickupOrdersPage() {
     onDetails?: (p: any) => void;
   }> = ({ raw, onDetails }) => {
     const p = normalizeProduct(raw);
+    const isSet = !!p.isSet && !!p.setMeta;
+
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm text-slate-900">
         <div className="flex items-start justify-between gap-3">
@@ -919,6 +1061,34 @@ export default function PickupOrdersPage() {
                 </>
               )}
             </div>
+
+            {isSet && p.setMeta && (
+              <div className="mt-0.5 text-[11px] text-slate-600">
+                Zestaw:
+                {p.setMeta.setUpgrade && " powiększony"}
+                {p.setMeta.bakedWholeSet &&
+                  `${p.setMeta.setUpgrade ? ", " : " "}pieczony cały`}
+                {!p.setMeta.bakedWholeSet &&
+                  p.setMeta.bakedRolls.length > 0 && (
+                    <>
+                      {" "}
+                      · Pieczone rolki:{" "}
+                      {p.setMeta.bakedRolls.join(", ")}
+                    </>
+                  )}
+                {p.setMeta.rollExtras.length > 0 && (
+                  <>
+                    {" "}
+                    · Dodatki w rolkach:{" "}
+                    {p.setMeta.rollExtras.length}{" "}
+                    {p.setMeta.rollExtras.length === 1
+                      ? "pozycja"
+                      : "pozycje"}
+                  </>
+                )}
+              </div>
+            )}
+
             {p.ingredients.length > 0 && (
               <div className="mt-0.5 text-[12px] text-slate-700">
                 Skład: {p.ingredients.join(", ")}
@@ -950,8 +1120,11 @@ export default function PickupOrdersPage() {
     product: any;
     onClose(): void;
   }> = ({ product, onClose }) => {
-    const p = normalizeProduct(product);
+    // zawsze normalizujemy na bazie oryginalnego _raw
+    const p = normalizeProduct(product?._raw || product);
     const title = p.quantity > 1 ? `${p.name} x${p.quantity}` : p.name;
+    const isSet = !!p.isSet && !!p.setMeta;
+
     return (
       <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center">
         <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 text-slate-900 shadow-2xl">
@@ -983,11 +1156,76 @@ export default function PickupOrdersPage() {
                 </ul>
               </div>
             )}
-            {p.addons.length > 0 && (
+
+            {isSet && p.setMeta && (
+              <>
+                <div className="mt-1">
+                  <b>Zamiany w zestawie:</b>{" "}
+                  {p.swaps && p.swaps.length > 0 ? (
+                    <ul className="ml-5 mt-1 list-disc">
+                      {p.swaps.map((s: string, i: number) => (
+                        <li key={i}>{s}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span>brak</span>
+                  )}
+                </div>
+
+                {p.setMeta.bakedWholeSet && (
+                  <div>
+                    <b>Wersja pieczona:</b> cały zestaw pieczony.
+                  </div>
+                )}
+
+                {!p.setMeta.bakedWholeSet &&
+                  p.setMeta.bakedRolls.length > 0 && (
+                    <div>
+                      <b>Pieczone rolki:</b>{" "}
+                      {p.setMeta.bakedRolls.join(", ")}
+                    </div>
+                  )}
+
+                {p.setMeta.setUpgrade && (
+                  <div>
+                    <b>Rozmiar zestawu:</b> powiększony (dopłata
+                    wliczona w cenę).
+                  </div>
+                )}
+
+                {p.setMeta.rollExtras.length > 0 && (
+                  <div>
+                    <b>Dodatki do poszczególnych rolek:</b>
+                    <ul className="ml-5 list-disc">
+                      {p.setMeta.rollExtras.map((row, i) => (
+                        <li key={i}>
+                          <span className="font-medium">
+                            {row.roll}:
+                          </span>{" "}
+                          {row.extras.join(", ")}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
+
+            {p.tartarBases && p.tartarBases.length > 0 && !isSet && (
               <div>
-                <b>Dodatki:</b> {p.addons.join(", ")}
+                <b>Sposób podania:</b>{" "}
+                {p.tartarBases
+                  .map((b: string) => b.replace(/^Podanie:\s*/i, ""))
+                  .join(", ")}
               </div>
             )}
+
+            {p.addons.length > 0 && (
+              <div>
+                <b>Dodatki ogólne:</b> {p.addons.join(", ")}
+              </div>
+            )}
+
             {p.note && (
               <div className="italic text-slate-800">{p.note}</div>
             )}
@@ -1127,7 +1365,7 @@ export default function PickupOrdersPage() {
               </span>
             </div>
 
-             {/* Pałeczki – tylko odczyt z bazy */}
+            {/* Pałeczki – tylko odczyt z bazy */}
             <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-slate-800">

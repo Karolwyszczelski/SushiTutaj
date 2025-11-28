@@ -39,7 +39,7 @@ const MENU: MenuItem[] = [
   { label: "Historia",             href: "/admin/history",         Icon: List,         roles: ["admin", "employee"] },
   { label: "Rezerwacje",           href: "/admin/reservations",    Icon: Calendar,     roles: ["admin", "employee"] },
   { label: "Menu",                 href: "/admin/menu",            Icon: Utensils,     roles: ["admin", "employee"] },
-  { label: "Burger miesiąca",      href: "/admin/burger-miesiaca", Icon: Star,         roles: ["admin"] },
+  { label: "Zestaw Miesiąca",      href: "/admin/burger-miesiaca", Icon: Star,         roles: ["admin"] },
   { label: "Ustawienia",           href: "/admin/settings",        Icon: Settings,     roles: ["admin"] },
 ];
 

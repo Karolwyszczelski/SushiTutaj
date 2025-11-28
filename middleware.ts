@@ -28,7 +28,7 @@ const WP_PREFIXES = [
 /** Dozwolone znane trasy */
 const WHITELIST = new Set<string>([
   "/",
-  "/menu",
+  "/#menu",
   "/kontakt",
   "/rezerwacje",
   "/pickup-order",

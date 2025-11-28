@@ -611,7 +611,7 @@ export async function POST(req: Request) {
       n.selected_option === "delivery" ? "delivery" : "takeaway";
 
     // 2.2) Opłata za opakowanie – tak jak na froncie (selectedOption ? 2 : 0)
-    const packagingFee = n.selected_option ? 2 : 0;
+    const packagingFee = n.selected_option ? 3 : 0;
 
     // 2.3) Suma pozycji (produkty + addony)
     const itemsTotal = recomputeTotalFromItems(n.itemsArray);
