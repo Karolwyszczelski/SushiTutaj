@@ -274,7 +274,7 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
 
         if (reservationId && restaurantSlug) {
           // przekierowanie do menu z ID rezerwacji w query – tam możesz spiąć zamówienie z rezerwacją
-          const target = `/${restaurantSlug}/menu?reservation=${encodeURIComponent(
+          const target = `/${restaurantSlug}/#menu?reservation=${encodeURIComponent(
             reservationId
           )}`;
           window.location.href = target;
