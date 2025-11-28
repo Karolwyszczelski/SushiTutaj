@@ -388,7 +388,7 @@ export default function DiscountCodesForm() {
               <span>Kod promocyjny</span>
               <input
                 type="text"
-                className="rounded-md border px-2 py-1"
+                className="rounded-md border px-2 py-1 bg-white"
                 value={editing.code}
                 onChange={(e) => handleChange("code", e.target.value)}
                 disabled={!editing.requireCode}
@@ -412,7 +412,7 @@ export default function DiscountCodesForm() {
               <span>Opis / nazwa</span>
               <input
                 type="text"
-                className="rounded-md border px-2 py-1"
+                className="rounded-md border px-2 py-1 bg-white"
                 value={editing.description}
                 onChange={(e) =>
                   handleChange("description", e.target.value)
@@ -423,7 +423,7 @@ export default function DiscountCodesForm() {
             <label className="flex flex-col gap-1">
               <span>Typ rabatu</span>
               <select
-                className="rounded-md border px-2 py-1"
+                className="rounded-md border px-2 py-1 bg-white"
                 value={editing.type}
                 onChange={(e) =>
                   handleChange("type", e.target.value as DiscountType)
@@ -439,7 +439,7 @@ export default function DiscountCodesForm() {
               <input
                 type="number"
                 step="0.01"
-                className="rounded-md border px-2 py-1"
+                className="rounded-md border px-2 py-1 bg-white"
                 value={editing.value}
                 onChange={(e) => handleChange("value", e.target.value)}
               />
@@ -450,7 +450,7 @@ export default function DiscountCodesForm() {
               <input
                 type="number"
                 step="0.01"
-                className="rounded-md border px-2 py-1"
+                className="rounded-md border px-2 py-1 bg-white"
                 value={editing.minOrder}
                 onChange={(e) => handleChange("minOrder", e.target.value)}
               />
@@ -460,7 +460,7 @@ export default function DiscountCodesForm() {
               <span>Ważny do (opcjonalnie)</span>
               <input
                 type="date"
-                className="rounded-md border px-2 py-1"
+                className="rounded-md border px-2 py-1 bg-white"
                 value={editing.expiresAt}
                 onChange={(e) => handleChange("expiresAt", e.target.value)}
               />
@@ -479,7 +479,7 @@ export default function DiscountCodesForm() {
             <label className="flex flex-col gap-1 md:col-span-2">
               <span>Zastosowanie rabatu</span>
               <select
-                className="rounded-md border px-2 py-1"
+                className="rounded-md border px-2 py-1 bg-white"
                 value={editing.applyScope}
                 onChange={(e) =>
                   handleChange("applyScope", e.target.value as ApplyScope)
