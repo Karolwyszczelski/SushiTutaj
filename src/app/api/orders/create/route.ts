@@ -10,6 +10,30 @@ import { sendEmail } from "@/lib/e-mail";
 import { sendSms } from "@/lib/sms";
 import { computeAddonPriceBackend } from "@/lib/addons";
 import { buildKitchenNote } from "@/lib/kitchenNote";
+type NotificationType = "order" | "error" | "system";
+
+async function pushAdminNotification(
+  restaurant_id: string,
+  type: NotificationType,
+  title: string,
+  message?: string | null
+) {
+  try {
+    await supabaseAdmin
+      .from("admin_notifications")
+      .insert({
+        restaurant_id,
+        type,
+        title,
+        message: message ?? null,
+      });
+  } catch (e: any) {
+    console.error(
+      "[admin_notifications.insert] error:",
+      e?.message || e
+    );
+  }
+}
 
 function recomputeTotalFromItems(itemsPayload: any[]): number {
   return itemsPayload.reduce((acc, it) => {
@@ -758,16 +782,38 @@ export async function POST(req: Request) {
 
       if (zErr || !zones || zones.length === 0) {
         console.error("[orders.create] delivery_zones error:", zErr);
+
+        await pushAdminNotification(
+          restaurant_id,
+          "error",
+          "Błąd stref dostawy",
+          zErr?.message || "Brak konfiguracji stref dostawy."
+        );
+
         return NextResponse.json(
           { error: "Brak konfiguracji stref dostawy." },
           { status: 500 }
         );
       }
 
+      await pushAdminNotification(
+        restaurant_id,
+        "error",
+        "Błąd współrzędnych restauracji",
+        "Nie skonfigurowano współrzędnych restauracji."
+      );
+
       const restLat = num(restRow.lat, null);
       const restLng = num(restRow.lng, null);
 
       if (restLat == null || restLng == null) {
+        await pushAdminNotification(
+          restaurant_id,
+          "error",
+          "Brak współrzędnych restauracji",
+          "Uzupełnij współrzędne lokalu, aby działała dostawa."
+        );
+
         return NextResponse.json(
           { error: "Nie skonfigurowano współrzędnych restauracji." },
           { status: 500 }
@@ -938,6 +984,16 @@ export async function POST(req: Request) {
     }
 
     const newOrderId = orderRow.id;
+
+    // NOWE: powiadomienie o nowym zamówieniu
+    await pushAdminNotification(
+      restaurant_id,
+      "order",
+      `Nowe zamówienie #${newOrderId}`,
+      `Kwota: ${n.total_price.toFixed(2)} zł, opcja: ${optLabel(
+        n.selected_option
+      )}`
+    );
 
     // 7) order_items
     if (Array.isArray(n.itemsArray) && n.itemsArray.length > 0) {
