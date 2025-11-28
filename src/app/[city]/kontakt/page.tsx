@@ -64,7 +64,7 @@ export default async function Page(
             <MapPin className="h-6 w-6 shrink-0" />
             <div>
               <div className="text-sm uppercase text-white/60">Adres</div>
-              <div className="mt-1 text-lg font-medium">{r.address ?? "—"}</div>
+              <div className="mt-1 text-lg font-medium text-white">{r.address ?? "—"}</div>
               <div className="mt-4">
                 <Link
                   href={r.maps_url || "#"}
