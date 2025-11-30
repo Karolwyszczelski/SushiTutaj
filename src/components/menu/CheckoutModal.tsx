@@ -403,9 +403,6 @@ function getRestaurantCityFromPath(): { slug: string; label: string } {
     ciechanow: "Ciechanów",
     szczytno: "Szczytno",
     przasnysz: "Przasnysz",
-    plonsk: "Płońsk",
-    mlawa: "Mława",
-    pultusk: "Pułtusk",
   };
   const label =
     MAP[slug] ||
@@ -933,6 +930,13 @@ const text = `${currentProduct?.name || row.cat} ${
 }`.toLowerCase();
 
 const canUseExtraForRow = (ex: string): boolean => {
+  const parentNameLc = (prodInfo?.name || prod.name || "").toLowerCase();
+
+  // SPEC CASE: w Zestawie 2 hosomaki bez dodatków w tempurze
+  if (parentNameLc.startsWith("zestaw 2") && rowCatLc.includes("hosomaki")) {
+    return false;
+  }
+
   // === California ===
   if (rowCatLc.includes("california")) {
     if (ex === "Ryba pieczona") {
@@ -1669,7 +1673,7 @@ export default function CheckoutModal() {
     }, 0);
   }, [items, resolveProduct]);
 
-  const packagingCost = selectedOption ? 2 : 0;
+  const packagingCost = selectedOption ? 3 : 0;
   const subtotal = baseTotal + packagingCost;
 
   const getItemLineTotal = useCallback(
@@ -2605,7 +2609,7 @@ export default function CheckoutModal() {
                                 {selectedOption && (
                                   <div className="flex justify-between">
                                     <span>Opakowanie:</span>
-                                    <span>2.00 zł</span>
+                                    <span>3.00 zł</span>
                                   </div>
                                 )}
                                 {deliveryInfo && (
@@ -2787,7 +2791,7 @@ export default function CheckoutModal() {
                     {selectedOption && (
                       <div className="flex justify-between">
                         <span>Opakowanie:</span>
-                        <span>2.00 zł</span>
+                        <span>3.00 zł</span>
                       </div>
                     )}
                     {deliveryInfo && (
