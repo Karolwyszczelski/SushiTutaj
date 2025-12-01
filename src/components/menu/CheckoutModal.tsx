@@ -489,23 +489,42 @@ const CATEGORY_PREFIX: Record<string, string> = {
   nigiri: "Nigiri",
 };
 
+/** Spróbuj odgadnąć kategorię po samej nazwie produktu */
+function inferCategoryFromName(name?: string | null): string | null {
+  if (!name) return null;
+  const n = name.toLowerCase().trim();
+
+  if (n.startsWith("futomak")) return "futomaki";
+  if (n.startsWith("hosomak")) return "hosomaki";
+  if (n.startsWith("california")) return "california";
+  if (n.startsWith("nigiri")) return "nigiri";
+
+  return null;
+}
+
+/** Dodaje prefiks kategorii do nazwy, jeśli nie jest już zawarty */
 function withCategoryPrefix(name: string, subcategory?: string | null): string {
   const base = (name || "").trim();
-  if (!subcategory) return base;
-  const key = subcategory.toLowerCase();
+  if (!base) return base;
+
+  const lowerBase = base.toLowerCase();
+
+  // jeśli nazwa już zawiera jakikolwiek znany prefiks – zostawiamy jak jest
+  const alreadyPrefixed = [
+    "futomak ",
+    "futomaki ",
+    "hosomak ",
+    "california ",
+    "nigiri ",
+  ].some((p) => lowerBase.startsWith(p));
+  if (alreadyPrefixed) return base;
+
+  // najpierw kategoria z nazwy, dopiero potem z pola subcategory
+  const inferred = inferCategoryFromName(base);
+  const key = (inferred || (subcategory || "").toLowerCase()) as keyof typeof CATEGORY_PREFIX;
   const prefix = CATEGORY_PREFIX[key];
   if (!prefix) return base;
 
-  const lowerBase = base.toLowerCase();
-  // jeśli nazwa już zawiera prefiks / kategorię – nic nie zmieniamy
-  if (
-    lowerBase.startsWith(prefix.toLowerCase() + " ") ||
-    lowerBase.startsWith(key + " ")
-  ) {
-    return base;
-  }
-
-  if (!base) return base;
   const capitalized = base[0].toUpperCase() + base.slice(1);
   return `${prefix} ${capitalized}`;
 }
@@ -589,11 +608,17 @@ const ProductItem: React.FC<{
     (prod.baseName && byName.get(prod.baseName)) ||
     byName.get(prod.name);
 
-  const subcat = (prodInfo?.subcategory || "").toLowerCase();
+   // kategoria: najpierw po nazwie, potem z bazy
+  const inferredCat = inferCategoryFromName(prodInfo?.name || prod.name);
+  const subcat = (inferredCat || prodInfo?.subcategory || "").toLowerCase();
+
   const isSet = subcat === "zestawy";
   const isSpec = subcat === "specjały";
+
   const productSubcat =
-    prodInfo?.subcategory || productCategory(prod.baseName || prod.name);
+    inferredCat ||
+    prodInfo?.subcategory ||
+    productCategory(prod.baseName || prod.name);
 
   const singleCurrentName = useMemo(() => {
     if (isSet || isSpec) return prod.name as string;
@@ -698,7 +723,14 @@ const ProductItem: React.FC<{
 
     if (!prodInfo) return false;
 
-    const s = (prodInfo.subcategory || subcat || "").toLowerCase();
+    const catForLogic =
+      inferCategoryFromName(prodInfo.name) ||
+      inferCategoryFromName(prod.name) ||
+      prodInfo.subcategory ||
+      subcat ||
+      "";
+
+    const s = catForLogic.toLowerCase();
 
     // === California ===
     if (s.includes("california")) {
