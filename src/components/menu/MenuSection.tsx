@@ -291,7 +291,8 @@ export default function MenuSection() {
       }
       const unique = Array.from(uniqueMap.values());
 
-      // sortowanie z preferencją dla zestawów po numerze
+      // sortowanie z preferencją dla zestawów:
+      // Zestaw 1–13 → Vege set 1–2 → pozostałe sety
       const items = unique.slice().sort((a, b) => {
         const catA = a.subcategory || "Inne";
         const catB = b.subcategory || "Inne";
@@ -315,13 +316,39 @@ export default function MenuSection() {
             : Number.POSITIVE_INFINITY;
 
         if (isSetA && isSetB) {
-          const numA = extractSetNumber(a.name);
-          const numB = extractSetNumber(b.name);
-          if (numA !== null || numB !== null) {
-            if (numA === null) return 1;
-            if (numB === null) return -1;
-            if (numA !== numB) return numA - numB;
+          const getSetKey = (p: Product) => {
+            const nameNorm = normalizeDisplay(p.name || "");
+            const subNorm = normalizeDisplay(p.subcategory || "");
+
+            const isSetInner =
+              /zestaw|set/.test(subNorm) || /zestaw|set/.test(nameNorm);
+            if (!isSetInner) return null;
+
+            const isVege =
+              nameNorm.includes("vege") || nameNorm.includes("wege");
+
+            let group = 2; // inne sety
+            if (isVege) group = 1; // Vege sety
+            else if (nameNorm.startsWith("zestaw ")) group = 0; // Zestaw 1–13
+
+            const num = extractSetNumber(p.name);
+            const order = num !== null ? num : Number.POSITIVE_INFINITY;
+
+            return { group, order };
+          };
+
+          const keyA = getSetKey(a);
+          const keyB = getSetKey(b);
+
+          if (keyA && keyB) {
+            if (keyA.group !== keyB.group) {
+              return keyA.group - keyB.group;
+            }
+            if (keyA.order !== keyB.order) {
+              return keyA.order - keyB.order;
+            }
           }
+
           const catCmp = catNormA.localeCompare(catNormB, "pl");
           if (catCmp !== 0) return catCmp;
           if (posA !== posB) return posA - posB;
@@ -336,12 +363,28 @@ export default function MenuSection() {
 
       setProducts(items);
 
-      const cats = Array.from(
+      // kategorie: Zestawy → Wszystko → reszta
+      const rawCats = Array.from(
         new Set(items.map((p) => p.subcategory || "Inne"))
       ).sort((a, b) => a.localeCompare(b, "pl"));
-      setCategories(["Wszystko", ...cats]);
-      if (activeCat !== "Wszystko" && !cats.includes(activeCat))
+
+      const setsIdx = rawCats.findIndex((c) =>
+        c.toLowerCase().includes("zestaw")
+      );
+
+      let catsOrdered: string[];
+      if (setsIdx !== -1) {
+        const setsCat = rawCats[setsIdx];
+        const rest = rawCats.filter((_, idx) => idx !== setsIdx);
+        catsOrdered = [setsCat, "Wszystko", ...rest];
+      } else {
+        catsOrdered = ["Wszystko", ...rawCats];
+      }
+
+      setCategories(catsOrdered);
+      if (activeCat !== "Wszystko" && !catsOrdered.includes(activeCat)) {
         setActiveCat("Wszystko");
+      }
       setLoading(false);
     })();
 
@@ -401,11 +444,6 @@ export default function MenuSection() {
     );
   };
 
-  const [firstCat, restCats] = useMemo(() => {
-    if (categories.length === 0) return [null, []] as [string | null, string[]];
-    const [first, ...rest] = categories;
-    return [first, rest] as [string, string[]];
-  }, [categories]);
 
   const arrowBtnSm =
     `h-10 w-10 rounded-full text-white ${ACCENT} ring-1 ring-black/30 ` +
@@ -827,31 +865,15 @@ export default function MenuSection() {
         style={{ paddingLeft: GUTTER, paddingRight: GUTTER }}
       >
         <div className="py-14 md:py-20 grid grid-cols-12 gap-10">
-          {/* SIDEBAR */}
+           {/* SIDEBAR */}
           <aside className="hidden md:block col-span-3">
             <div className="sticky top-20">
               <h3 className="mb-4 text-xs tracking-widest font-light text-white/60">
                 MENU
               </h3>
 
-              {firstCat && (
-                <button
-                  type="button"
-                  className={`w-full text-left px-3 py-2 text-sm font-light rounded-none transition
-                    ${
-                      activeCat === "Wszystko"
-                        ? `text-white ${ACCENT} shadow-[0_10px_22px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)] ring-1 ring-black/30`
-                        : "text-white/80 hover:text-white hover:bg-white/5"
-                    }`}
-                  aria-pressed={activeCat === "Wszystko"}
-                  onClick={() => setActiveCat("Wszystko")}
-                >
-                  Wszystko
-                </button>
-              )}
-
               <nav className="mt-2 flex flex-col gap-1">
-                {restCats.map((c) => (
+                {categories.map((c) => (
                   <button
                     key={c}
                     type="button"

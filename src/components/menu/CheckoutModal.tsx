@@ -2704,30 +2704,41 @@ export default function CheckoutModal() {
                           )}
                         </div>
 
-                        <div className="flex justify-between mt-2">
+                       <div className="flex justify-between mt-2">
   <button
     onClick={() => goToStep(isMobile ? 2 : 1)}
     className="px-4 py-2 rounded-xl border border-black/15"
   >
     ← Cofnij
   </button>
-  <button
-    onClick={nextStep}
-    disabled={
-      !name ||
-      !phone ||
-      !validEmail ||
-      (selectedOption === "delivery" &&
-        (!street ||
-          !postalCode ||
-          !city ||
-          (REQUIRE_AUTOCOMPLETE && !custCoords)))
-    }
-    className={`px-4 py-2 rounded-xl text-white font-semibold ${accentBtn} disabled:opacity-50`}
-  >
-    Dalej →
-  </button>
+
+  {/* Na desktopie dalej przechodzimy do kroku 3 (podsumowanie).
+      Na mobile nie ma kroku 4 – zamawianie kończymy przyciskiem "✅ Zamawiam" niżej. */}
+  {!isMobile && (
+    <button
+      onClick={nextStep}
+      disabled={
+        !name ||
+        !phone ||
+        !validEmail ||
+        (selectedOption === "delivery" &&
+          (!street ||
+            !postalCode ||
+            !city ||
+            (REQUIRE_AUTOCOMPLETE && !custCoords)))
+      }
+      className={`px-4 py-2 rounded-xl text-white font-semibold ${accentBtn} disabled:opacity-50`}
+    >
+      Dalej →
+    </button>
+  )}
 </div>
+
+{isMobile && (
+  <p className="mt-2 text-xs text-black/60">
+    Przewiń niżej, aby zobaczyć podsumowanie, zgody i przycisk „✅ Zamawiam”.
+  </p>
+)}
 
                         {isMobile && (
                           <div className="mt-3 space-y-4">
