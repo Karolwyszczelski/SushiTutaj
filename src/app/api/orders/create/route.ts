@@ -1,4 +1,3 @@
-// src/app/api/orders/create/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -10,6 +9,7 @@ import { sendEmail } from "@/lib/e-mail";
 import { sendSms } from "@/lib/sms";
 import { computeAddonPriceBackend } from "@/lib/addons";
 import { buildKitchenNote } from "@/lib/kitchenNote";
+
 type NotificationType = "order" | "error" | "system";
 
 async function pushAdminNotification(
@@ -19,19 +19,14 @@ async function pushAdminNotification(
   message?: string | null
 ) {
   try {
-    await supabaseAdmin
-      .from("admin_notifications")
-      .insert({
-        restaurant_id,
-        type,
-        title,
-        message: message ?? null,
-      });
+    await supabaseAdmin.from("admin_notifications").insert({
+      restaurant_id,
+      type,
+      title,
+      message: message ?? null,
+    });
   } catch (e: any) {
-    console.error(
-      "[admin_notifications.insert] error:",
-      e?.message || e
-    );
+    console.error("[admin_notifications.insert] error:", e?.message || e);
   }
 }
 
@@ -102,6 +97,12 @@ function isOpenFor(slug: string, d = nowPL()) {
   const closeM = r[2] * 60 + r[3];
   return { open: mins >= openM && mins <= closeM, label: fmt(r) };
 }
+
+/* ===== Program lojalnościowy ===== */
+const LOYALTY_MIN_ORDER_BASE = 50; // zł (produkty + opakowanie, bez dostawy)
+const LOYALTY_PERCENT = 30; // % rabatu
+const LOYALTY_REWARD_EVERY = 8; // co ile naklejek nagroda
+const LOYALTY_ELIGIBLE_STATUSES = ["accepted", "completed", "placed"];
 
 /* ===== Utils ===== */
 type Any = Record<string, any>;
@@ -428,7 +429,8 @@ function normalizeBody(raw: any, req: Request) {
     base?.legal_accept && typeof base.legal_accept === "object"
       ? {
           terms_version: base.legal_accept.terms_version || TERMS_VERSION,
-          privacy_version: base.legal_accept.privacy_version || PRIVACY_VERSION,
+          privacy_version:
+            base.legal_accept.privacy_version || PRIVACY_VERSION,
           marketing_opt_in: !!base.legal_accept.marketing_opt_in,
           accepted_at: base.legal_accept.accepted_at || accepted_at,
           ip: base.legal_accept.ip || ip,
@@ -610,12 +612,12 @@ export async function POST(req: Request) {
     const fulfill_method =
       n.selected_option === "delivery" ? "delivery" : "takeaway";
 
-    // 2.2) Opłata za opakowanie – tak jak na froncie (selectedOption ? 2 : 0)
+    // 2.2) Opłata za opakowanie – backend (dopasowane do frontu)
     const packagingFee = n.selected_option ? 3 : 0;
 
     // 2.3) Suma pozycji (produkty + addony)
     const itemsTotal = recomputeTotalFromItems(n.itemsArray);
-    // Baza do progów min/free_over – produkty + opakowanie, bez dostawy
+    // Baza do progów min/free_over i programu lojalnościowego – produkty + opakowanie, bez dostawy
     const baseWithoutDelivery = itemsTotal + packagingFee;
 
     // 2.4) restaurant_id z DB po slugu (+ aktywność lokalu)
@@ -699,7 +701,7 @@ export async function POST(req: Request) {
       console.error("[orders.create] restaurant_closures check error:", e);
     }
 
-     // 2.7) Blokady adres / telefon / e-mail per restauracja
+    // 2.7) Blokady adres / telefon / e-mail per restauracja
     try {
       const { data: blocks, error: blocksErr } = await supabaseAdmin
         .from("address_blocks")
@@ -745,9 +747,7 @@ export async function POST(req: Request) {
           }
 
           // domyślnie address
-          return (
-            !!addrStr && addrStr.includes(rawPattern.toLowerCase())
-          );
+          return !!addrStr && addrStr.includes(rawPattern.toLowerCase());
         });
 
         if (matched) {
@@ -863,7 +863,10 @@ export async function POST(req: Request) {
         pricingType === "per_km" ? perKmRateRaw * distance_km : flatCostRaw;
 
       // Darmowa dostawa powyżej progu – próg liczony od produktów + opakowanie
-      if (zone.free_over != null && baseWithoutDelivery >= Number(zone.free_over)) {
+      if (
+        zone.free_over != null &&
+        baseWithoutDelivery >= Number(zone.free_over)
+      ) {
         serverCost = 0;
       }
 
@@ -871,25 +874,125 @@ export async function POST(req: Request) {
       n.delivery_cost = rounded;
     }
 
-    // 2.9) Finalne przeliczenie total_price na backendzie
+    // 2.9) Program lojalnościowy + finalne przeliczenie total_price
     const deliveryCostFinal =
       n.selected_option === "delivery" ? Number(n.delivery_cost || 0) : 0;
 
-    const grossBeforeDiscount =
-      itemsTotal + packagingFee + deliveryCostFinal;
+    // Baza rabatów (kody + lojalność) – tylko produkty + opakowanie
+    const discountBase = baseWithoutDelivery;
 
-    const discountRaw = Number(n.discount_amount || 0);
+    let loyalty_stickers_before = 0;
+    let loyalty_stickers_after = 0;
+    let loyalty_applied = false;
+    let loyalty_reward_type: string | null = null;
+    let loyalty_reward_value: number | null = null;
+    let loyalty_discount_amount = 0;
+
+    const qualifiesForStickerCurrent =
+      discountBase >= LOYALTY_MIN_ORDER_BASE && !!n.user_id;
+
+    if (n.user_id) {
+      try {
+        const { data: prevOrders, error: prevErr } = await supabaseAdmin
+          .from("orders")
+          .select(
+            "id,total_price,discount_amount,delivery_cost,status"
+          )
+          .eq("restaurant_id", restaurant_id)
+          .eq("user", n.user_id);
+
+        if (prevErr) {
+          console.error(
+            "[orders.create] loyalty prevOrders error:",
+            (prevErr as any)?.message || prevErr
+          );
+        } else if (prevOrders && prevOrders.length > 0) {
+          const prevCount = (prevOrders as any[]).filter((o) => {
+            const status = String(o.status || "").toLowerCase();
+            if (!LOYALTY_ELIGIBLE_STATUSES.includes(status)) return false;
+
+            const total = Number(o.total_price || 0);
+            const discount = Number(o.discount_amount || 0);
+            const delivery = Number(o.delivery_cost || 0);
+
+            // przybliżona baza historycznego zamówienia: suma przed rabatem – dostawa
+            const basePrev = total + discount - delivery;
+            return basePrev >= LOYALTY_MIN_ORDER_BASE;
+          }).length;
+
+          loyalty_stickers_before = prevCount;
+        }
+      } catch (e) {
+        console.error("[orders.create] loyalty prevOrders exception:", e);
+      }
+
+      loyalty_stickers_after =
+        loyalty_stickers_before +
+        (qualifiesForStickerCurrent ? 1 : 0);
+
+      const isRewardOrder =
+        qualifiesForStickerCurrent &&
+        loyalty_stickers_after > 0 &&
+        loyalty_stickers_after % LOYALTY_REWARD_EVERY === 0;
+
+      if (isRewardOrder) {
+        loyalty_applied = true;
+        loyalty_reward_type = "percent";
+        loyalty_reward_value = LOYALTY_PERCENT;
+
+        const baseForLoyalty = discountBase;
+        loyalty_discount_amount =
+          Math.max(
+            0,
+            Math.round(
+              baseForLoyalty * (LOYALTY_PERCENT / 100) * 100
+            ) / 100
+          );
+      }
+    }
+
+    const manualDiscountRaw = Number(n.discount_amount || 0);
+    const totalDiscountRaw =
+      Math.max(0, manualDiscountRaw) + Math.max(0, loyalty_discount_amount);
+
+    // rabat może zmniejszyć tylko część produktową (bez dostawy)
     const discountClamped = Math.max(
       0,
-      Math.min(discountRaw, grossBeforeDiscount)
+      Math.min(totalDiscountRaw, discountBase)
     );
 
     const serverTotal =
-      Math.max(0, Math.round((grossBeforeDiscount - discountClamped) * 100)) /
-      100;
+      Math.max(
+        0,
+        Math.round(
+          ((discountBase - discountClamped) + deliveryCostFinal) * 100
+        )
+      ) / 100;
 
     n.discount_amount = discountClamped;
     n.total_price = serverTotal;
+
+    if (n.user_id) {
+      n.loyalty_stickers_before = loyalty_stickers_before;
+      n.loyalty_stickers_after = loyalty_stickers_after;
+      n.loyalty_applied = loyalty_applied;
+      n.loyalty_reward_type = loyalty_reward_type;
+      n.loyalty_reward_value = loyalty_reward_value;
+      n.loyalty_min_order = LOYALTY_MIN_ORDER_BASE;
+
+      n.legal_accept = {
+        ...n.legal_accept,
+        loyalty: {
+          stickers_before: loyalty_stickers_before,
+          stickers_after: loyalty_stickers_after,
+          applied: loyalty_applied,
+          reward_type: loyalty_reward_type,
+          reward_value: loyalty_reward_value,
+          min_order: LOYALTY_MIN_ORDER_BASE,
+          discount_amount: loyalty_discount_amount,
+        },
+      };
+    }
 
     // 3) Produkty
     const productIds = n.itemsArray
@@ -954,13 +1057,17 @@ export async function POST(req: Request) {
         eta: n.eta,
         user: n.user_id ?? null,
         reservation_id: n.reservation_id ?? null,
-        promo_code: n.promo_code
-          ? String(n.promo_code).slice(0, 32)
-          : null,
+        promo_code: n.promo_code ? String(n.promo_code).slice(0, 32) : null,
         discount_amount: n.discount_amount,
         legal_accept: n.legal_accept,
         chopsticks_qty: n.chopsticks_qty,
         kitchen_note,
+        loyalty_stickers_before: n.loyalty_stickers_before ?? null,
+        loyalty_stickers_after: n.loyalty_stickers_after ?? null,
+        loyalty_applied: n.loyalty_applied ?? false,
+        loyalty_reward_type: n.loyalty_reward_type ?? null,
+        loyalty_reward_value: n.loyalty_reward_value ?? null,
+        loyalty_min_order: n.loyalty_min_order ?? LOYALTY_MIN_ORDER_BASE,
       })
       .select("id, selected_option, total_price, name")
       .single();

@@ -37,6 +37,16 @@ interface Order {
   payment_method?: PaymentMethod;
   payment_status?: PaymentStatus;
 
+  // rabaty / kody / lojalność
+  promo_code?: string | null;
+  discount_amount?: number | null;
+  loyalty_stickers_before?: number | null;
+  loyalty_stickers_after?: number | null;
+  loyalty_applied?: boolean | null;
+  loyalty_reward_type?: string | null;
+  loyalty_reward_value?: number | null;
+  loyalty_min_order?: number | null;
+
   // rezerwacja
   reservation_id?: string | null;
   reservation_date?: string | null;
@@ -355,25 +365,23 @@ const normalizeProduct = (raw: Any) => {
 
   type SwapDetail = { from?: string; to?: string; label: string };
 
-  const swapDetails: SwapDetail[] = (swapsRaw as any[])
-    .map((s) => {
-      if (!s) return null;
-      const from = typeof s.from === "string" ? s.from.trim() : "";
-      const to = typeof s.to === "string" ? s.to.trim() : "";
-      if (!from && !to) return null;
+  const swapDetails: SwapDetail[] = (swapsRaw as any[]).map((s) => {
+    if (!s) return null;
+    const from = typeof s.from === "string" ? s.from.trim() : "";
+    const to = typeof s.to === "string" ? s.to.trim() : "";
+    if (!from && !to) return null;
 
-      let label: string;
-      if (from && to) label = `Zamiana: ${from} → ${to}`;
-      else if (to) label = `Zamiana na: ${to}`;
-      else label = `Zamiana: ${from}`;
+    let label: string;
+    if (from && to) label = `Zamiana: ${from} → ${to}`;
+    else if (to) label = `Zamiana na: ${to}`;
+    else label = `Zamiana: ${from}`;
 
-      return {
-        from: from || undefined,
-        to: to || undefined,
-        label,
-      };
-    })
-    .filter(Boolean) as SwapDetail[];
+    return {
+      from: from || undefined,
+      to: to || undefined,
+      label,
+    };
+  }).filter(Boolean) as SwapDetail[];
 
   const swapLabels = swapDetails.map((s) => s.label);
 
@@ -783,6 +791,29 @@ export default function PickupOrdersPage() {
           payment_method: fromDBPaymentMethod(o.payment_method),
           payment_status: fromDBPaymentStatus(o.payment_status),
 
+          // rabat / lojalność
+          promo_code: o.promo_code ?? null,
+          discount_amount:
+            o.discount_amount != null ? Number(o.discount_amount) || 0 : 0,
+          loyalty_stickers_before:
+            typeof o.loyalty_stickers_before === "number"
+              ? o.loyalty_stickers_before
+              : null,
+          loyalty_stickers_after:
+            typeof o.loyalty_stickers_after === "number"
+              ? o.loyalty_stickers_after
+              : null,
+          loyalty_applied: !!o.loyalty_applied,
+          loyalty_reward_type: o.loyalty_reward_type ?? null,
+          loyalty_reward_value:
+            o.loyalty_reward_value != null
+              ? Number(o.loyalty_reward_value)
+              : null,
+          loyalty_min_order:
+            o.loyalty_min_order != null
+              ? Number(o.loyalty_min_order)
+              : null,
+
           // rezerwacja
           reservation_id: o.reservation_id ?? null,
           reservation_date: o.reservation_date ?? null,
@@ -1022,6 +1053,59 @@ export default function PickupOrdersPage() {
     return <Badge tone="amber">GOTÓWKA</Badge>;
   };
 
+  // Program lojalnościowy – badge w nagłówku karty zamówienia
+  const loyaltyBadge = (o: Order) => {
+    const before =
+      typeof o.loyalty_stickers_before === "number"
+        ? o.loyalty_stickers_before
+        : null;
+    const after =
+      typeof o.loyalty_stickers_after === "number"
+        ? o.loyalty_stickers_after
+        : null;
+    const hasStickersInfo = before !== null && after !== null;
+    const hasReward = !!o.loyalty_applied;
+    const discount =
+      typeof o.discount_amount === "number" ? o.discount_amount : 0;
+    const minOrder =
+      typeof o.loyalty_min_order === "number" ? o.loyalty_min_order : null;
+
+    if (!hasReward && !hasStickersInfo) return null;
+
+    let line2: string;
+    if (hasReward) {
+      if (
+        o.loyalty_reward_type === "percent" &&
+        typeof o.loyalty_reward_value === "number"
+      ) {
+        line2 = `Nagroda: −${o.loyalty_reward_value}%${
+          discount > 0 ? ` (−${discount.toFixed(2)} zł)` : ""
+        }`;
+      } else {
+        line2 = "Nagroda: darmowa pozycja / rolka";
+      }
+    } else {
+      line2 = "To zamówienie dolicza 1 naklejkę w programie.";
+    }
+
+    return (
+      <div className="inline-flex flex-col rounded-xl bg-emerald-50 px-3 py-1.5 text-[11px] text-emerald-800">
+        <span className="font-semibold">Program lojalnościowy</span>
+        <span>{line2}</span>
+        {hasStickersInfo && (
+          <span className="mt-0.5">
+            Naklejki: {before} → {after}
+          </span>
+        )}
+        {minOrder && (
+          <span className="mt-0.5 text-[10px] text-emerald-700">
+            Program liczy zamówienia od {minOrder.toFixed(2)} zł.
+          </span>
+        )}
+      </div>
+    );
+  };
+
   const setPaymentMethod = async (o: Order, method: PaymentMethod) => {
     try {
       setEditingOrderId(o.id);
@@ -1183,7 +1267,7 @@ export default function PickupOrdersPage() {
               </div>
             )}
 
-           {isSet && p.setMeta && (
+            {isSet && p.setMeta && (
               <>
                 <div className="mt-1">
                   <b>Zamiany w zestawie:</b>{" "}
@@ -1363,6 +1447,8 @@ export default function PickupOrdersPage() {
                 {getOptionLabel(o.selected_option)}
               </h3>
 
+              {loyaltyBadge(o)}
+
               {/* Status zamówienia */}
               <Badge
                 tone={
@@ -1446,6 +1532,28 @@ export default function PickupOrdersPage() {
             <div>
               <b>Kwota:</b> {o.total_price.toFixed(2)} zł
             </div>
+
+            {typeof o.discount_amount === "number" &&
+              o.discount_amount > 0 && (
+                <div className="text-xs text-emerald-800">
+                  Rabat: −{o.discount_amount.toFixed(2)} zł{" "}
+                  {o.promo_code && (
+                    <span className="ml-1">
+                      (kod:{" "}
+                      <span className="font-mono">
+                        {o.promo_code}
+                      </span>
+                      )
+                    </span>
+                  )}
+                  {o.loyalty_applied && !o.promo_code && (
+                    <span className="ml-1">
+                      (program lojalnościowy)
+                    </span>
+                  )}
+                </div>
+              )}
+
             {o.selected_option === "delivery" &&
               typeof o.delivery_cost === "number" && (
                 <div>
@@ -1696,6 +1804,10 @@ export default function PickupOrdersPage() {
           <li>
             Po wydaniu zamówienia kliknij <b>„Zrealizowany”</b>, żeby
             zamknąć je w systemie.
+          </li>
+          <li>
+            Jeśli widzisz blok „Program lojalnościowy”, oznacza to, że
+            zamówienie nalicza naklejkę albo ma użyty rabat (np. −30%).
           </li>
         </ul>
       </div>
