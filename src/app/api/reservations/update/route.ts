@@ -7,7 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 import { sendSms } from "@/lib/sms";
 import { getAdminContext } from "@/lib/adminContext";
-
+import { cookies } from "next/headers"; // <- NOWY IMPORT
 
 const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -68,13 +68,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Bad request" }, { status: 400 });
     }
 
-    // 🔐 kontekst admina + restauracja
-    let restaurantId: string;
+    /* 🔐 1) normalny kontekst admina */
+    let restaurantId: string | null = null;
     try {
       const ctx = await getAdminContext();
       restaurantId = ctx.restaurantId;
     } catch (err) {
       console.error("reservations/update: brak kontekstu admina:", err);
+    }
+
+    /* 🔐 2) fallback – restaurant_id z cookie ustawianego przez /api/restaurants/ensure-cookie */
+    if (!restaurantId) {
+      try {
+        const store = await cookies(); // <- TU MUSI BYĆ await
+        const ckRestaurantId = store.get("restaurant_id")?.value ?? null;
+
+        if (ckRestaurantId) {
+          restaurantId = ckRestaurantId;
+          console.log(
+            "reservations/update: używam restaurant_id z cookie:",
+            restaurantId
+          );
+        }
+      } catch (err) {
+        console.error("reservations/update: błąd przy czytaniu cookie:", err);
+      }
+    }
+
+    if (!restaurantId) {
       return NextResponse.json(
         { error: "Brak uprawnień lub brak przypisanej restauracji" },
         { status: 403 }
