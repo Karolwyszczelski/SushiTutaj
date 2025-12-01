@@ -1277,7 +1277,7 @@ const canUseExtraForRow = (ex: string): boolean => {
         )}
       </div>
 
-      <div className="flex justify-end items-center mt-2 gap-2 flex-wrap text-[11px]">
+      <div className="flex justify-end items-center mt-2 gap-2 flex-wrap text-[15px]">
         <button
           onClick={() => removeItem(prod.name)}
           className="text-red-600 underline"

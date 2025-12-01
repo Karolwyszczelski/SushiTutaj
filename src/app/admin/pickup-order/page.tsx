@@ -311,6 +311,12 @@ const normalizeProduct = (raw: Any) => {
       ? (raw as any)._raw
       : raw;
 
+  // NOWE: ujednolicone źródło options (dla koszyka i panelu)
+  const srcOptions: Any | undefined =
+    (source as any).options ||
+    (source as any)._src?.options ||
+    undefined;
+
   const shallow = [
     source.name,
     source.product_name,
@@ -341,11 +347,10 @@ const normalizeProduct = (raw: Any) => {
   const quantity =
     toNumber(source.quantity ?? source.qty ?? source.amount ?? 1, 1) || 1;
 
-  // SWAPY z koszyka: options.swaps albo source.swaps
+  // --- TU ZMIANA: czytamy swaps także z _src.options.swaps ---
   const swapsRaw =
     (Array.isArray((source as any).swaps) && (source as any).swaps) ||
-    (Array.isArray((source as any).options?.swaps) &&
-      (source as any).options.swaps) ||
+    (Array.isArray(srcOptions?.swaps) && srcOptions!.swaps) ||
     [];
 
   type SwapDetail = { from?: string; to?: string; label: string };
@@ -372,12 +377,11 @@ const normalizeProduct = (raw: Any) => {
 
   const swapLabels = swapDetails.map((s) => s.label);
 
-  // surowe etykiety dodatków
+  // --- TU DODAJEMY srcOptions?.addons ---
   const rawAddons = [
     ...collectStrings(source.addons),
     ...collectStrings(source.extras),
-    // jeśli backend wrzuca dodatki do options.addons
-    ...collectStrings((source as any).options?.addons),
+    ...collectStrings(srcOptions?.addons),
     ...collectStrings(source.selected_addons),
     ...collectStrings(source.toppings),
   ].filter((s) => s && s !== "0");
@@ -386,7 +390,6 @@ const normalizeProduct = (raw: Any) => {
     rawAddons
   );
 
-  // to, co pokazujemy jako "Dodatki" w skrócie – bez technicznych etykiet dla rolek
   const addons = [...plain, ...swapLabels];
 
   const ingredients = collectStrings(source.ingredients).length
@@ -407,11 +410,11 @@ const normalizeProduct = (raw: Any) => {
       source.product.description) ||
     undefined;
 
+  // --- TU TEŻ: note z srcOptions.note ---
   const note =
     (typeof source.note === "string" && source.note) ||
     (typeof source.comment === "string" && source.comment) ||
-    (typeof (source as any).options?.note === "string" &&
-      (source as any).options.note) ||
+    (typeof srcOptions?.note === "string" && srcOptions.note) ||
     undefined;
 
   const isSet =
@@ -429,7 +432,7 @@ const normalizeProduct = (raw: Any) => {
     note,
     isSet,
     swaps: swapLabels,
-    swapDetails, // <-- NOWE: struktura z from/to
+    swapDetails, // ważne: struktura z from/to dla „Rolki – szczegóły”
     setMeta: isSet && setMeta ? setMeta : null,
     tartarBases,
     _raw: source,
