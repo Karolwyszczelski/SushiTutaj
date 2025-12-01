@@ -42,16 +42,22 @@ const display = Kaisei_Tokumin({ subsets: ["latin"], weight: "400", variable: "-
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pl" className="h-full">
-      <body className={`${sans.variable} ${display.variable} bg-black text-black min-h-dvh antialiased`}>
-        {/* Uwaga: Header, CartPopup i CheckoutModal są już w ClientWrapper */}
+    <html lang="pl" className="h-full overflow-x-hidden">
+      <body
+        className={`${sans.variable} ${display.variable} bg-black text-black min-h-dvh antialiased overflow-x-hidden max-w-screen`}
+      >
         <ClientProvider>
-          <ClientWrapper><AuthCookieSync />{children}</ClientWrapper>
+          <ClientWrapper>
+            <AuthCookieSync />
+            {children}
+          </ClientWrapper>
         </ClientProvider>
         <Footer />
         <CookieBanner />
 
-        <noscript><style>{`html{scroll-behavior:auto}`}</style></noscript>
+        <noscript>
+          <style>{`html{scroll-behavior:auto}`}</style>
+        </noscript>
       </body>
     </html>
   );
