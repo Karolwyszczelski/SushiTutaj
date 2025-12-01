@@ -2443,49 +2443,54 @@ export default function CheckoutModal() {
                       </div>
                     )}
 
-                    isMobile && checkoutStep === 1 && (
-  <div className="space-y-6">
-    <h3 className="text-2xl font-bold">Wybrane produkty</h3>
+                    {isMobile && checkoutStep === 1 && (
+                      <div className="space-y-6">
+                        <h3 className="text-2xl font-bold">Wybrane produkty</h3>
 
-    <div className="space-y-3 max-h-[360px] overflow-y-auto">
-      {items.map((item, idx) => (
-        <div key={idx} className="space-y-1">
-          <ProductItem
-            prod={item}
-            productCategory={productCategory}
-            productsDb={productsDb}
-            optionsByCat={optionsByCat}
-            restaurantSlug={restaurantSlug}
-            helpers={productHelpers}
-          />
-          <textarea
-            className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
-            placeholder="Notatka do produktu"
-            value={notes[idx] || ""}
-            onChange={(e) => setNotes({ ...notes, [idx]: e.target.value })}
-          />
-        </div>
-      ))}
-      {items.length === 0 && (
-        <p className="text-center text-black/60">
-          Brak produktów w koszyku.
-        </p>
-      )}
-    </div>
+                        <div className="space-y-3 max-h-[360px] overflow-y-auto">
+                          {items.map((item, idx) => (
+                            <div key={idx} className="space-y-1">
+                              <ProductItem
+                                prod={item}
+                                productCategory={productCategory}
+                                productsDb={productsDb}
+                                optionsByCat={optionsByCat}
+                                restaurantSlug={restaurantSlug}
+                                helpers={productHelpers}
+                              />
+                              <textarea
+                                className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
+                                placeholder="Notatka do produktu"
+                                value={notes[idx] || ""}
+                                onChange={(e) =>
+                                  setNotes({ ...notes, [idx]: e.target.value })
+                                }
+                              />
+                            </div>
+                          ))}
+                          {items.length === 0 && (
+                            <p className="text-center text-black/60">
+                              Brak produktów w koszyku.
+                            </p>
+                          )}
+                        </div>
 
-    <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
+                        <ChopsticksControl
+                          value={chopsticksQty}
+                          onChange={setChopsticksQty}
+                        />
 
-    <div className="pt-2 border-t border-black/10 flex justify-end">
-      <button
-        onClick={nextStep}
-        disabled={items.length === 0}
-        className={`min-w-[160px] py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
-      >
-        Dalej →
-      </button>
-    </div>
-  </div>
-)}
+                        <div className="pt-2 border-t border-black/10 flex justify-end">
+                          <button
+                            onClick={nextStep}
+                            disabled={items.length === 0}
+                            className={`min-w-[160px] py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
+                          >
+                            Dalej →
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {((!isMobile && checkoutStep === 1) ||
   (isMobile && checkoutStep === 2)) && (
