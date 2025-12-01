@@ -1993,6 +1993,11 @@ const [loyaltyLoading, setLoyaltyLoading] = useState(false);
   typeof loyaltyStickers === "number" &&
   loyaltyStickers >= 4 &&
   loyaltyStickers < 8;
+  const hasAutoLoyaltyDiscount =
+  isLoggedIn &&
+  typeof loyaltyStickers === "number" &&
+  loyaltyStickers >= 8;
+
 
   const totalWithDelivery = Math.max(0, subtotal + (deliveryInfo?.cost || 0) - discount);
   const shouldHideOrderActions = Boolean(TURNSTILE_SITE_KEY && turnstileError);
@@ -2860,32 +2865,83 @@ return (
                               Podsumowanie
                             </h4>
                             <div className="space-y-1 text-sm">
-                              <div className="flex justify-between">
-                                <span>Produkty:</span>
-                                <span>{baseTotal.toFixed(2)} zł</span>
-                              </div>
-                              {selectedOption && (
-                                <div className="flex justify-between">
-                                  <span>Opakowanie:</span>
-                                  <span>3.00 zł</span>
-                                </div>
-                              )}
-                              {deliveryInfo && (
-                                <div className="flex justify-between">
-                                  <span>Dostawa:</span>
-                                  <span>
-                                    {deliveryInfo.cost.toFixed(2)} zł
-                                  </span>
-                                </div>
-                              )}
-                            </div>
+  <div className="flex justify-between">
+    <span>Produkty:</span>
+    <span>{baseTotal.toFixed(2)} zł</span>
+  </div>
+  {selectedOption && (
+    <div className="flex justify-between">
+      <span>Opakowanie:</span>
+      <span>3.00 zł</span>
+    </div>
+  )}
+  {deliveryInfo && (
+    <div className="flex justify-between">
+      <span>Dostawa:</span>
+      <span>{deliveryInfo.cost.toFixed(2)} zł</span>
+    </div>
+  )}
+</div>
 
-                            <PromoSection
-                              promo={promo}
-                              promoError={promoError}
-                              onApply={applyPromo}
-                              onClear={clearPromo}
-                            />
+{/* LOYALTY – MOBILE */}
+{isLoggedIn && (
+  <div className="mt-2">
+    {loyaltyLoading ? (
+      <p className="text-[11px] text-black/60">
+        Sprawdzamy Twoje naklejki...
+      </p>
+    ) : (
+      typeof loyaltyStickers === "number" && (
+        <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs space-y-2">
+          <div>
+            Masz <b>{loyaltyStickers}</b> naklejek w programie lojalnościowym.
+          </div>
+
+          {canUseLoyalty4 && (
+            <div className="space-y-1">
+              <div className="font-semibold text-sm">
+                Czy chcesz wymienić 4 naklejki na darmową rolkę?
+              </div>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="loyalty_choice_mobile"
+                  value="use_4"
+                  checked={loyaltyChoice === "use_4"}
+                  onChange={() => setLoyaltyChoice("use_4")}
+                />
+                <span>Tak, wykorzystaj 4 naklejki w tym zamówieniu.</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="loyalty_choice_mobile"
+                  value="keep"
+                  checked={loyaltyChoice === "keep"}
+                  onChange={() => setLoyaltyChoice("keep")}
+                />
+                <span>Nie teraz, zbieram dalej.</span>
+              </label>
+            </div>
+          )}
+
+          {!canUseLoyalty4 && hasAutoLoyaltyDiscount && (
+            <div className="font-semibold text-sm">
+              Masz już co najmniej 8 naklejek – rabat lojalnościowy doliczymy przy realizacji zamówienia.
+            </div>
+          )}
+        </div>
+      )
+    )}
+  </div>
+)}
+
+<PromoSection
+  promo={promo}
+  promoError={promoError}
+  onApply={applyPromo}
+  onClear={clearPromo}
+/>
 
                             {discount > 0 && (
                               <div className="flex justify-between text-sm text-green-700">
@@ -3088,19 +3144,72 @@ return (
                       <span>3.00 zł</span>
                     </div>
                   )}
-                  {deliveryInfo && (
-                    <div className="flex justify-between">
-                      <span>Dostawa:</span>
-                      <span>{deliveryInfo.cost.toFixed(2)} zł</span>
-                    </div>
-                  )}
+                 {deliveryInfo && (
+  <div className="flex justify-between">
+    <span>Dostawa:</span>
+    <span>{deliveryInfo.cost.toFixed(2)} zł</span>
+  </div>
+)}
 
-                  <PromoSection
-                    promo={promo}
-                    promoError={promoError}
-                    onApply={applyPromo}
-                    onClear={clearPromo}
-                  />
+{/* LOYALTY – DESKTOP */}
+{isLoggedIn && (
+  <div className="mt-2">
+    {loyaltyLoading ? (
+      <p className="text-[11px] text-black/60 text-center">
+        Sprawdzamy Twoje naklejki...
+      </p>
+    ) : (
+      typeof loyaltyStickers === "number" && (
+        <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs space-y-2">
+          <div className="text-center">
+            Masz <b>{loyaltyStickers}</b> naklejek w programie lojalnościowym.
+          </div>
+
+          {canUseLoyalty4 && (
+            <div className="space-y-1">
+              <div className="font-semibold text-sm text-center">
+                Czy chcesz wymienić 4 naklejki na darmową rolkę?
+              </div>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="loyalty_choice_desktop"
+                  value="use_4"
+                  checked={loyaltyChoice === "use_4"}
+                  onChange={() => setLoyaltyChoice("use_4")}
+                />
+                <span>Tak, wykorzystaj 4 naklejki w tym zamówieniu.</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="loyalty_choice_desktop"
+                  value="keep"
+                  checked={loyaltyChoice === "keep"}
+                  onChange={() => setLoyaltyChoice("keep")}
+                />
+                <span>Nie teraz, zbieram dalej.</span>
+              </label>
+            </div>
+          )}
+
+          {!canUseLoyalty4 && hasAutoLoyaltyDiscount && (
+            <div className="font-semibold text-sm text-center">
+              Masz już co najmniej 8 naklejek – rabat lojalnościowy doliczymy przy realizacji zamówienia.
+            </div>
+          )}
+        </div>
+      )
+    )}
+  </div>
+)}
+
+<PromoSection
+  promo={promo}
+  promoError={promoError}
+  onApply={applyPromo}
+  onClear={clearPromo}
+/>
                   {discount > 0 && (
                     <div className="flex justify-between text-green-700">
                       <span>Rabat:</span>
