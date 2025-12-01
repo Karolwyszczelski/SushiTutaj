@@ -793,20 +793,19 @@ const ProductItem: React.FC<{
 
   // Frytki z batatów z przystawek – tylko w Szczytnie i Przasnyszu
   const isSweetPotatoFries = useMemo(() => {
-    if (!prodInfo) return false;
-
     const city = (restaurantSlug || "").toLowerCase();
     if (city !== "szczytno" && city !== "przasnysz") return false;
 
-    const sub = (prodInfo.subcategory || "").toLowerCase();
-    if (!sub.includes("przystawk")) return false;
+    // bierzemy nazwę z koszyka + ewentualnie z bazy
+    const text = `${prod.name || ""} ${
+      prodInfo?.name || ""
+    } ${prodInfo?.description || ""}`.toLowerCase();
 
-    const text = `${prodInfo.name} ${prodInfo.description || ""}`.toLowerCase();
     return (
       text.includes("frytki z batat") ||
       text.includes("frytki batat")
     );
-  }, [prodInfo, restaurantSlug]);
+  }, [prod.name, prodInfo, restaurantSlug]);
 
   const saucesForProduct = useMemo(() => {
     if (isSweetPotatoFries) {
