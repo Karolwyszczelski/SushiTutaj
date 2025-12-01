@@ -70,7 +70,7 @@ const MENU: MenuItem[] = [
   },
   {
     label: "Zestaw Miesiąca",
-    href: "/admin/zestaw-miesiaca",
+    href: "/admin/burger-miesiaca",
     Icon: Star,
     roles: ["admin"],
   },
