@@ -425,15 +425,6 @@ function useIsMobile(breakpoint = 1024) {
   return isMobile;
 }
 
-/* górny pasek akcji tylko na mobile */
-function MobileTopBar({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="lg:hidden sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-black/10 -mx-6 px-6 py-2">
-      {children}
-    </div>
-  );
-}
-
 /* Kontrolka ilości pałeczek – używana w podsumowaniu / koszyku */
 function ChopsticksControl({
   value,
@@ -530,39 +521,155 @@ function withCategoryPrefix(name: string, subcategory?: string | null): string {
 }
 
 function parseSetComposition(desc?: string | null) {
-  if (!desc) return [] as { qty: number; cat: string; from: string }[];
+  if (!desc) {
+    return [] as { qty: number; cat: string; from: string }[];
+  }
 
-  // przykład: "16 szt, SUROWY: 6x Futomaki łosoś philadelphia surowy, 8x Hosomaki ogórek, ... +6x Futomaki krewetka w tempurze za 1 zł!"
+  // przykład: "16 szt, SUROWY: 6x Futomaki łosoś philadelphia surowy, 8x Hosomaki ogórek, +6x Futomaki krewetka w tempurze za 1 zł!"
   const listPart = desc.split(":").slice(1).join(":") || desc;
-
-  const chunks = listPart
-    .split(/[,;\n]/)
-    .map((c) => c.trim())
-    .filter(Boolean);
 
   const rows: { qty: number; cat: string; from: string }[] = [];
 
-  // NOWE: dopuszczamy opcjonalny "+" / bullet na początku, np. "+6x Futomaki ..."
+  // Szukamy wszystkich sekwencji typu:
+  // "+6x Futomaki krewetka w tempurze za 1 zł"
+  // "8x Hosomaki ogórek"
+  //
+  // Działa nawet jeśli zapisy są sklejone bez przecinka:
+  // "8x Hosomaki ogórek +6x Futomaki krewetka..."
   const re =
-    /^[+\-–•]?\s*(\d+)\s*x\s*(Futomaki|California|Hosomaki|Nigiri)\s+(.+)$/i;
+    /[+\-–•]?\s*(\d+)\s*x\s*(Futomaki|California|Hosomaki|Nigiri)\s+(.+?)(?=(?:[,;\n]|[+\-–•]\s*\d+\s*x\s*(?:Futomaki|California|Hosomaki|Nigiri)|$))/gi;
 
-  chunks.forEach((c) => {
-    const m = c.match(re);
-    if (!m) return;
-
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(listPart)) !== null) {
     const qty = parseInt(m[1], 10) || 1;
     const cat = m[2];
 
-    // obcinamy końcówkę typu "za 1 zł!" / "za 1zl"
-    const from = m[3]
-      .replace(/\s+za\s*1\s*z[łl].*$/i, "")
+    // obcinamy końcówki typu "za 1 zł!", "za 2zl" itd.
+    let from = m[3]
+      .replace(/\s+za\s*\d+\s*z[łl].*$/i, "")
       .trim();
 
-    if (!from) return;
+    if (!from) continue;
+
     rows.push({ qty, cat, from });
-  });
+  }
 
   return rows;
+}
+
+type SetSwapPayload = {
+  qty: number;
+  from: string;     // np. "Futomaki łosoś philadelphia surowy"
+  to: string;       // np. "Futomak Vege"
+  addons?: string[]; // np. ["Tempura", "Płatek sojowy"]
+};
+
+/** Kopia logiki klucza z ProductItem.normalizeSetRowKey – tylko na potrzeby payloadu */
+function normalizeSetRowKeyForPayload(row: {
+  qty: number;
+  cat: string;
+  from: string;
+}): string {
+  const cat = (row.cat || "").trim();
+  const from = (row.from || "").trim();
+  if (!from) return cat;
+
+  const parts = from
+    .split("+")
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const isFishPart = (s: string) => {
+    const l = s.toLowerCase();
+    return (
+      l.includes("łosoś") ||
+      l.includes("losos") ||
+      l.includes("tuńczyk") ||
+      l.includes("tunczyk")
+    );
+  };
+
+  if (parts.length > 1) {
+    const fishParts = parts.filter(isFishPart);
+    if (fishParts.length === 1) {
+      return `${cat} ${fishParts[0]}`.replace(/\s+/g, " ").trim();
+    }
+    if (fishParts.length > 1) {
+      return `${cat} ${fishParts.join(" + ")}`.replace(/\s+/g, " ").trim();
+    }
+  }
+
+  return `${cat} ${from}`.replace(/\s+/g, " ").trim();
+}
+
+/** Buduje strukturalne info o zamianach w zestawie + dodatkach per rolka dla danej pozycji z koszyka */
+function buildSetSwapsPayload(
+  item: any,
+  product?: ProductDb | undefined
+): SetSwapPayload[] {
+  if (!product) return [];
+  const subcat = (product.subcategory || "").toLowerCase();
+  if (subcat !== "zestawy") return [];
+
+  const rows = parseSetComposition(product.description);
+  if (!rows.length) return [];
+
+  const swapsArr = Array.isArray(item.swaps) ? item.swaps : [];
+  const addonsArr = Array.isArray(item.addons) ? item.addons : [];
+
+  const result: SetSwapPayload[] = [];
+
+  rows.forEach((row) => {
+    const baseLabel = `${row.cat} ${row.from}`.replace(/\s+/g, " ").trim();
+
+    const foundSwap = swapsArr.find(
+      (s: any) =>
+        s &&
+        typeof s.from === "string" &&
+        s.from.toLowerCase() === row.from.toLowerCase()
+    );
+
+    const toLabel = (foundSwap?.to as string) || row.from;
+
+    const rowKeyBase = normalizeSetRowKeyForPayload(row);
+    const prefix = `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — `;
+    const rowExtras = addonsArr
+      .filter(
+        (a: any) => typeof a === "string" && (a as string).startsWith(prefix)
+      )
+      .map((a: any) => (a as string).slice(prefix.length).trim())
+      .filter(Boolean);
+
+    result.push({
+      qty: row.qty,
+      from: baseLabel,
+      to: toLabel,
+      addons: rowExtras.length ? rowExtras : undefined,
+    });
+  });
+
+  return result;
+}
+
+/** Ładny tekst do notatki (kitchen_note / panel) z listy zamian */
+function buildSetSwapsNote(swaps: SetSwapPayload[]): string {
+  if (!swaps || !swaps.length) return "";
+  return swaps
+    .map((s) => {
+      const addons =
+        s.addons && s.addons.length
+          ? ` (+ ${s.addons.join(", ")})`
+          : "";
+      return `${s.qty}× ${s.from} → ${s.to}${addons}`;
+    })
+    .join("; ");
+}
+
+function isAlreadyBakedOrTempura(text: string): boolean {
+  const t = (text || "").toLowerCase();
+  const hasBaked = t.includes("pieczon"); // pieczona / pieczony / pieczone
+  const hasTempura = t.includes("tempur"); // tempura / w tempurze
+  return hasBaked || hasTempura;
 }
 
 /* ---------- Item w koszyku ---------- */
@@ -712,12 +819,7 @@ const ProductItem: React.FC<{
   // Czy dany extra jest dozwolony dla tego produktu
   const canUseExtra = (extra: string): boolean => {
     if (isSet) {
-      // w zestawach patrzymy po nazwach z opisu zestawu
-      const hasFuto = setRows.some((row) => /futo/i.test(row.cat));
-      if (extra === "Tamago" && hasFuto) return true;
-      if (extra === "Ryba pieczona") {
-        return /SUROWY/i.test(prodInfo?.description || "");
-      }
+      // w zestawach używamy canUseExtraForRow (per rolka)
       return false;
     }
 
@@ -734,14 +836,15 @@ const ProductItem: React.FC<{
 
     // === California ===
     if (s.includes("california")) {
-      if (
-        extra === "Ryba pieczona" &&
-        isSpecialCaliforniaBakedFishProduct(
+      if (extra === "Ryba pieczona") {
+        const text = `${prod.name} ${prodInfo.description || ""}`;
+        // jeśli ta California jest już pieczona / w tempurze – nie dokładamy „Ryby pieczonej”
+        if (isAlreadyBakedOrTempura(text)) return false;
+
+        return isSpecialCaliforniaBakedFishProduct(
           prod.name,
-          prodInfo?.description || ""
-        )
-      ) {
-        return true;
+          prodInfo.description || ""
+        );
       }
       // do California nie dokładamy innych EXTRAS poza tą jedną opcją
       return false;
@@ -756,8 +859,11 @@ const ProductItem: React.FC<{
     // === Futomaki / Futo ===
     if (s.includes("futo")) {
       if (extra === "Ryba pieczona") {
+        const text = `${prod.name} ${prodInfo.description || ""}`;
+        // jeśli futomak jest już pieczony / w tempurze – nie pokazujemy „Ryby pieczonej”
+        if (isAlreadyBakedOrTempura(text)) return false;
         // tylko przy surowych futomakach
-        return /surowy/i.test(`${prod.name} ${prodInfo.description || ""}`);
+        return /surowy/i.test(text);
       }
       if (extra === "Tamago") return true;
       return extra === "Tempura" || extra === "Płatek sojowy";
@@ -818,48 +924,34 @@ const ProductItem: React.FC<{
 
   // Tatar: tylko w Szczytnie / Przasnyszu, przystawki + tatar z łososia/tuńczyka
  // Tatar: tylko w Szczytnie / Przasnyszu, przystawki + tatar z łososia/tuńczyka
-const isTartar = useMemo(() => {
-  if (!prodInfo) return false;
+ // Tatar: tylko w Szczytnie / Przasnyszu, przystawki + tatar z łososia/tuńczyka
+  const isTartar = useMemo(() => {
+    if (!prodInfo) return false;
 
-  const sub = (prodInfo.subcategory || "").toLowerCase();
-  // ważne: fragment "przystawk" łapie "Przystawka", "Przystawki" itd.
-  if (!sub.includes("przystawk")) return false;
+    const sub = (prodInfo.subcategory || "").toLowerCase();
+    // ważne: fragment "przystawk" łapie "Przystawka", "Przystawki" itd.
+    if (!sub.includes("przystawk")) return false;
 
-  const city = (restaurantSlug || "").toLowerCase();
-  if (city !== "szczytno" && city !== "przasnysz") return false;
+    const city = (restaurantSlug || "").toLowerCase();
+    if (city !== "szczytno" && city !== "przasnysz") return false;
 
-  const text = `${prodInfo.name} ${prodInfo.description || ""}`.toLowerCase();
-  if (!text.includes("tatar")) return false;
+    const text = `${prodInfo.name} ${prodInfo.description || ""}`.toLowerCase();
+    if (!text.includes("tatar")) return false;
 
-  const hasFish =
-    text.includes("łosoś") ||
-    text.includes("łososia") ||
-    text.includes("losos") ||
-    text.includes("lososia") ||
-    text.includes("łososi") ||
-    text.includes("lososi") ||
-    text.includes("tuńczyk") ||
-    text.includes("tunczyk") ||
-    text.includes("tuńczyka") ||
-    text.includes("tunczyka");
+    const hasFish =
+      text.includes("łosoś") ||
+      text.includes("łososia") ||
+      text.includes("losos") ||
+      text.includes("lososia") ||
+      text.includes("łososi") ||
+      text.includes("lososi") ||
+      text.includes("tuńczyk") ||
+      text.includes("tunczyk") ||
+      text.includes("tuńczyka") ||
+      text.includes("tunczyka");
 
-  return hasFish;
-}, [prodInfo, restaurantSlug]);
-
-const tartarSelectedBase = useMemo<string | null>(() => {
-  if (!isTartar) return null;
-  const addons = Array.isArray(prod.addons) ? prod.addons : [];
-  return TARTAR_BASES.find((b) => addons.includes(b)) ?? null;
-}, [isTartar, prod.addons]);
-
-const setTartarBase = (base: string) => {
-  if (!isTartar) return;
-  // zawsze jedna baza – wyczyść pozostałe i ustaw wybraną
-  TARTAR_BASES.forEach((b) => {
-    if (prod.addons?.includes(b)) removeAddon(prod.name, b);
-  });
-  addAddon(prod.name, base);
-};
+    return hasFish;
+  }, [prodInfo, restaurantSlug]);
 
   const toggleAddon = (a: string) => {
     const on = (prod.addons ?? []).includes(a);
@@ -963,14 +1055,18 @@ const text = `${currentProduct?.name || row.cat} ${
 const canUseExtraForRow = (ex: string): boolean => {
   const parentNameLc = (prodInfo?.name || prod.name || "").toLowerCase();
 
-  // SPEC CASE: w Zestawie 2 hosomaki bez dodatków w tempurze
+  // SPEC CASE: w Zestawie 2 hosomaki bez dodatków (w tym „Ryba pieczona”)
   if (parentNameLc.startsWith("zestaw 2") && rowCatLc.includes("hosomaki")) {
     return false;
   }
 
-  // === California ===
+  // === California w zestawie ===
   if (rowCatLc.includes("california")) {
     if (ex === "Ryba pieczona") {
+      const rowText = row.from.toLowerCase();
+      // jeśli ta California w zestawie jest już pieczona / w tempurze – blokujemy
+      if (isAlreadyBakedOrTempura(rowText)) return false;
+
       return isSpecialCaliforniaBakedFishProduct(
         currentProduct?.name || "",
         currentProduct?.description || ""
@@ -989,14 +1085,17 @@ const canUseExtraForRow = (ex: string): boolean => {
   // === Futomaki / Futo ===
   if (rowCatLc.includes("futomaki") || rowCatLc.includes("futo")) {
     if (ex === "Ryba pieczona") {
-      // tylko przy surowych futomakach
-      return /surowy/i.test(text);
+      const rowText = row.from.toLowerCase();
+      // jeśli ta rolka w opisie ma „pieczona” lub „w tempurze” – nie dokładamy „Ryby pieczonej”
+      if (isAlreadyBakedOrTempura(rowText)) return false;
+      // tylko przy surowych futomakach (sprawdzamy opis KONKRETNEJ rolki, nie całego zestawu)
+      return /surowy/i.test(rowText);
     }
     if (ex === "Tamago") return true;
     return ex === "Tempura" || ex === "Płatek sojowy";
   }
 
-  // === Nigiri – tę logikę zostawiamy bez zmian ===
+  // === Nigiri – logika bez zmian ===
   if (rowCatLc.includes("nigiri")) {
     if (ex !== "Ryba pieczona") return false;
     const hasFish =
@@ -1010,26 +1109,38 @@ const canUseExtraForRow = (ex: string): boolean => {
   return false;
 };
 
+             const isCaliforniaRow = /california/i.test(row.cat || "");
+
               return (
                 <div key={i} className="flex flex-col gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="px-2 py-1 rounded bg-gray-50 border border-gray-200">
                       {row.qty}× {row.cat}
                     </span>
-                    <span className="text-black/70">zamień:</span>
-                    <select
-                      className="border border-black/15 rounded px-2 py-1 bg-white"
-                      value={current}
-                      onChange={(e) => doSetSwap(row.from, e.target.value)}
-                    >
-                      {[current, ...pool.filter((n) => n !== current)].map(
-                        (n) => (
-                          <option key={n} value={n}>
-                            {withCategoryPrefix(n, row.cat)}
-                          </option>
-                        )
-                      )}
-                    </select>
+
+                    {isCaliforniaRow ? (
+                      // Dla Californii w zestawach nie ma pełnej zamiany – pokazujemy tylko opis
+                      <span className="text-black/70 text-[11px]">
+                        {row.from}
+                      </span>
+                    ) : (
+                      <>
+                        <span className="text-black/70">zamień:</span>
+                        <select
+                          className="border border-black/15 rounded px-2 py-1 bg-white"
+                          value={current}
+                          onChange={(e) => doSetSwap(row.from, e.target.value)}
+                        >
+                          {[current, ...pool.filter((n) => n !== current)].map(
+                            (n) => (
+                              <option key={n} value={n}>
+                                {withCategoryPrefix(n, row.cat)}
+                              </option>
+                            )
+                          )}
+                        </select>
+                      </>
+                    )}
 
                     {rawRow && (
                       <button
@@ -1127,8 +1238,8 @@ const canUseExtraForRow = (ex: string): boolean => {
 
             <p className="text-[11px] text-black/60">
               Zamiany tylko w obrębie tej samej kategorii (Futomaki ↔ Futomaki,
-              Hosomaki ↔ Hosomaki itd.). Bez specjałów. Dodajemy pozycję „
-              {SWAP_FEE_NAME}”.
+              Hosomaki ↔ Hosomaki itd.). Californię w zestawach pozostawiamy
+              bez zamiany. Bez specjałów. Dodajemy pozycję „{SWAP_FEE_NAME}”.
             </p>
 
             {isSet && setBakePrice != null && (
@@ -1245,33 +1356,13 @@ const canUseExtraForRow = (ex: string): boolean => {
           </div>
         )}
 
-        {isTartar && (
+               {isTartar && (
           <div>
-            <div className="font-semibold mb-1">Sposób podania tatara:</div>
-            <div className="flex flex-wrap gap-2">
-              {TARTAR_BASES.map((base) => {
-                const label = base.replace(/^Podanie:\s*/i, "");
-                const on = tartarSelectedBase === base;
-                return (
-                  <button
-                    key={base}
-                    type="button"
-                    onClick={() => setTartarBase(base)}
-                    className={clsx(
-                      "px-2 py-1 rounded text-xs border",
-                      on
-                        ? "bg-black text-white border-black"
-                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
-                    )}
-                  >
-                    {on ? `✓ ${label}` : label}
-                  </button>
-                );
-              })}
-            </div>
+            <div className="font-semibold mb-1">Sposób podania tatara</div>
             <p className="text-[11px] text-black/60 mt-1">
-              Dostępne tylko w Szczytnie i Przasnyszu dla tatara z łososia lub
-              tuńczyka: wybierz bazę (awokado, ryż lub chipsy krewetkowe).
+              Tatar wydajemy standardowo na ryżu. W lokalach w Przasnyszu i
+              Szczytnie dokładamy obok chipsy krewetkowe – nie musisz niczego
+              zaznaczać w zamówieniu.
             </p>
           </div>
         )}
@@ -2189,8 +2280,20 @@ export default function CheckoutModal() {
         orderPayload.address = optionalAddress.trim();
       }
 
-      const itemsPayload = items.map((item: any, index: number) => {
+       const itemsPayload = items.map((item: any, index: number) => {
         const product = resolveProduct(item);
+
+        // NOWE: zamiany w zestawie + dodatki per rolka
+        const setSwaps = buildSetSwapsPayload(item, product);
+
+        // tekst z notatki użytkownika + tekst z zamian
+        const userNote = notes[index] || "";
+        const swapsNote = buildSetSwapsNote(setSwaps);
+        const combinedNote =
+          userNote && swapsNote
+            ? `${userNote} | ${swapsNote}`
+            : userNote || swapsNote || "";
+
         return {
           product_id: product?.id ?? item.product_id ?? item.id ?? null,
           name: item.name,
@@ -2199,8 +2302,9 @@ export default function CheckoutModal() {
           options: {
             addons: item.addons,
             swaps: item.swaps,
-            note: notes[index] || "",
-          restaurant: slug, 
+            set_swaps: setSwaps.length ? setSwaps : undefined, // struktura do panelu
+            note: combinedNote, // to pole czyta backend (opt.note)
+            restaurant: slug,
           },
         };
       });
@@ -2275,7 +2379,7 @@ export default function CheckoutModal() {
       )}
 
       <div
-        className="fixed inset-0 z-[58] bg-black/70 grid place-items-center p-4"
+        className="fixed inset-0 z-[58] bg-black/70 grid place-items-stretch lg:place-items-center p-0 lg:p-4"
         role="dialog"
         aria-modal="true"
         onMouseDown={(e) => {
@@ -2283,7 +2387,7 @@ export default function CheckoutModal() {
         }}
       >
         <div
-          className="w-full max-w-5xl bg-white text-black shadow-2xl grid grid-rows-[auto,1fr] max-h-[75vh]"
+          className="w-full max-w-5xl bg-white text-black shadow-2xl grid grid-rows-[auto,1fr] h-full lg:h-auto lg:max-h-[90vh]"
           onMouseDown={(e) => e.stopPropagation()}
         >
           <div className="flex items-center justify-between px-6 py-4 border-b border-black/10">
@@ -2339,147 +2443,142 @@ export default function CheckoutModal() {
                       </div>
                     )}
 
-                    {isMobile && checkoutStep === 1 && (
-                      <div className="space-y-6">
-                        <MobileTopBar>
-                          <div className="flex justify-end">
-                            <button
-                              onClick={nextStep}
-                              disabled={items.length === 0}
-                              className={`min-w-[160px] py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
-                            >
-                              Dalej →
-                            </button>
-                          </div>
-                        </MobileTopBar>
+                    isMobile && checkoutStep === 1 && (
+  <div className="space-y-6">
+    <h3 className="text-2xl font-bold">Wybrane produkty</h3>
 
-                        <h3 className="text-2xl font-bold">Wybrane produkty</h3>
+    <div className="space-y-3 max-h-[360px] overflow-y-auto">
+      {items.map((item, idx) => (
+        <div key={idx} className="space-y-1">
+          <ProductItem
+            prod={item}
+            productCategory={productCategory}
+            productsDb={productsDb}
+            optionsByCat={optionsByCat}
+            restaurantSlug={restaurantSlug}
+            helpers={productHelpers}
+          />
+          <textarea
+            className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
+            placeholder="Notatka do produktu"
+            value={notes[idx] || ""}
+            onChange={(e) => setNotes({ ...notes, [idx]: e.target.value })}
+          />
+        </div>
+      ))}
+      {items.length === 0 && (
+        <p className="text-center text-black/60">
+          Brak produktów w koszyku.
+        </p>
+      )}
+    </div>
 
-                        <div className="space-y-3 max-h-[360px] overflow-y-auto">
-                          {items.map((item, idx) => (
-                            <div key={idx} className="space-y-1">
-                              <ProductItem
-                                prod={item}
-                                productCategory={productCategory}
-                                productsDb={productsDb}
-                                optionsByCat={optionsByCat}
-                                restaurantSlug={restaurantSlug}
-                                helpers={productHelpers}
-                              />
-                              <textarea
-                                className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
-                                placeholder="Notatka do produktu"
-                                value={notes[idx] || ""}
-                                onChange={(e) => setNotes({ ...notes, [idx]: e.target.value })}
-                              />
-                            </div>
-                          ))}
-                          {items.length === 0 && (
-                            <p className="text-center text-black/60">Brak produktów w koszyku.</p>
-                          )}
-                        </div>
+    <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
 
-                        <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
-                      </div>
-                    )}
+    <div className="pt-2 border-t border-black/10 flex justify-end">
+      <button
+        onClick={nextStep}
+        disabled={items.length === 0}
+        className={`min-w-[160px] py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
+      >
+        Dalej →
+      </button>
+    </div>
+  </div>
+)}
 
                     {((!isMobile && checkoutStep === 1) ||
-                      (isMobile && checkoutStep === 2)) && (
-                      <div className="space-y-6">
-                        {isMobile && (
-                          <MobileTopBar>
-                            <div className="flex justify-end">
-                              <button
-                                onClick={() => nextStep()}
-                                disabled={!selectedOption}
-                                className={`min-w-[160px] py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
-                              >
-                                Dalej →
-                              </button>
-                            </div>
-                          </MobileTopBar>
-                        )}
+  (isMobile && checkoutStep === 2)) && (
+  <div className="space-y-6">
+    <h3 className="text-2xl font-bold">Sposób odbioru</h3>
 
-                        <h3 className="text-2xl font-bold">Sposób odbioru</h3>
+    <div className="grid grid-cols-2 gap-3">
+      {OPTIONS.map(({ key, label, Icon }) => (
+        <button
+          key={key}
+          onClick={() => setSelectedOption(key)}
+          className={clsx(
+            "flex flex-col items-center justify-center border px-3 py-4 transition",
+            selectedOption === key
+              ? "bg-yellow-400 text-black border-yellow-500"
+              : "bg-gray-50 text-black border-black/10 hover:bg-gray-100"
+          )}
+        >
+          <Icon size={22} />
+          <span className="mt-1 text-sm font-medium">{label}</span>
+        </button>
+      ))}
+    </div>
 
-                        <div className="grid grid-cols-2 gap-3">
-                          {OPTIONS.map(({ key, label, Icon }) => (
-                            <button
-                              key={key}
-                              onClick={() => setSelectedOption(key)}
-                              className={clsx(
-                                "flex flex-col items-center justify-center border px-3 py-4 transition",
-                                selectedOption === key
-                                  ? "bg-yellow-400 text-black border-yellow-500"
-                                  : "bg-gray-50 text-black border-black/10 hover:bg-gray-100"
-                              )}
-                            >
-                              <Icon size={22} />
-                              <span className="mt-1 text-sm font-medium">{label}</span>
-                            </button>
-                          ))}
-                        </div>
+    {selectedOption === "delivery" && (
+      <div className="rounded-xl bg-yellow-50 border border-yellow-200 p-3 text-sm">
+        Płatność: <b>gotówka u kierowcy</b>.
+      </div>
+    )}
 
-                        {selectedOption === "delivery" && (
-                          <div className="rounded-xl bg-yellow-50 border border-yellow-200 p-3 text-sm">
-                            Płatność: <b>gotówka u kierowcy</b>.
-                          </div>
-                        )}
+    {selectedOption === "delivery" && (
+      <div className="space-y-2">
+        <h4 className="font-semibold">Czas dostawy</h4>
+        <div className="flex flex-wrap gap-6 items-center">
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="timeOption"
+              value="asap"
+              checked={deliveryTimeOption === "asap"}
+              onChange={() => setDeliveryTimeOption("asap")}
+            />
+            <span>Jak najszybciej</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="timeOption"
+              value="schedule"
+              checked={deliveryTimeOption === "schedule"}
+              onChange={() => setDeliveryTimeOption("schedule")}
+            />
+            <span>Na godzinę</span>
+          </label>
+          {deliveryTimeOption === "schedule" && (
+            <input
+              type="time"
+              className="border border-black/15 rounded-xl px-2 py-1"
+              min={timeMin}
+              max={timeMax}
+              value={scheduledTime}
+              onChange={(e) => setScheduledTime(e.target.value)}
+            />
+          )}
+        </div>
+        <p className="text-xs text-black/60">
+          Dzisiejsze godziny w {restaurantCityLabel}: {openInfo.label}
+        </p>
+      </div>
+    )}
 
-                        {selectedOption === "delivery" && (
-                          <div className="space-y-2">
-                            <h4 className="font-semibold">Czas dostawy</h4>
-                            <div className="flex flex-wrap gap-6 items-center">
-                              <label className="flex items-center gap-2">
-                                <input
-                                  type="radio"
-                                  name="timeOption"
-                                  value="asap"
-                                  checked={deliveryTimeOption === "asap"}
-                                  onChange={() => setDeliveryTimeOption("asap")}
-                                />
-                                <span>Jak najszybciej</span>
-                              </label>
-                              <label className="flex items-center gap-2">
-                                <input
-                                  type="radio"
-                                  name="timeOption"
-                                  value="schedule"
-                                  checked={deliveryTimeOption === "schedule"}
-                                  onChange={() => setDeliveryTimeOption("schedule")}
-                                />
-                                <span>Na godzinę</span>
-                              </label>
-                              {deliveryTimeOption === "schedule" && (
-                                <input
-                                  type="time"
-                                  className="border border-black/15 rounded-xl px-2 py-1"
-                                  min={timeMin}
-                                  max={timeMax}
-                                  value={scheduledTime}
-                                  onChange={(e) => setScheduledTime(e.target.value)}
-                                />
-                              )}
-                            </div>
-                            <p className="text-xs text-black/60">
-                              Dzisiejsze godziny w {restaurantCityLabel}: {openInfo.label}
-                            </p>
-                          </div>
-                        )}
-
-                        {!isMobile && (
-                          <div className="flex justify-end">
-                            <button
-                              onClick={() => nextStep()}
-                              disabled={!selectedOption}
-                              className={`min-w-[220px] py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
-                            >
-                              Dalej →
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
+    <div className="flex justify-between gap-3 pt-2 border-t border-black/10">
+      {isMobile && (
+        <button
+          type="button"
+          onClick={() => goToStep(1)}
+          className="px-4 py-2 rounded-xl border border-black/15"
+        >
+          ← Cofnij
+        </button>
+      )}
+      <div className="flex-1 flex justify-end">
+        <button
+          onClick={() => nextStep()}
+          disabled={!selectedOption}
+          className={`min-w-[220px] py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
+        >
+          Dalej →
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
                     {((!isMobile && checkoutStep === 2) ||
                       (isMobile && checkoutStep === 3)) && (
@@ -2601,31 +2700,29 @@ export default function CheckoutModal() {
                         </div>
 
                         <div className="flex justify-between mt-2">
-                          <button
-                            onClick={() => goToStep(isMobile ? 2 : 1)}
-                            className="px-4 py-2 rounded-xl border border-black/15"
-                          >
-                            ← Wstecz
-                          </button>
-                          {!isMobile && (
-                            <button
-                              onClick={nextStep}
-                              disabled={
-                                !name ||
-                                !phone ||
-                                !validEmail ||
-                                (selectedOption === "delivery" &&
-                                  (!street ||
-                                    !postalCode ||
-                                    !city ||
-                                    (REQUIRE_AUTOCOMPLETE && !custCoords)))
-                              }
-                              className={`px-4 py-2 rounded-xl text-white font-semibold ${accentBtn} disabled:opacity-50`}
-                            >
-                              Dalej →
-                            </button>
-                          )}
-                        </div>
+  <button
+    onClick={() => goToStep(isMobile ? 2 : 1)}
+    className="px-4 py-2 rounded-xl border border-black/15"
+  >
+    ← Cofnij
+  </button>
+  <button
+    onClick={nextStep}
+    disabled={
+      !name ||
+      !phone ||
+      !validEmail ||
+      (selectedOption === "delivery" &&
+        (!street ||
+          !postalCode ||
+          !city ||
+          (REQUIRE_AUTOCOMPLETE && !custCoords)))
+    }
+    className={`px-4 py-2 rounded-xl text-white font-semibold ${accentBtn} disabled:opacity-50`}
+  >
+    Dalej →
+  </button>
+</div>
 
                         {isMobile && (
                           <div className="mt-3 space-y-4">

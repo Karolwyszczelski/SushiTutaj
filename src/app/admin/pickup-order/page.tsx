@@ -75,6 +75,20 @@ const fromDBPaymentStatus = (v: any): PaymentStatus => {
   return null;
 };
 
+const formatTimeLabel = (value?: string | null): string => {
+  if (!value) return "-";
+  if (value === "asap") return "Jak najszybciej";
+
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return "-";
+
+  return dt.toLocaleTimeString("pl-PL", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+
 const getOptionLabel = (opt?: Order["selected_option"]) =>
   opt === "delivery"
     ? "DOSTAWA"
@@ -507,8 +521,8 @@ const AcceptButton: React.FC<{
   const options: number[] = useMemo(
     () =>
       order.selected_option === "delivery"
-        ? [30, 60, 90, 120]
-        : [15, 20, 30, 45, 60],
+        ? [20, 40, 60, 80, 100, 120]
+        : [20, 40, 60, 80, 100, 120],
     [order.selected_option]
   );
 
@@ -965,47 +979,49 @@ export default function PickupOrdersPage() {
 
   // Akceptacja – PATCH /api/orders/[id] → status + czas
   const acceptAndSetTime = async (order: Order, minutes: number) => {
-    const eta = new Date(Date.now() + minutes * 60_000).toISOString();
+  const eta = new Date(Date.now() + minutes * 60_000).toISOString();
 
-    try {
-      setEditingOrderId(order.id);
-      setErrorMsg(null);
+  try {
+    setEditingOrderId(order.id);
+    setErrorMsg(null);
 
-      const res = await fetch(`/api/orders/${order.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "accepted",
-          deliveryTime: eta,
-          delivery_time: eta,
-          client_delivery_time: eta,
-        }),
-      });
+    const res = await fetch(`/api/orders/${order.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: "accepted",
+        // CZAS USTALANY PRZEZ LOKAL
+        deliveryTime: eta,
+        delivery_time: eta,
+        // UWAGA: client_delivery_time zostaje taki, jak przyszedł z CheckoutModal
+      }),
+    });
 
-      const j = (await res.json().catch(() => ({}))) as any;
+    const j = (await res.json().catch(() => ({}))) as any;
 
-      if (!res.ok) {
-        setErrorMsg(
-          j?.error || "Nie udało się zaakceptować zamówienia."
-        );
-        return;
-      }
-
-      updateLocal(order.id, {
-        status: (j.status as Order["status"]) || "accepted",
-        deliveryTime:
-          (j.deliveryTime as string) ||
-          (j.delivery_time as string) ||
-          eta,
-        clientDelivery:
-          (j.client_delivery_time as string) ||
-          order.clientDelivery ||
-          eta,
-      });
-    } finally {
-      setEditingOrderId(null);
+    if (!res.ok) {
+      setErrorMsg(j?.error || "Nie udało się zaakceptować zamówienia.");
+      return;
     }
-  };
+
+    const newDeliveryTime: string =
+      (j.deliveryTime as string) ||
+      (j.delivery_time as string) ||
+      eta;
+
+    updateLocal(order.id, {
+      status: (j.status as Order["status"]) || "accepted",
+      deliveryTime: newDeliveryTime,
+      // jeśli backend zwróci client_delivery_time – bierzemy z odpowiedzi,
+      // jeśli nie – zostawiamy to, co było (np. "asap" albo godzina z checkoutu)
+      clientDelivery:
+        (j.client_delivery_time as string | undefined) ??
+        order.clientDelivery,
+    });
+  } finally {
+    setEditingOrderId(null);
+  }
+};
 
   const extendTime = async (order: Order, minutes: number) => {
     const base =
@@ -1492,23 +1508,18 @@ export default function PickupOrdersPage() {
 
               {paymentBadge(o)}
             </div>
-            <div className="text-sm text-slate-700">
-              <b>Klient:</b> {o.name || "—"}
-              <span className="ml-3">
-                <b>Czas (klient):</b>{" "}
-                {o.clientDelivery === "asap"
-                  ? "Jak najszybciej"
-                  : o.clientDelivery
-                  ? new Date(o.clientDelivery).toLocaleTimeString(
-                      "pl-PL",
-                      {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      }
-                    )
-                  : "-"}
-              </span>
-            </div>
+            <div className="text-sm text-slate-700 flex flex-wrap gap-x-3 gap-y-1">
+  <span>
+    <b>Klient:</b> {o.name || "—"}
+  </span>
+  <span>
+    <b>Czas (klient):</b> {formatTimeLabel(o.clientDelivery)}
+  </span>
+  <span>
+    <b>Czas (lokal):</b>{" "}
+    {o.deliveryTime ? formatTimeLabel(o.deliveryTime) : "-"}
+  </span>
+</div>
           </div>
           <div className="flex flex-col items-end gap-1 text-sm sm:items-end">
             {o.status === "accepted" &&
@@ -1694,7 +1705,7 @@ export default function PickupOrdersPage() {
                 orderId={o.id}
                 onOrderUpdated={() => fetchOrders()}
               />
-              {[15, 30, 45, 60].map((m) => (
+              {[20, 40, 60, 80].map((m) => (
                 <button
                   key={m}
                   onClick={() => extendTime(o, m)}

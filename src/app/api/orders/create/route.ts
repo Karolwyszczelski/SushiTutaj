@@ -223,9 +223,11 @@ type ProductRow = {
 };
 
 async function fetchProductsByIds(idsMixed: (string | number)[]) {
-  const ids = Array.from(new Set(idsMixed.map((x) => String(x)))).filter(
-    Boolean
-  );
+  // poprawka: filtr na tablicy, nie na Set
+  const ids = Array.from(
+    new Set(idsMixed.map((x) => String(x)))
+  ).filter((v) => Boolean(v)) as string[];
+
   if (!ids.length) return new Map<string, ProductRow>();
   for (const table of PRODUCT_TABLES) {
     const { data, error } = await supabaseAdmin
@@ -394,7 +396,7 @@ async function getDistanceKmFromGoogle(
 }
 
 /* ===== Normalizacja BODY ===== */
-function normalizeBody(raw: any, req: Request) {
+function normalizeBody(raw: any, req: Request): any {
   const base = raw?.orderPayload ? raw.orderPayload : raw;
   const rawItems =
     raw?.items ??
@@ -587,7 +589,7 @@ export async function POST(req: Request) {
     }
 
     // 2) Normalizacja
-    const n = normalizeBody(raw, req);
+    const n: any = normalizeBody(raw, req);
 
     if (!n.phone) {
       return NextResponse.json(
@@ -720,7 +722,7 @@ export async function POST(req: Request) {
           n.flat_number || "",
           n.city || "",
         ]
-          .filter((x) => String(x).trim().length > 0)
+          .filter((x: any) => String(x).trim().length > 0)
           .join(" ")
           .toLowerCase();
 
@@ -996,13 +998,13 @@ export async function POST(req: Request) {
 
     // 3) Produkty
     const productIds = n.itemsArray
-      .map((it) => it.product_id ?? it.productId ?? it.id ?? null)
+      .map((it: any) => it.product_id ?? it.productId ?? it.id ?? null)
       .filter(Boolean)
       .map((x: any) => String(x));
     const productsMap = await fetchProductsByIds(productIds);
 
     // 4) Normalizacja pozycji
-    const normalizedItems: NormalizedItem[] = n.itemsArray.map((it) => {
+    const normalizedItems: NormalizedItem[] = n.itemsArray.map((it: any) => {
       const key = String(it.product_id ?? it.productId ?? it.id ?? "");
       const db = productsMap.get(key);
       return buildItemFromDbAndOptions(db, it);
