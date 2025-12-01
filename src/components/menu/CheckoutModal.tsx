@@ -545,7 +545,7 @@ function parseSetComposition(desc?: string | null) {
     const cat = m[2];
 
     // obcinamy końcówki typu "za 1 zł!", "za 2zl" itd.
-    let from = m[3]
+    const from = m[3]
       .replace(/\s+za\s*\d+\s*z[łl].*$/i, "")
       .trim();
 
@@ -898,7 +898,7 @@ const ProductItem: React.FC<{
   };
 
   // Frytki z batatów z przystawek – tylko w Szczytnie i Przasnyszu
-  const isSweetPotatoFries = useMemo(() => {
+   const isSweetPotatoFries = useMemo(() => {
     const city = (restaurantSlug || "").toLowerCase();
     if (city !== "szczytno" && city !== "przasnysz") return false;
 
@@ -911,7 +911,7 @@ const ProductItem: React.FC<{
       text.includes("frytki z batat") ||
       text.includes("frytki batat")
     );
-  }, [prod.name, prodInfo, restaurantSlug]);
+  }, [prod, prodInfo, restaurantSlug]);
 
   const saucesForProduct = useMemo(() => {
     if (isSweetPotatoFries) {
