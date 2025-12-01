@@ -19,6 +19,8 @@ import { toZonedTime } from "date-fns-tz";
 import useIsClient from "@/lib/useIsClient";
 import useCartStore from "@/store/cartStore";
 import AddressAutocomplete from "@/components/menu/AddressAutocomplete";
+import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+
 
 /* ---------- ENV / const ---------- */
 const supabase = createClient(
@@ -124,6 +126,8 @@ type Promo =
       require_code: boolean;
     }
   | null;
+
+  type LoyaltyChoice = "keep" | "use_4";
 
 /* Sushi sosy i dodatki */
 const BASE_SAUCES = [
@@ -1465,6 +1469,7 @@ export default function CheckoutModal() {
   const isClient = useIsClient();
   const session = useSession();
   const isLoggedIn = !!session?.user;
+  const supabaseAuth = createClientComponentClient();
 
   const {
     isCheckoutOpen,
@@ -1550,6 +1555,11 @@ export default function CheckoutModal() {
   const timeMax = openInfo.range ? `${pad(openInfo.range[2])}:${pad(openInfo.range[3])}` : "23:59";
   const [scheduledTime, setScheduledTime] = useState<string>(timeMin);
 
+const [loyaltyStickers, setLoyaltyStickers] = useState<number | null>(null);
+const [loyaltyChoice, setLoyaltyChoice] = useState<LoyaltyChoice>("keep");
+const [loyaltyLoading, setLoyaltyLoading] = useState(false);
+
+
   useEffect(() => {
     if (deliveryTimeOption === "schedule") {
       setScheduledTime((prev) => {
@@ -1632,6 +1642,47 @@ export default function CheckoutModal() {
     };
   }, [restaurantSlug]);
 
+  useEffect(() => {
+  if (!isCheckoutOpen || !isLoggedIn || !session?.user?.id) {
+    setLoyaltyStickers(null);
+    setLoyaltyChoice("keep");
+    return;
+  }
+
+  let cancelled = false;
+
+  const load = async () => {
+    try {
+      setLoyaltyLoading(true);
+      const { data, error } = await supabaseAuth
+        .from("loyalty_accounts")
+        .select("stickers")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (error || !data) {
+        // brak rekordu = 0 naklejek
+        setLoyaltyStickers(0);
+      } else {
+        const raw = Number((data as any).stickers ?? 0);
+        setLoyaltyStickers(Number.isFinite(raw) ? raw : 0);
+      }
+    } catch {
+      if (!cancelled) setLoyaltyStickers(0);
+    } finally {
+      if (!cancelled) setLoyaltyLoading(false);
+    }
+  };
+
+  load();
+
+  return () => {
+    cancelled = true;
+  };
+}, [isCheckoutOpen, isLoggedIn, session?.user?.id, supabaseAuth]);
+
   const [submitting, setSubmitting] = useState(false);
   const [confirmCityOk, setConfirmCityOk] = useState(false);
   const [orderSent, setOrderSent] = useState(false);
@@ -1658,6 +1709,9 @@ export default function CheckoutModal() {
     setConfirmCityOk(false);
     setLegalAccepted(false);
     setSubmitting(false);
+    setLoyaltyChoice("keep");
+  setLoyaltyStickers(null);
+  setLoyaltyLoading(false);
     goToStep(1);
     removeTurnstile();
   }, [originalCloseCheckoutModal, goToStep, removeTurnstile]);
@@ -1933,6 +1987,12 @@ export default function CheckoutModal() {
     const totalCap = baseTotal + packagingCost + (deliveryInfo?.cost || 0);
     return Math.max(0, Math.min(val, totalCap));
   }, [promo, computeDiscountBase, baseTotal, packagingCost, deliveryInfo]);
+
+  const canUseLoyalty4 =
+  isLoggedIn &&
+  typeof loyaltyStickers === "number" &&
+  loyaltyStickers >= 4 &&
+  loyaltyStickers < 8;
 
   const totalWithDelivery = Math.max(0, subtotal + (deliveryInfo?.cost || 0) - discount);
   const shouldHideOrderActions = Boolean(TURNSTILE_SITE_KEY && turnstileError);
@@ -2264,6 +2324,9 @@ export default function CheckoutModal() {
           selectedOption === "delivery" ? "Płatność wyłącznie gotówką u kierowcy" : null,
         chopsticks_qty: Math.max(0, Math.min(10, Number(chopsticksQty) || 0)),
         reservation_id: reservationId || null,
+        loyalty_choice: canUseLoyalty4 ? loyaltyChoice : null,
+        loyalty_stickers_before:
+    typeof loyaltyStickers === "number" ? loyaltyStickers : null,
       };
 
       if (selectedOption === "delivery") {
@@ -2331,122 +2394,612 @@ export default function CheckoutModal() {
     }
   };
 
-  if (!isClient || !isCheckoutOpen) return null;
+ if (!isClient || !isCheckoutOpen) return null;
 
-  const OPTIONS: { key: OrderOption; label: string; Icon: any }[] = [
-    { key: "takeaway", label: "Na wynos", Icon: ShoppingBag },
-    { key: "delivery", label: "Dostawa", Icon: Truck },
-  ];
+const OPTIONS: { key: OrderOption; label: string; Icon: any }[] = [
+  { key: "takeaway", label: "Na wynos", Icon: ShoppingBag },
+  { key: "delivery", label: "Dostawa", Icon: Truck },
+];
 
-  const LegalConsent = (
-    <label className="flex items-start gap-2 text-xs leading-5 text-black">
-      <input
-        type="checkbox"
-        checked={legalAccepted}
-        onChange={(e) => setLegalAccepted(e.target.checked)}
-        className="mt-0.5"
-      />
-      <span>
-        Akceptuję{" "}
-        <a href="/legal/regulamin" target="_blank" rel="noopener noreferrer" className="underline">
-          Regulamin
-        </a>{" "}
-        oraz{" "}
-        <a
-          href="/legal/polityka-prywatnosci"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline"
-        >
-          Politykę prywatności
-        </a>{" "}
-        (v{TERMS_VERSION}).
-      </span>
-    </label>
-  );
-
-  return (
-    <>
-      {TURNSTILE_SITE_KEY && (
-        <Script
-          id="cf-turnstile"
-          src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
-          async
-          defer
-          strategy="afterInteractive"
-          onLoad={() => setTsReady(true)}
-        />
-      )}
-
-      <div
-        className="fixed inset-0 z-[58] bg-black/70 grid place-items-stretch lg:place-items-center p-0 lg:p-4"
-        role="dialog"
-        aria-modal="true"
-        onMouseDown={(e) => {
-          if (e.target === e.currentTarget) closeCheckoutModal();
-        }}
+const LegalConsent = (
+  <label className="flex items-start gap-2 text-xs leading-5 text-black">
+    <input
+      type="checkbox"
+      checked={legalAccepted}
+      onChange={(e) => setLegalAccepted(e.target.checked)}
+      className="mt-0.5"
+    />
+    <span>
+      Akceptuję{" "}
+      <a
+        href="/legal/regulamin"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline"
       >
-        <div
-          className="w-full max-w-5xl bg-white text-black shadow-2xl grid grid-rows-[auto,1fr] h-full lg:h-auto lg:max-h-[90vh]"
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <div className="flex items-center justify-between px-6 py-4 border-b border-black/10">
-            <h2 className="text-xl font-semibold">Zamówienie — {restaurantCityLabel}</h2>
-            {!orderSent && (
-              <button
-                aria-label="Zamknij"
-                onClick={closeCheckoutModal}
-                className="p-2 rounded-full hover:bg-black/5"
-              >
-                <X size={20} />
-              </button>
-            )}
-          </div>
+        Regulamin
+      </a>{" "}
+      oraz{" "}
+      <a
+        href="/legal/polityka-prywatnosci"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline"
+      >
+        Politykę prywatności
+      </a>{" "}
+      (v{TERMS_VERSION}).
+    </span>
+  </label>
+);
 
-          <div className="overflow-y-auto overscroll-contain">
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 p-6">
-              <div>
-                {orderSent ? (
-                  <div className="min-h-[320px] flex flex-col items-center justify-center text-center space-y-5 px-4">
-                    <div className="bg-white p-4 rounded-2xl shadow flex flex-col items-center gap-2">
-                      <div className="bg-white p-3 rounded-xl">
-                        <QRCode value={thanksQrUrl} size={170} />
-                      </div>
-                      <p className="text-xs text-black/60 max-w-xs">
-                        Zeskanuj kod lub kliknij poniższy przycisk, aby ocenić lokal w Google.
-                      </p>
+return (
+  <>
+    {TURNSTILE_SITE_KEY && (
+      <Script
+        id="cf-turnstile"
+        src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
+        async
+        defer
+        strategy="afterInteractive"
+        onLoad={() => setTsReady(true)}
+      />
+    )}
+
+    <div
+      className="fixed inset-0 z-[58] bg-black/70 grid place-items-stretch lg:place-items-center p-0 lg:p-4"
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) closeCheckoutModal();
+      }}
+    >
+      <div
+        className="w-full max-w-5xl bg-white text-black shadow-2xl grid grid-rows-[auto,1fr] h-full lg:h-auto lg:max-h-[90vh]"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b border-black/10">
+          <h2 className="text-xl font-semibold">
+            Zamówienie — {restaurantCityLabel}
+          </h2>
+          {!orderSent && (
+            <button
+              aria-label="Zamknij"
+              onClick={closeCheckoutModal}
+              className="p-2 rounded-full hover:bg-black/5"
+            >
+              <X size={20} />
+            </button>
+          )}
+        </div>
+
+        <div className="overflow-y-auto overscroll-contain">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 p-6">
+            <div>
+              {orderSent ? (
+                <div className="min-h-[320px] flex flex-col items-center justify-center text-center space-y-5 px-4">
+                  <div className="bg-white p-4 rounded-2xl shadow flex flex-col items-center gap-2">
+                    <div className="bg-white p-3 rounded-xl">
+                      <QRCode value={thanksQrUrl} size={170} />
                     </div>
-                    <h3 className="text-2xl font-bold">Dziękujemy za zamówienie!</h3>
-                    <p className="text-black/70">
-                      Potwierdzenie i link do śledzenia wysłaliśmy na Twój adres e-mail.
+                    <p className="text-xs text-black/60 max-w-xs">
+                      Zeskanuj kod lub kliknij poniższy przycisk, aby ocenić
+                      lokal w Google.
                     </p>
-                    <div className="flex justify-center gap-3 flex-wrap">
-                      <button
-                        onClick={() => window.open(thanksQrUrl, "_blank")}
-                        className={`px-4 py-2 rounded-xl ${accentBtn}`}
-                      >
-                        Zostaw opinię w Google
-                      </button>
-                      <button
-                        onClick={closeCheckoutModal}
-                        className="px-4 py-2 rounded-xl border border-black/15"
-                      >
-                        Zamknij
-                      </button>
-                    </div>
                   </div>
-                ) : (
-                  <>
-                    {errorMessage && (
-                      <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-red-700">
-                        {errorMessage}
+                  <h3 className="text-2xl font-bold">
+                    Dziękujemy za zamówienie!
+                  </h3>
+                  <p className="text-black/70">
+                    Potwierdzenie i link do śledzenia wysłaliśmy na Twój adres
+                    e-mail.
+                  </p>
+                  <div className="flex justify-center gap-3 flex-wrap">
+                    <button
+                      onClick={() => window.open(thanksQrUrl, "_blank")}
+                      className={`px-4 py-2 rounded-xl ${accentBtn}`}
+                    >
+                      Zostaw opinię w Google
+                    </button>
+                    <button
+                      onClick={closeCheckoutModal}
+                      className="px-4 py-2 rounded-xl border border-black/15"
+                    >
+                      Zamknij
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {errorMessage && (
+                    <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-red-700">
+                      {errorMessage}
+                    </div>
+                  )}
+
+                  {/* KROK 1 MOBILE: lista produktów */}
+                  {isMobile && checkoutStep === 1 && (
+                    <div className="space-y-6">
+                      <h3 className="text-2xl font-bold">Wybrane produkty</h3>
+
+                      <div className="space-y-3 max-h-[360px] overflow-y-auto">
+                        {items.map((item, idx) => (
+                          <div key={idx} className="space-y-1">
+                            <ProductItem
+                              prod={item}
+                              productCategory={productCategory}
+                              productsDb={productsDb}
+                              optionsByCat={optionsByCat}
+                              restaurantSlug={restaurantSlug}
+                              helpers={productHelpers}
+                            />
+                            <textarea
+                              className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
+                              placeholder="Notatka do produktu"
+                              value={notes[idx] || ""}
+                              onChange={(e) =>
+                                setNotes({ ...notes, [idx]: e.target.value })
+                              }
+                            />
+                          </div>
+                        ))}
+                        {items.length === 0 && (
+                          <p className="text-center text-black/60">
+                            Brak produktów w koszyku.
+                          </p>
+                        )}
                       </div>
-                    )}
 
-                    {isMobile && checkoutStep === 1 && (
-                      <div className="space-y-6">
-                        <h3 className="text-2xl font-bold">Wybrane produkty</h3>
+                      <ChopsticksControl
+                        value={chopsticksQty}
+                        onChange={setChopsticksQty}
+                      />
 
+                      <div className="pt-2 border-t border-black/10 flex justify-end">
+                        <button
+                          onClick={nextStep}
+                          disabled={items.length === 0}
+                          className={`min-w-[160px] py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
+                        >
+                          Dalej →
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* KROK 1 DESKTOP / KROK 2 MOBILE: sposób odbioru */}
+                  {((!isMobile && checkoutStep === 1) ||
+                    (isMobile && checkoutStep === 2)) && (
+                    <div className="space-y-6">
+                      <h3 className="text-2xl font-bold">Sposób odbioru</h3>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        {OPTIONS.map(({ key, label, Icon }) => (
+                          <button
+                            key={key}
+                            onClick={() => setSelectedOption(key)}
+                            className={clsx(
+                              "flex flex-col items-center justify-center border px-3 py-4 transition",
+                              selectedOption === key
+                                ? "bg-yellow-400 text-black border-yellow-500"
+                                : "bg-gray-50 text-black border-black/10 hover:bg-gray-100"
+                            )}
+                          >
+                            <Icon size={22} />
+                            <span className="mt-1 text-sm font-medium">
+                              {label}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+
+                      {selectedOption === "delivery" && (
+                        <div className="rounded-xl bg-yellow-50 border border-yellow-200 p-3 text-sm">
+                          Płatność: <b>gotówka u kierowcy</b>.
+                        </div>
+                      )}
+
+                      {selectedOption === "delivery" && (
+                        <div className="space-y-2">
+                          <h4 className="font-semibold">Czas dostawy</h4>
+                          <div className="flex flex-wrap gap-6 items-center">
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="radio"
+                                name="timeOption"
+                                value="asap"
+                                checked={deliveryTimeOption === "asap"}
+                                onChange={() =>
+                                  setDeliveryTimeOption("asap")
+                                }
+                              />
+                              <span>Jak najszybciej</span>
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input
+                                type="radio"
+                                name="timeOption"
+                                value="schedule"
+                                checked={deliveryTimeOption === "schedule"}
+                                onChange={() =>
+                                  setDeliveryTimeOption("schedule")
+                                }
+                              />
+                              <span>Na godzinę</span>
+                            </label>
+                            {deliveryTimeOption === "schedule" && (
+                              <input
+                                type="time"
+                                className="border border-black/15 rounded-xl px-2 py-1"
+                                min={timeMin}
+                                max={timeMax}
+                                value={scheduledTime}
+                                onChange={(e) =>
+                                  setScheduledTime(e.target.value)
+                                }
+                              />
+                            )}
+                          </div>
+                          <p className="text-xs text-black/60">
+                            Dzisiejsze godziny w {restaurantCityLabel}:{" "}
+                            {openInfo.label}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between gap-3 pt-2 border-t border-black/10">
+                        {isMobile && (
+                          <button
+                            type="button"
+                            onClick={() => goToStep(1)}
+                            className="px-4 py-2 rounded-xl border border-black/15"
+                          >
+                            ← Cofnij
+                          </button>
+                        )}
+                        <div className="flex-1 flex justify-end">
+                          <button
+                            onClick={nextStep}
+                            disabled={!selectedOption}
+                            className={`min-w-[220px] py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
+                          >
+                            Dalej →
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* KROK 2 DESKTOP / KROK 3 MOBILE: dane kontaktowe + podsumowanie mobile */}
+                  {((!isMobile && checkoutStep === 2) ||
+                    (isMobile && checkoutStep === 3)) && (
+                    <div className="space-y-6">
+                      <h3 className="text-2xl font-bold">Dane kontaktowe</h3>
+
+                      {selectedOption === "delivery" && (
+                        <>
+                          <AddressAutocomplete
+                            onAddressSelect={onAddressSelect}
+                            setCity={setCity}
+                            setPostalCode={setPostalCode}
+                            setFlatNumber={setFlatNumber}
+                          />
+
+                          {/* INFO: gdy nie ma adresu na liście */}
+                          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-black/70">
+                            <span>Nie możesz znaleźć swojego adresu?</span>
+                            {restaurantPhone && (
+                              <a
+                                href={`tel:${restaurantPhone.replace(
+                                  /\s+/g,
+                                  ""
+                                )}`}
+                                className="inline-flex items-center justify-center rounded-full border border-black/15 px-3 py-1 font-semibold hover:bg-gray-100 text-black"
+                              >
+                                Zadzwoń do nas
+                              </a>
+                            )}
+                          </div>
+
+                          <p className="text-xs text-black/60">
+                            Najpierw wybierz adres z listy Google – dopiero
+                            wtedy pola poniżej odblokują się do edycji.
+                          </p>
+
+                          <div className="grid grid-cols-1 gap-2">
+                            <input
+                              type="text"
+                              placeholder="Adres (ulica i numer domu)"
+                              className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
+                              value={street}
+                              onChange={(e) => setStreet(e.target.value)}
+                              disabled={
+                                REQUIRE_AUTOCOMPLETE && !custCoords
+                              }
+                            />
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="Numer mieszkania (opcjonalnie)"
+                                className="flex-1 px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
+                                value={flatNumber}
+                                onChange={(e) =>
+                                  setFlatNumber(e.target.value)
+                                }
+                                disabled={
+                                  REQUIRE_AUTOCOMPLETE && !custCoords
+                                }
+                              />
+                              <input
+                                type="text"
+                                placeholder="Kod pocztowy"
+                                className="flex-1 px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
+                                value={postalCode}
+                                onChange={(e) =>
+                                  setPostalCode(e.target.value)
+                                }
+                                disabled={
+                                  REQUIRE_AUTOCOMPLETE && !custCoords
+                                }
+                              />
+                            </div>
+                            <input
+                              type="text"
+                              placeholder="Miasto"
+                              className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
+                              value={city}
+                              onChange={(e) => setCity(e.target.value)}
+                              disabled={
+                                REQUIRE_AUTOCOMPLETE && !custCoords
+                              }
+                            />
+                            {REQUIRE_AUTOCOMPLETE && !custCoords && (
+                              <p className="text-xs text-red-600">
+                                Wpisanie adresu ręcznie jest zablokowane –
+                                wybierz pozycję z listy podpowiedzi Google.
+                              </p>
+                            )}
+                          </div>
+                        </>
+                      )}
+
+                      {selectedOption === "takeaway" && (
+                        <div className="rounded-xl bg-gray-50 border border-black/10 p-3 text-sm">
+                          Odbiór osobisty w lokalu. Płatność przy odbiorze
+                          gotówką.
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 gap-2">
+                        <input
+                          type="text"
+                          placeholder="Imię"
+                          className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                        />
+                        <input
+                          type="tel"
+                          placeholder="Telefon"
+                          className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                        />
+                        {selectedOption === "takeaway" && (
+                          <input
+                            type="text"
+                            placeholder="Uwagi do odbioru (opcjonalnie)"
+                            className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
+                            value={optionalAddress}
+                            onChange={(e) =>
+                              setOptionalAddress(e.target.value)
+                            }
+                          />
+                        )}
+                        <input
+                          type="email"
+                          placeholder="Email (wymagany do potwierdzenia)"
+                          className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
+                          value={contactEmail}
+                          onChange={(e) =>
+                            setContactEmail(e.target.value)
+                          }
+                        />
+                        {contactEmail !== "" && !validEmail && (
+                          <p className="text-xs text-red-600">
+                            Podaj poprawny adres e-mail.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex justify-between mt-2">
+                        <button
+                          onClick={() => goToStep(isMobile ? 2 : 1)}
+                          className="px-4 py-2 rounded-xl border border-black/15"
+                        >
+                          ← Cofnij
+                        </button>
+
+                        {/* Na desktopie dalej przechodzimy do kroku 3 (podsumowanie).
+                            Na mobile nie ma kroku 4 – zamawianie kończymy przyciskiem
+                            „✅ Zamawiam” niżej. */}
+                        {!isMobile && (
+                          <button
+                            onClick={nextStep}
+                            disabled={
+                              !name ||
+                              !phone ||
+                              !validEmail ||
+                              (selectedOption === "delivery" &&
+                                (!street ||
+                                  !postalCode ||
+                                  !city ||
+                                  (REQUIRE_AUTOCOMPLETE &&
+                                    !custCoords)))
+                            }
+                            className={`px-4 py-2 rounded-xl text-white font-semibold ${accentBtn} disabled:opacity-50`}
+                          >
+                            Dalej →
+                          </button>
+                        )}
+                      </div>
+
+                      {isMobile && (
+                        <p className="mt-2 text-xs text-black/60">
+                          Przewiń niżej, aby zobaczyć podsumowanie, zgody i
+                          przycisk „✅ Zamawiam”.
+                        </p>
+                      )}
+
+                      {/* MOBILE: podsumowanie + zgody + Turnstile */}
+                      {isMobile && (
+                        <div className="mt-3 space-y-4">
+                          {/* Podsumowanie cen */}
+                          <div className="rounded-2xl border border-black/10 bg-white p-4 space-y-2">
+                            <h4 className="text-lg font-semibold">
+                              Podsumowanie
+                            </h4>
+                            <div className="space-y-1 text-sm">
+                              <div className="flex justify-between">
+                                <span>Produkty:</span>
+                                <span>{baseTotal.toFixed(2)} zł</span>
+                              </div>
+                              {selectedOption && (
+                                <div className="flex justify-between">
+                                  <span>Opakowanie:</span>
+                                  <span>3.00 zł</span>
+                                </div>
+                              )}
+                              {deliveryInfo && (
+                                <div className="flex justify-between">
+                                  <span>Dostawa:</span>
+                                  <span>
+                                    {deliveryInfo.cost.toFixed(2)} zł
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            <PromoSection
+                              promo={promo}
+                              promoError={promoError}
+                              onApply={applyPromo}
+                              onClear={clearPromo}
+                            />
+
+                            {discount > 0 && (
+                              <div className="flex justify-between text-sm text-green-700">
+                                <span>Rabat:</span>
+                                <span>-{discount.toFixed(2)} zł</span>
+                              </div>
+                            )}
+
+                            <div className="flex justify-between font-semibold border-t border-black/10 pt-2">
+                              <span>RAZEM:</span>
+                              <span>
+                                {totalWithDelivery.toFixed(2)} zł
+                              </span>
+                            </div>
+
+                            {deliveryInfo && (
+                              <p className="text-[11px] text-black/60 text-center mt-1">
+                                ETA: {deliveryInfo.eta}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Potwierdzenia + Turnstile */}
+                          <div className="rounded-2xl border border-black/10 bg-gray-50 p-4 space-y-3">
+                            <h4 className="text-lg font-semibold">
+                              Potwierdzenia
+                            </h4>
+                            <div className="space-y-3">
+                              {LegalConsent}
+                              <label className="flex items-start gap-2 text-xs leading-5 text-black">
+                                <input
+                                  type="checkbox"
+                                  checked={confirmCityOk}
+                                  onChange={(e) =>
+                                    setConfirmCityOk(e.target.checked)
+                                  }
+                                  className="mt-0.5"
+                                />
+                                <span>
+                                  Uwaga: składasz zamówienie do restauracji w{" "}
+                                  <b>{restaurantCityLabel}</b>. Potwierdzam,
+                                  że to prawidłowe miasto.
+                                </span>
+                              </label>
+
+                              {TURNSTILE_SITE_KEY ? (
+                                <div>
+                                  <h4 className="font-semibold mb-1">
+                                    Weryfikacja
+                                  </h4>
+                                  {turnstileError ? (
+                                    <p className="text-sm text-red-600">
+                                      Nie udało się załadować weryfikacji.
+                                    </p>
+                                  ) : (
+                                    <>
+                                      <div ref={tsMobileRef} />
+                                      <p className="text-[11px] text-black/60 mt-1">
+                                        Chronimy formularz przed botami.
+                                      </p>
+                                    </>
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="text-[11px] text-black/60">
+                                  Weryfikacja Turnstile wyłączona (brak
+                                  klucza).
+                                </p>
+                              )}
+                            </div>
+
+                            {!shouldHideOrderActions && (
+                              <button
+                                onClick={handleSubmitOrder}
+                                disabled={
+                                  submitting ||
+                                  !legalAccepted ||
+                                  !confirmCityOk ||
+                                  (TURNSTILE_SITE_KEY
+                                    ? !turnstileToken
+                                    : false)
+                                }
+                                className={`w-full mt-2 py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
+                              >
+                                {submitting ? (
+                                  <span className="flex items-center justify-center gap-2">
+                                    <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                                    Przetwarzanie...
+                                  </span>
+                                ) : (
+                                  "✅ Zamawiam"
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* KROK 3 DESKTOP: podsumowanie + pałeczki */}
+                  {!isMobile && checkoutStep === 3 && (
+                    <div className="space-y-6">
+                      <h3 className="text-2xl font-bold text-center">
+                        Podsumowanie
+                      </h3>
+
+                      {selectedOption === "delivery" && (
+                        <div className="rounded-xl bg-yellow-50 border border-yellow-200 p-3 text-sm text-center">
+                          <b>Płatność wyłącznie gotówką u kierowcy.</b>
+                        </div>
+                      )}
+
+                      <div className="flex flex-col gap-6">
                         <div className="space-y-3 max-h-[360px] overflow-y-auto">
                           {items.map((item, idx) => (
                             <div key={idx} className="space-y-1">
@@ -2463,7 +3016,10 @@ export default function CheckoutModal() {
                                 placeholder="Notatka do produktu"
                                 value={notes[idx] || ""}
                                 onChange={(e) =>
-                                  setNotes({ ...notes, [idx]: e.target.value })
+                                  setNotes({
+                                    ...notes,
+                                    [idx]: e.target.value,
+                                  })
                                 }
                               />
                             </div>
@@ -2474,567 +3030,171 @@ export default function CheckoutModal() {
                             </p>
                           )}
                         </div>
-
-                        <ChopsticksControl
-                          value={chopsticksQty}
-                          onChange={setChopsticksQty}
-                        />
-
-                        <div className="pt-2 border-t border-black/10 flex justify-end">
-                          <button
-                            onClick={nextStep}
-                            disabled={items.length === 0}
-                            className={`min-w-[160px] py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
-                          >
-                            Dalej →
-                          </button>
-                        </div>
                       </div>
-                    )}
 
-                    {((!isMobile && checkoutStep === 1) ||
-  (isMobile && checkoutStep === 2)) && (
-  <div className="space-y-6">
-    <h3 className="text-2xl font-bold">Sposób odbioru</h3>
-
-    <div className="grid grid-cols-2 gap-3">
-      {OPTIONS.map(({ key, label, Icon }) => (
-        <button
-          key={key}
-          onClick={() => setSelectedOption(key)}
-          className={clsx(
-            "flex flex-col items-center justify-center border px-3 py-4 transition",
-            selectedOption === key
-              ? "bg-yellow-400 text-black border-yellow-500"
-              : "bg-gray-50 text-black border-black/10 hover:bg-gray-100"
-          )}
-        >
-          <Icon size={22} />
-          <span className="mt-1 text-sm font-medium">{label}</span>
-        </button>
-      ))}
-    </div>
-
-    {selectedOption === "delivery" && (
-      <div className="rounded-xl bg-yellow-50 border border-yellow-200 p-3 text-sm">
-        Płatność: <b>gotówka u kierowcy</b>.
-      </div>
-    )}
-
-    {selectedOption === "delivery" && (
-      <div className="space-y-2">
-        <h4 className="font-semibold">Czas dostawy</h4>
-        <div className="flex flex-wrap gap-6 items-center">
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="timeOption"
-              value="asap"
-              checked={deliveryTimeOption === "asap"}
-              onChange={() => setDeliveryTimeOption("asap")}
-            />
-            <span>Jak najszybciej</span>
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              name="timeOption"
-              value="schedule"
-              checked={deliveryTimeOption === "schedule"}
-              onChange={() => setDeliveryTimeOption("schedule")}
-            />
-            <span>Na godzinę</span>
-          </label>
-          {deliveryTimeOption === "schedule" && (
-            <input
-              type="time"
-              className="border border-black/15 rounded-xl px-2 py-1"
-              min={timeMin}
-              max={timeMax}
-              value={scheduledTime}
-              onChange={(e) => setScheduledTime(e.target.value)}
-            />
-          )}
-        </div>
-        <p className="text-xs text-black/60">
-          Dzisiejsze godziny w {restaurantCityLabel}: {openInfo.label}
-        </p>
-      </div>
-    )}
-
-    <div className="flex justify-between gap-3 pt-2 border-t border-black/10">
-      {isMobile && (
-        <button
-          type="button"
-          onClick={() => goToStep(1)}
-          className="px-4 py-2 rounded-xl border border-black/15"
-        >
-          ← Cofnij
-        </button>
-      )}
-      <div className="flex-1 flex justify-end">
-        <button
-          onClick={() => nextStep()}
-          disabled={!selectedOption}
-          className={`min-w-[220px] py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
-        >
-          Dalej →
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-                    {((!isMobile && checkoutStep === 2) ||
-                      (isMobile && checkoutStep === 3)) && (
-                      <div className="space-y-6">
-                        <h3 className="text-2xl font-bold">Dane kontaktowe</h3>
-
-                        {selectedOption === "delivery" && (
-                          <>
-                            <AddressAutocomplete
-                              onAddressSelect={onAddressSelect}
-                              setCity={setCity}
-                              setPostalCode={setPostalCode}
-                              setFlatNumber={setFlatNumber}
-                            />
-
-                            {/* INFO: gdy nie ma adresu na liście */}
-                            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-black/70">
-                              <span>Nie możesz znaleźć swojego adresu?</span>
-                              {restaurantPhone && (
-                                <a
-                                  href={`tel:${restaurantPhone.replace(/\s+/g, "")}`}
-                                  className="inline-flex items-center justify-center rounded-full border border-black/15 px-3 py-1 font-semibold hover:bg-gray-100 text-black"
-                                >
-                                  Zadzwoń do nas
-                                </a>
-                              )}
-                            </div>
-
-                            <p className="text-xs text-black/60">
-                              Najpierw wybierz adres z listy Google – dopiero wtedy pola poniżej
-                              odblokują się do edycji.
-                            </p>
-
-                            <div className="grid grid-cols-1 gap-2">
-                              <input
-                                type="text"
-                                placeholder="Adres (ulica i numer domu)"
-                                className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
-                                value={street}
-                                onChange={(e) => setStreet(e.target.value)}
-                                disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
-                              />
-                              <div className="flex gap-2">
-                                <input
-                                  type="text"
-                                  placeholder="Numer mieszkania (opcjonalnie)"
-                                  className="flex-1 px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
-                                  value={flatNumber}
-                                  onChange={(e) => setFlatNumber(e.target.value)}
-                                  disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
-                                />
-                                <input
-                                  type="text"
-                                  placeholder="Kod pocztowy"
-                                  className="flex-1 px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
-                                  value={postalCode}
-                                  onChange={(e) => setPostalCode(e.target.value)}
-                                  disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
-                                />
-                              </div>
-                              <input
-                                type="text"
-                                placeholder="Miasto"
-                                className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
-                                value={city}
-                                onChange={(e) => setCity(e.target.value)}
-                                disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
-                              />
-                              {REQUIRE_AUTOCOMPLETE && !custCoords && (
-                                <p className="text-xs text-red-600">
-                                  Wpisanie adresu ręcznie jest zablokowane – wybierz pozycję z listy
-                                  podpowiedzi Google.
-                                </p>
-                              )}
-                            </div>
-                          </>
-                        )}
-
-                        {selectedOption === "takeaway" && (
-                          <div className="rounded-xl bg-gray-50 border border-black/10 p-3 text-sm">
-                            Odbiór osobisty w lokalu. Płatność przy odbiorze gotówką.
-                          </div>
-                        )}
-
-                        <div className="grid grid-cols-1 gap-2">
-                          <input
-                            type="text"
-                            placeholder="Imię"
-                            className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                          />
-                          <input
-                            type="tel"
-                            placeholder="Telefon"
-                            className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
-                            value={phone}
-                            onChange={(e) => setPhone(e.target.value)}
-                          />
-                          {selectedOption === "takeaway" && (
-                            <input
-                              type="text"
-                              placeholder="Uwagi do odbioru (opcjonalnie)"
-                              className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
-                              value={optionalAddress}
-                              onChange={(e) => setOptionalAddress(e.target.value)}
-                            />
-                          )}
-                          <input
-                            type="email"
-                            placeholder="Email (wymagany do potwierdzenia)"
-                            className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
-                            value={contactEmail}
-                            onChange={(e) => setContactEmail(e.target.value)}
-                          />
-                          {contactEmail !== "" && !validEmail && (
-                            <p className="text-xs text-red-600">Podaj poprawny adres e-mail.</p>
-                          )}
-                        </div>
-
-                       <div className="flex justify-between mt-2">
-  <button
-    onClick={() => goToStep(isMobile ? 2 : 1)}
-    className="px-4 py-2 rounded-xl border border-black/15"
-  >
-    ← Cofnij
-  </button>
-
-  {/* Na desktopie dalej przechodzimy do kroku 3 (podsumowanie).
-      Na mobile nie ma kroku 4 – zamawianie kończymy przyciskiem "✅ Zamawiam" niżej. */}
-  {!isMobile && (
-    <button
-      onClick={nextStep}
-      disabled={
-        !name ||
-        !phone ||
-        !validEmail ||
-        (selectedOption === "delivery" &&
-          (!street ||
-            !postalCode ||
-            !city ||
-            (REQUIRE_AUTOCOMPLETE && !custCoords)))
-      }
-      className={`px-4 py-2 rounded-xl text-white font-semibold ${accentBtn} disabled:opacity-50`}
-    >
-      Dalej →
-    </button>
-  )}
-</div>
-
-{isMobile && (
-  <p className="mt-2 text-xs text-black/60">
-    Przewiń niżej, aby zobaczyć podsumowanie, zgody i przycisk „✅ Zamawiam”.
-  </p>
-)}
-
-                        {isMobile && (
-                          <div className="mt-3 space-y-4">
-                            {/* MOBILE: podsumowanie cen jak na desktopie */}
-                            <div className="rounded-2xl border border-black/10 bg-white p-4 space-y-2">
-                              <h4 className="text-lg font-semibold">Podsumowanie</h4>
-                              <div className="space-y-1 text-sm">
-                                <div className="flex justify-between">
-                                  <span>Produkty:</span>
-                                  <span>{baseTotal.toFixed(2)} zł</span>
-                                </div>
-                                {selectedOption && (
-                                  <div className="flex justify-between">
-                                    <span>Opakowanie:</span>
-                                    <span>3.00 zł</span>
-                                  </div>
-                                )}
-                                {deliveryInfo && (
-                                  <div className="flex justify-between">
-                                    <span>Dostawa:</span>
-                                    <span>{deliveryInfo.cost.toFixed(2)} zł</span>
-                                  </div>
-                                )}
-                              </div>
-
-                              <PromoSection
-                                promo={promo}
-                                promoError={promoError}
-                                onApply={applyPromo}
-                                onClear={clearPromo}
-                              />
-
-                              {discount > 0 && (
-                                <div className="flex justify-between text-sm text-green-700">
-                                  <span>Rabat:</span>
-                                  <span>-{discount.toFixed(2)} zł</span>
-                                </div>
-                              )}
-
-                              <div className="flex justify-between font-semibold border-t border-black/10 pt-2">
-                                <span>RAZEM:</span>
-                                <span>{totalWithDelivery.toFixed(2)} zł</span>
-                              </div>
-
-                              {deliveryInfo && (
-                                <p className="text-[11px] text-black/60 text-center mt-1">
-                                  ETA: {deliveryInfo.eta}
-                                </p>
-                              )}
-                            </div>
-
-                            {/* MOBILE: potwierdzenia + Turnstile + przycisk */}
-                            <div className="rounded-2xl border border-black/10 bg-gray-50 p-4 space-y-3">
-                              <h4 className="text-lg font-semibold">Potwierdzenia</h4>
-                              <div className="space-y-3">
-                                {LegalConsent}
-                                <label className="flex items-start gap-2 text-xs leading-5 text-black">
-                                  <input
-                                    type="checkbox"
-                                    checked={confirmCityOk}
-                                    onChange={(e) => setConfirmCityOk(e.target.checked)}
-                                    className="mt-0.5"
-                                  />
-                                  <span>
-                                    Uwaga: składasz zamówienie do restauracji w{" "}
-                                    <b>{restaurantCityLabel}</b>. Potwierdzam, że to prawidłowe
-                                    miasto.
-                                  </span>
-                                </label>
-
-                                {TURNSTILE_SITE_KEY ? (
-                                  <div>
-                                    <h4 className="font-semibold mb-1">Weryfikacja</h4>
-                                    {turnstileError ? (
-                                      <p className="text-sm text-red-600">
-                                        Nie udało się załadować weryfikacji.
-                                      </p>
-                                    ) : (
-                                      <>
-                                        <div ref={tsMobileRef} />
-                                        <p className="text-[11px] text-black/60 mt-1">
-                                          Chronimy formularz przed botami.
-                                        </p>
-                                      </>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <p className="text-[11px] text-black/60">
-                                    Weryfikacja Turnstile wyłączona (brak klucza).
-                                  </p>
-                                )}
-                              </div>
-
-                              {!shouldHideOrderActions && (
-                                <button
-                                  onClick={handleSubmitOrder}
-                                  disabled={
-                                    submitting ||
-                                    !legalAccepted ||
-                                    !confirmCityOk ||
-                                    (TURNSTILE_SITE_KEY ? !turnstileToken : false)
-                                  }
-                                  className={`w-full mt-2 py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
-                                >
-                                  {submitting ? (
-                                    <span className="flex items-center justify-center gap-2">
-                                      <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
-                                      Przetwarzanie...
-                                    </span>
-                                  ) : (
-                                    "✅ Zamawiam"
-                                  )}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {!isMobile && checkoutStep === 3 && (
-                      <div className="space-y-6">
-                        <h3 className="text-2xl font-bold text-center">Podsumowanie</h3>
-
-                        {selectedOption === "delivery" && (
-                          <div className="rounded-xl bg-yellow-50 border border-yellow-200 p-3 text-sm text-center">
-                            <b>Płatność wyłącznie gotówką u kierowcy.</b>
-                          </div>
-                        )}
-
-                        <div className="flex flex-col gap-6">
-                          <div className="space-y-3 max-h-[360px] overflow-y-auto">
-                            {items.map((item, idx) => (
-                              <div key={idx} className="space-y-1">
-                                <ProductItem
-                                  prod={item}
-                                  productCategory={productCategory}
-                                  productsDb={productsDb}
-                                  optionsByCat={optionsByCat}
-                                  restaurantSlug={restaurantSlug}
-                                  helpers={productHelpers}
-                                />
-                                <textarea
-                                  className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
-                                  placeholder="Notatka do produktu"
-                                  value={notes[idx] || ""}
-                                  onChange={(e) => setNotes({ ...notes, [idx]: e.target.value })}
-                                />
-                              </div>
-                            ))}
-                            {items.length === 0 && (
-                              <p className="text-center text-black/60">Brak produktów w koszyku.</p>
-                            )}
-                          </div>
-                        </div>
-
-                        <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {!orderSent && (
-                <aside className="hidden lg:flex">
-                  <div className="sticky top-4 w-[340px] mx-auto border border-black/10 bg-white p-5 shadow-xl text-black space-y-4 text-left">
-                    <h4 className="text-xl font-bold text-center">Podsumowanie</h4>
-
-                    <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                      {items.length === 0 ? (
-                        <p className="text-sm text-black/60 text-center">Brak produktów.</p>
-                      ) : (
-                        items.map((it: any, i: number) => {
-                          const label = withCategoryPrefix(
-                            it.name,
-                            productCategory(it.name)
-                          );
-                          return (
-                            <div key={i} className="flex justify-between text-sm">
-                              <span className="truncate pr-2">
-                                {label} ×{it.quantity || 1}
-                              </span>
-                              <span>{getItemLineTotal(it).toFixed(2)} zł</span>
-                            </div>
-                          );
-                        })
-                      )}
+                      <ChopsticksControl
+                        value={chopsticksQty}
+                        onChange={setChopsticksQty}
+                      />
                     </div>
-
-                    <div className="flex justify-between">
-                      <span>Produkty:</span>
-                      <span>{baseTotal.toFixed(2)} zł</span>
-                    </div>
-                    {selectedOption && (
-                      <div className="flex justify-between">
-                        <span>Opakowanie:</span>
-                        <span>3.00 zł</span>
-                      </div>
-                    )}
-                    {deliveryInfo && (
-                      <div className="flex justify-between">
-                        <span>Dostawa:</span>
-                        <span>{deliveryInfo.cost.toFixed(2)} zł</span>
-                      </div>
-                    )}
-
-                    <PromoSection
-                      promo={promo}
-                      promoError={promoError}
-                      onApply={applyPromo}
-                      onClear={clearPromo}
-                    />
-                    {discount > 0 && (
-                      <div className="flex justify-between text-green-700">
-                        <span>Rabat:</span>
-                        <span>-{discount.toFixed(2)} zł</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between font-semibold border-t pt-2">
-                      <span>RAZEM:</span>
-                      <span>{totalWithDelivery.toFixed(2)} zł</span>
-                    </div>
-                    {deliveryInfo && (
-                      <p className="text-xs text-black/60 text-center">ETA: {deliveryInfo.eta}</p>
-                    )}
-
-                    <div className="space-y-2">
-                      {LegalConsent}
-                      <label className="flex items-start gap-2 text-xs leading-5 text-black">
-                        <input
-                          type="checkbox"
-                          checked={confirmCityOk}
-                          onChange={(e) => setConfirmCityOk(e.target.checked)}
-                          className="mt-0.5"
-                        />
-                        <span>
-                          Uwaga: składasz zamówienie do restauracji w{" "}
-                          <b>{restaurantCityLabel}</b>. Potwierdzam, że to prawidłowe miasto.
-                        </span>
-                      </label>
-
-                      <p className="text-[11px] text-black/60 text-center">
-                        Dzisiejsze godziny w {restaurantCityLabel}: {openInfo.label}
-                      </p>
-
-                      {TURNSTILE_SITE_KEY ? (
-                        <div className="mt-1">
-                          <h4 className="font-semibold mb-1">Weryfikacja</h4>
-                          {turnstileError ? (
-                            <p className="text-sm text-red-600">
-                              Nie udało się załadować weryfikacji.
-                            </p>
-                          ) : (
-                            <>
-                              <div ref={tsDesktopRef} />
-                              <p className="text-[11px] text-black/60 mt-1">
-                                Chronimy formularz przed botami.
-                              </p>
-                            </>
-                          )}
-                        </div>
-                      ) : (
-                        <p className="text-[11px] text-black/60">
-                          Weryfikacja Turnstile wyłączona (brak klucza).
-                        </p>
-                      )}
-
-                      {!shouldHideOrderActions && (
-                        <button
-                          onClick={handleSubmitOrder}
-                          disabled={
-                            submitting ||
-                            !legalAccepted ||
-                            !confirmCityOk ||
-                            (TURNSTILE_SITE_KEY ? !turnstileToken : false)
-                          }
-                          className={`w-full mt-2 py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
-                        >
-                          {submitting ? (
-                            <span className="flex items-center justify-center gap-2">
-                              <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
-                              Przetwarzanie...
-                            </span>
-                          ) : (
-                            "✅ Zamawiam"
-                          )}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </aside>
+                  )}
+                </>
               )}
             </div>
+
+            {/* PASEK BOCZNY PODSUMOWANIA (DESKTOP) */}
+            {!orderSent && (
+              <aside className="hidden lg:flex">
+                <div className="sticky top-4 w-[340px] mx-auto border border-black/10 bg-white p-5 shadow-xl text-black space-y-4 text-left">
+                  <h4 className="text-xl font-bold text-center">
+                    Podsumowanie
+                  </h4>
+
+                  <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                    {items.length === 0 ? (
+                      <p className="text-sm text-black/60 text-center">
+                        Brak produktów.
+                      </p>
+                    ) : (
+                      items.map((it: any, i: number) => {
+                        const label = withCategoryPrefix(
+                          it.name,
+                          productCategory(it.name)
+                        );
+                        return (
+                          <div
+                            key={i}
+                            className="flex justify-between text-sm"
+                          >
+                            <span className="truncate pr-2">
+                              {label} ×{it.quantity || 1}
+                            </span>
+                            <span>
+                              {getItemLineTotal(it).toFixed(2)} zł
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  <div className="flex justify-between">
+                    <span>Produkty:</span>
+                    <span>{baseTotal.toFixed(2)} zł</span>
+                  </div>
+                  {selectedOption && (
+                    <div className="flex justify-between">
+                      <span>Opakowanie:</span>
+                      <span>3.00 zł</span>
+                    </div>
+                  )}
+                  {deliveryInfo && (
+                    <div className="flex justify-between">
+                      <span>Dostawa:</span>
+                      <span>{deliveryInfo.cost.toFixed(2)} zł</span>
+                    </div>
+                  )}
+
+                  <PromoSection
+                    promo={promo}
+                    promoError={promoError}
+                    onApply={applyPromo}
+                    onClear={clearPromo}
+                  />
+                  {discount > 0 && (
+                    <div className="flex justify-between text-green-700">
+                      <span>Rabat:</span>
+                      <span>-{discount.toFixed(2)} zł</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-semibold border-t pt-2">
+                    <span>RAZEM:</span>
+                    <span>{totalWithDelivery.toFixed(2)} zł</span>
+                  </div>
+                  {deliveryInfo && (
+                    <p className="text-xs text-black/60 text-center">
+                      ETA: {deliveryInfo.eta}
+                    </p>
+                  )}
+
+                  <div className="space-y-2">
+                    {LegalConsent}
+                    <label className="flex items-start gap-2 text-xs leading-5 text-black">
+                      <input
+                        type="checkbox"
+                        checked={confirmCityOk}
+                        onChange={(e) =>
+                          setConfirmCityOk(e.target.checked)
+                        }
+                        className="mt-0.5"
+                      />
+                      <span>
+                        Uwaga: składasz zamówienie do restauracji w{" "}
+                        <b>{restaurantCityLabel}</b>. Potwierdzam, że to
+                        prawidłowe miasto.
+                      </span>
+                    </label>
+
+                    <p className="text-[11px] text-black/60 text-center">
+                      Dzisiejsze godziny w {restaurantCityLabel}:{" "}
+                      {openInfo.label}
+                    </p>
+
+                    {TURNSTILE_SITE_KEY ? (
+                      <div className="mt-1">
+                        <h4 className="font-semibold mb-1">
+                          Weryfikacja
+                        </h4>
+                        {turnstileError ? (
+                          <p className="text-sm text-red-600">
+                            Nie udało się załadować weryfikacji.
+                          </p>
+                        ) : (
+                          <>
+                            <div ref={tsDesktopRef} />
+                            <p className="text-[11px] text-black/60 mt-1">
+                              Chronimy formularz przed botami.
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-black/60">
+                        Weryfikacja Turnstile wyłączona (brak klucza).
+                      </p>
+                    )}
+
+                    {!shouldHideOrderActions && (
+                      <button
+                        onClick={handleSubmitOrder}
+                        disabled={
+                          submitting ||
+                          !legalAccepted ||
+                          !confirmCityOk ||
+                          (TURNSTILE_SITE_KEY
+                            ? !turnstileToken
+                            : false)
+                        }
+                        className={`w-full mt-2 py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
+                      >
+                        {submitting ? (
+                          <span className="flex items-center justify-center gap-2">
+                            <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                            Przetwarzanie...
+                          </span>
+                        ) : (
+                          "✅ Zamawiam"
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </aside>
+            )}
           </div>
         </div>
       </div>
-    </>
-  );
+    </div>
+  </>
+);
 }

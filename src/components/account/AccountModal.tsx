@@ -59,6 +59,10 @@ export default function AccountModal({
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
 
+    // panel: loyalty
+  const [loyaltyStickers, setLoyaltyStickers] = useState<number | null>(null);
+  const [loyaltyLoading, setLoyaltyLoading] = useState(false);
+
   // panel: profile (adres + zmiana hasła)
   const meta = (user?.user_metadata as any) || {};
   const [name, setName] = useState(meta.full_name || "");
@@ -177,6 +181,33 @@ export default function AccountModal({
     if (error) setErr(error.message);
     else setMsg("Wysłaliśmy link resetu hasła na podany e-mail.");
   };
+
+    // pobierz stan programu lojalnościowego
+  useEffect(() => {
+    const fetchLoyalty = async () => {
+      if (!user) return;
+      setLoyaltyLoading(true);
+
+      const { data, error } = await supabase
+        .from("loyalty_accounts")
+        .select("stickers")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!error && data) {
+        setLoyaltyStickers((data as any).stickers ?? 0);
+      } else {
+        // brak rekordu = jeszcze żadnych zamówień
+        setLoyaltyStickers(0);
+      }
+      setLoyaltyLoading(false);
+    };
+
+    if (tab === "loyalty" && user) {
+      fetchLoyalty();
+    }
+  }, [tab, user, supabase]);
+
 
   /* ---------------- PANEL: PROFIL ---------------- */
   const saveProfile = async () => {
@@ -481,7 +512,7 @@ export default function AccountModal({
             </div>
           )}
 
-          {user && tab === "loyalty" && (
+         {user && tab === "loyalty" && (
             <div>
               <h3 className="text-xl font-semibold mb-3">Program lojalnościowy</h3>
               <p className="text-sm text-black/70 mb-3">
@@ -489,8 +520,13 @@ export default function AccountModal({
                 <br />
                 <b>4 naklejki</b> = darmowa rolka, <b>8 naklejek</b> = <b>−20%</b> na zamówienie.
               </p>
-              {/* Prosty postęp na podstawie liczby zamówień */}
-              <LoyaltyProgress count={orders.length} />
+
+              {loyaltyLoading ? (
+                <p className="text-sm text-black/70">Ładujemy stan programu…</p>
+              ) : (
+                <LoyaltyProgress stickers={loyaltyStickers ?? 0} />
+              )}
+
               <p className="text-xs text-black/50 mt-2">
                 Promocje naliczamy przy składaniu zamówienia, po weryfikacji statusu poprzednich.
               </p>
@@ -535,12 +571,17 @@ export default function AccountModal({
 }
 
 /* ---------------- MINI KOMPONENT: LOYALTY ---------------- */
-function LoyaltyProgress({ count }: { count: number }) {
-  const stickers = count % 8; // cykl 0–7
-  const fourLeft = Math.max(0, 4 - (stickers % 4 || 4));
-  const eightLeft = Math.max(0, 8 - (stickers || 8));
+function LoyaltyProgress({ stickers }: { stickers: number }) {
+  // zakładamy, że w bazie trzymasz *aktualne* niewykorzystane naklejki (0–8)
+  const usable = Math.max(0, Math.min(stickers, 8));
 
-  const cells = useMemo(() => Array.from({ length: 8 }, (_, i) => i < stickers), [stickers]);
+  const cells = useMemo(
+    () => Array.from({ length: 8 }, (_, i) => i < usable),
+    [usable]
+  );
+
+  const toFreeRoll = usable >= 4 ? 0 : 4 - usable;
+  const toDiscount = usable >= 8 ? 0 : 8 - usable;
 
   return (
     <div>
@@ -550,21 +591,26 @@ function LoyaltyProgress({ count }: { count: number }) {
             key={i}
             className={clsx(
               "h-8 rounded-md border",
-              filled ? "border-transparent bg-[var(--accent-red,#a61b1b)]" : "border-black/15 bg-black/5"
+              filled
+                ? "border-transparent bg-[var(--accent-red,#a61b1b)]"
+                : "border-black/15 bg-black/5"
             )}
           />
         ))}
       </div>
       <div className="mt-2 text-sm">
-        {stickers >= 8 ? (
-          <span className="font-semibold">Masz 8 naklejek — −20% czeka!</span>
-        ) : stickers >= 4 ? (
+        {usable >= 8 ? (
+          <span className="font-semibold">
+            Masz {usable} naklejek — przy następnym zamówieniu naliczymy −20% i licznik się wyzeruje.
+          </span>
+        ) : usable >= 4 ? (
           <span>
-            Masz <b>{stickers}</b> naklejki. Do <b>−20%</b> brakuje <b>{eightLeft}</b>.
+            Masz <b>{usable}</b> naklejki. Możesz wymienić <b>4</b> na darmową rolkę albo zbierać dalej.
+            Do −20% brakuje <b>{toDiscount}</b>.
           </span>
         ) : (
           <span>
-            Masz <b>{stickers}</b> naklejki. Do darmowej rolki brakuje <b>{fourLeft}</b>.
+            Masz <b>{usable}</b> naklejki. Do darmowej rolki brakuje <b>{toFreeRoll}</b>.
           </span>
         )}
       </div>
