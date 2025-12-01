@@ -449,7 +449,7 @@ function ChopsticksControl({
         <button
           type="button"
           onClick={dec}
-          className="h-11 w-11 rounded-full border border-black/20 bg-black text-white text-xl flex items-center justify-center"
+          className="h-11 w-11 rounded-[20px] border border-black/20 bg-transparent text-white text-xl flex items-center justify-center"
         >
           –
         </button>
