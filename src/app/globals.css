@@ -110,3 +110,8 @@ html,body{ touch-action:manipulation; }
           mask-image: radial-gradient(140% 140% at 50% 50%, #000 68%, rgba(0,0,0,0) 90%);
   -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
 }
+
+/* Płynny scroll wewnątrz modala na iOS/Android */
+.modal-scroll {
+  -webkit-overflow-scrolling: touch;
+}

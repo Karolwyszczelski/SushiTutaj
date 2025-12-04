@@ -175,6 +175,15 @@ const TARTAR_BASES = [
   "Podanie: na chipsach krewetkowych",
 ];
 
+/* Warianty pierożków Gyoza – bez dopłat, tylko informacja dla kuchni */
+const GYOZA_ADDON_PREFIX = "Gyoza: ";
+const GYOZA_VARIANTS = [
+  `${GYOZA_ADDON_PREFIX}warzywne`,
+  `${GYOZA_ADDON_PREFIX}z kurczakiem`,
+] as const;
+type GyozaVariant = (typeof GYOZA_VARIANTS)[number];
+
+
 /** Dopłata za wersję pieczoną całego zestawu – per zestaw (z menu) */
 const SET_BAKE_PRICES: Record<string, number> = {
   "zestaw 2": 2,
@@ -272,12 +281,28 @@ function isSpecialCaliforniaBakedFishProduct(
   return hasSalmon && isRaw && hasCrab && hasShrimp;
 }
 
+function isGyozaProduct(prod: any, prodInfo?: ProductDb | null): boolean {
+  const text = `${prod?.name || ""} ${prodInfo?.name || ""} ${
+    prodInfo?.description || ""
+  }`
+    .toLowerCase()
+    .trim();
+
+  if (!text) return false;
+
+  // łapiemy "gyoza", "pierożki gyoza" itd.
+  return text.includes("gyoza");
+}
+
 function computeAddonPrice(addon: string, product?: ProductDb | null): number {
   if (ALL_SAUCES.includes(addon)) return 3;
   if (addon === SWAP_FEE_NAME) return 5;
 
   // Bazowe opcje podania tatara – 0 zł
   if (TARTAR_BASES.includes(addon)) return 0;
+
+  // Wariant pierożków Gyoza – 0 zł, tylko informacja
+  if (addon.startsWith(GYOZA_ADDON_PREFIX)) return 0;
 
   // Wersja pieczona całego zestawu – cena zależy od konkretnego zestawu
   if (addon === RAW_SET_BAKE_ALL || addon === RAW_SET_BAKE_ALL_LEGACY) {
@@ -957,6 +982,34 @@ const ProductItem: React.FC<{
     return hasFish;
   }, [prodInfo, restaurantSlug]);
 
+   // Pierożki Gyoza – wybór wariantu (warzywne / z kurczakiem)
+  const isGyoza = useMemo(
+    () => isGyozaProduct(prod, prodInfo),
+    [prod, prodInfo]
+  );
+
+  const currentGyozaVariant = useMemo<GyozaVariant | null>(() => {
+    if (!isGyoza) return null;
+    const addonsArr = Array.isArray(prod.addons)
+      ? (prod.addons as string[])
+      : [];
+    const found = addonsArr.find((a) =>
+      typeof a === "string" &&
+      GYOZA_VARIANTS.includes(a as GyozaVariant)
+    ) as GyozaVariant | undefined;
+    return found ?? null;
+  }, [isGyoza, prod.addons]);
+
+  const setGyozaVariant = (variant: GyozaVariant | null) => {
+    // zdejmujemy poprzedni wybór
+    GYOZA_VARIANTS.forEach((v) => {
+      if (prod.addons?.includes(v)) removeAddon(prod.name, v);
+    });
+    if (variant) {
+      addAddon(prod.name, variant);
+    }
+  };
+
   const toggleAddon = (a: string) => {
     const on = (prod.addons ?? []).includes(a);
     const allowed = EXTRAS.includes(a) ? canUseExtra(a) : true;
@@ -1295,6 +1348,42 @@ const canUseExtraForRow = (ex: string): boolean => {
             })}
           </div>
         </div>
+
+                {isGyoza && (
+          <div>
+            <div className="font-semibold mb-1">
+              Rodzaj pierożków Gyoza
+            </div>
+            <p className="text-[11px] text-black/60 mb-1">
+              Wybierz farsz do Gyoza. Informacja trafi do kuchni – bez dopłaty.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {GYOZA_VARIANTS.map((variant) => {
+                const isActive = currentGyozaVariant === variant;
+                const label = variant.replace(GYOZA_ADDON_PREFIX, "");
+                return (
+                  <button
+                    key={variant}
+                    type="button"
+                    onClick={() =>
+                      setGyozaVariant(
+                        isActive ? null : (variant as GyozaVariant)
+                      )
+                    }
+                    className={clsx(
+                      "px-2 py-1 rounded text-xs border",
+                      isActive
+                        ? "bg-black text-white border-black"
+                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                    )}
+                  >
+                    {isActive ? `✓ ${label}` : label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {!isSet && (
           <div>
@@ -2452,13 +2541,13 @@ return (
     )}
 
     <div
-      className="fixed inset-0 z-[58] bg-black/70 grid place-items-stretch lg:place-items-center p-0 lg:p-4"
-      role="dialog"
-      aria-modal="true"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) closeCheckoutModal();
-      }}
-    >
+  className="fixed inset-0 z-[58] bg-black/70 grid place-items-stretch lg:place-items-center p-0 lg:p-4 overflow-y-auto"
+  role="dialog"
+  aria-modal="true"
+  onMouseDown={(e) => {
+    if (e.target === e.currentTarget) closeCheckoutModal();
+  }}
+>
       <div
         className="w-full max-w-5xl bg-white text-black shadow-2xl grid grid-rows-[auto,1fr] h-full lg:h-auto lg:max-h-[90vh]"
         onMouseDown={(e) => e.stopPropagation()}
@@ -2478,7 +2567,7 @@ return (
           )}
         </div>
 
-        <div className="overflow-y-auto overscroll-contain">
+        <div className="overflow-y-auto overscroll-contain modal-scroll">
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 p-6">
             <div>
               {orderSent ? (
