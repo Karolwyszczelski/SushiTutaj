@@ -183,6 +183,14 @@ const GYOZA_VARIANTS = [
 ] as const;
 type GyozaVariant = (typeof GYOZA_VARIANTS)[number];
 
+/* Warianty wody – gazowana / niegazowana, też bez dopłaty (tylko info) */
+const WATER_ADDON_PREFIX = "Woda: ";
+const WATER_VARIANTS = [
+  `${WATER_ADDON_PREFIX}gazowana`,
+  `${WATER_ADDON_PREFIX}niegazowana`,
+] as const;
+type WaterVariant = (typeof WATER_VARIANTS)[number];
+
 
 /** Dopłata za wersję pieczoną całego zestawu – per zestaw (z menu) */
 const SET_BAKE_PRICES: Record<string, number> = {
@@ -294,6 +302,21 @@ function isGyozaProduct(prod: any, prodInfo?: ProductDb | null): boolean {
   return text.includes("gyoza");
 }
 
+function isWaterProduct(prod: any, prodInfo?: ProductDb | null): boolean {
+  const text = `${prod?.name || ""} ${prodInfo?.name || ""} ${
+    prodInfo?.description || ""
+  }`
+    .toLowerCase()
+    .trim();
+
+  if (!text) return false;
+
+  // łapiemy "woda", "woda mineralna" itd.
+  return text.includes("woda");
+}
+
+
+
 function computeAddonPrice(addon: string, product?: ProductDb | null): number {
   if (ALL_SAUCES.includes(addon)) return 3;
   if (addon === SWAP_FEE_NAME) return 5;
@@ -303,6 +326,9 @@ function computeAddonPrice(addon: string, product?: ProductDb | null): number {
 
   // Wariant pierożków Gyoza – 0 zł, tylko informacja
   if (addon.startsWith(GYOZA_ADDON_PREFIX)) return 0;
+
+   // Wariant wody – 0 zł, tylko informacja
+  if (addon.startsWith(WATER_ADDON_PREFIX)) return 0;
 
   // Wersja pieczona całego zestawu – cena zależy od konkretnego zestawu
   if (addon === RAW_SET_BAKE_ALL || addon === RAW_SET_BAKE_ALL_LEGACY) {
@@ -988,6 +1014,12 @@ const ProductItem: React.FC<{
     [prod, prodInfo]
   );
 
+  // Woda – wybór: gazowana / niegazowana
+  const isWater = useMemo(
+    () => isWaterProduct(prod, prodInfo),
+    [prod, prodInfo]
+  );
+
   const currentGyozaVariant = useMemo<GyozaVariant | null>(() => {
     if (!isGyoza) return null;
     const addonsArr = Array.isArray(prod.addons)
@@ -1003,6 +1035,28 @@ const ProductItem: React.FC<{
   const setGyozaVariant = (variant: GyozaVariant | null) => {
     // zdejmujemy poprzedni wybór
     GYOZA_VARIANTS.forEach((v) => {
+      if (prod.addons?.includes(v)) removeAddon(prod.name, v);
+    });
+    if (variant) {
+      addAddon(prod.name, variant);
+    }
+  };
+
+  const currentWaterVariant = useMemo<WaterVariant | null>(() => {
+    if (!isWater) return null;
+    const addonsArr = Array.isArray(prod.addons)
+      ? (prod.addons as string[])
+      : [];
+    const found = addonsArr.find((a) =>
+      typeof a === "string" &&
+      WATER_VARIANTS.includes(a as WaterVariant)
+    ) as WaterVariant | undefined;
+    return found ?? null;
+  }, [isWater, prod.addons]);
+
+  const setWaterVariant = (variant: WaterVariant | null) => {
+    // zdejmujemy poprzedni wybór
+    WATER_VARIANTS.forEach((v) => {
       if (prod.addons?.includes(v)) removeAddon(prod.name, v);
     });
     if (variant) {
@@ -1368,6 +1422,40 @@ const canUseExtraForRow = (ex: string): boolean => {
                     onClick={() =>
                       setGyozaVariant(
                         isActive ? null : (variant as GyozaVariant)
+                      )
+                    }
+                    className={clsx(
+                      "px-2 py-1 rounded text-xs border",
+                      isActive
+                        ? "bg-black text-white border-black"
+                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                    )}
+                  >
+                    {isActive ? `✓ ${label}` : label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+                {isWater && (
+          <div>
+            <div className="font-semibold mb-1">Rodzaj wody</div>
+            <p className="text-[11px] text-black/60 mb-1">
+              Wybierz, czy chcesz wodę gazowaną czy niegazowaną. Informacja trafi do kuchni – bez dopłaty.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {WATER_VARIANTS.map((variant) => {
+                const isActive = currentWaterVariant === variant;
+                const label = variant.replace(WATER_ADDON_PREFIX, "");
+                return (
+                  <button
+                    key={variant}
+                    type="button"
+                    onClick={() =>
+                      setWaterVariant(
+                        isActive ? null : (variant as WaterVariant)
                       )
                     }
                     className={clsx(
