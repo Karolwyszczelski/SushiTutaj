@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 type BlockType = "address" | "phone" | "email";
 
-type BlockedAddress = {
+type Address = {
   id: string;
   pattern: string;
   note: string | null;
@@ -12,19 +12,19 @@ type BlockedAddress = {
   type: BlockType;
 };
 
-const emptyEntry: Omit<BlockedAddress, "id"> = {
+const emptyEntry: Omit<Address, "id"> = {
   pattern: "",
   note: "",
   active: true,
   type: "address",
 };
 
-export default function BlockedAddressesForm() {
-  const [rows, setRows] = useState<BlockedAddress[]>([]);
+export default function AddressesForm() {
+  const [rows, setRows] = useState<Address[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [draft, setDraft] = useState<BlockedAddress>(emptyEntry as any);
+  const [draft, setDraft] = useState<Address>(emptyEntry as any);
   const [error, setError] = useState<string | null>(null);
 
   const sorted = useMemo(
@@ -55,7 +55,7 @@ export default function BlockedAddressesForm() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch("/api/admin/blocked-addresses", {
+      const r = await fetch("/api/admin/-addresses", {
         cache: "no-store",
       });
       if (!r.ok) {
@@ -102,7 +102,7 @@ export default function BlockedAddressesForm() {
         type: draft.type,
       };
 
-      const r = await fetch("/api/admin/blocked-addresses", {
+      const r = await fetch("/api/admin/-addresses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -119,7 +119,7 @@ export default function BlockedAddressesForm() {
     }
   }
 
-  async function save(row: BlockedAddress) {
+  async function save(row: Address) {
     setSavingId(row.id);
     setError(null);
     try {
@@ -131,7 +131,7 @@ export default function BlockedAddressesForm() {
         type: rest.type,
       };
 
-      const r = await fetch(`/api/admin/blocked-addresses/${id}`, {
+      const r = await fetch(`/api/admin/-addresses/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -150,7 +150,7 @@ export default function BlockedAddressesForm() {
   async function remove(id: string) {
     if (!confirm("Usunąć ten wpis?")) return;
     setError(null);
-    const r = await fetch(`/api/admin/blocked-addresses/${id}`, {
+    const r = await fetch(`/api/admin/-addresses/${id}`, {
       method: "DELETE",
     });
     if (!r.ok) {
@@ -161,7 +161,7 @@ export default function BlockedAddressesForm() {
     setRows((prev) => prev.filter((x) => x.id !== id));
   }
 
-  function editLocal(id: string, key: keyof BlockedAddress, val: any) {
+  function editLocal(id: string, key: keyof Address, val: any) {
     setRows((prev) =>
       prev.map((r) => (r.id === id ? { ...r, [key]: val } : r))
     );

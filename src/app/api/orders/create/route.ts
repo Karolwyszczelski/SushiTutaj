@@ -769,14 +769,14 @@ export async function POST(req: Request) {
     // 2.7) Blokady adres / telefon / e-mail per restauracja
     try {
       const { data: blocks, error: blocksErr } = await supabaseAdmin
-        .from("address_blocks")
-        .select("pattern, type, is_active")
+        .from("blocked_addresses") // <- TU: poprawiona nazwa tabeli
+        .select("pattern, note, active") // tylko istniejące kolumny
         .eq("restaurant_id", restaurant_id)
-        .eq("is_active", true);
+        .eq("active", true); // <- TU: aktywność po kolumnie `active`
 
       if (blocksErr) {
         console.error(
-          "[orders.create] address_blocks error:",
+          "[orders.create] blocked_addresses error:",
           (blocksErr as any)?.message || blocksErr
         );
       } else if (blocks && blocks.length > 0) {
@@ -796,6 +796,7 @@ export async function POST(req: Request) {
           const rawPattern = String(b.pattern || "");
           if (!rawPattern.trim()) return false;
 
+          // w obecnym schemacie nie ma kolumny `type`, więc wszystko traktujemy jako adres
           const type = (b.type as string) || "address";
 
           if (type === "phone") {
@@ -811,7 +812,7 @@ export async function POST(req: Request) {
             );
           }
 
-          // domyślnie address
+          // domyślnie: blokada po adresie
           return !!addrStr && addrStr.includes(rawPattern.toLowerCase());
         });
 
@@ -826,7 +827,7 @@ export async function POST(req: Request) {
         }
       }
     } catch (e) {
-      console.error("[orders.create] address_blocks check error:", e);
+      console.error("[orders.create] blocked_addresses check error:", e);
     }
 
     // 2.8) Strefa dostawy – per restauracja
