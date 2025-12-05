@@ -79,7 +79,20 @@ const formatTimeLabel = (value?: string | null): string => {
   if (!value) return "-";
   if (value === "asap") return "Jak najszybciej";
 
-  const dt = new Date(value);
+  const v = value.trim();
+
+  // 1) obsługa "gołej" godziny z bazy, np. "16:20"
+  const m = v.match(/^(\d{1,2}):(\d{2})$/);
+  if (m) {
+    const h = parseInt(m[1], 10);
+    const min = parseInt(m[2], 10);
+    if (h >= 0 && h < 24 && min >= 0 && min < 60) {
+      return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+    }
+  }
+
+  // 2) standardowo – pełny datetime (ISO itp.)
+  const dt = new Date(v);
   if (Number.isNaN(dt.getTime())) return "-";
 
   return dt.toLocaleTimeString("pl-PL", {
@@ -1535,29 +1548,25 @@ export default function PickupOrdersPage() {
 
               {/* REZERWACJA: jeśli zamówienie ma reservation_id */}
               {o.reservation_id && (
-                (() => {
-                  let timeLabel: string | null = null;
+  (() => {
+    let timeLabel: string | null = null;
 
-                  if (o.clientDelivery && o.clientDelivery !== "asap") {
-                    const dt = new Date(o.clientDelivery);
-                    if (!Number.isNaN(dt.getTime())) {
-                      timeLabel = dt.toLocaleTimeString("pl-PL", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      });
-                    }
-                  } else if (o.reservation_time) {
-                    // fallback – jeśli kiedyś zapiszesz samą godzinę w osobnym polu
-                    timeLabel = o.reservation_time;
-                  }
+    if (o.clientDelivery) {
+      const lbl = formatTimeLabel(o.clientDelivery);
+      if (lbl !== "-" && lbl !== "Jak najszybciej") {
+        timeLabel = lbl;
+      }
+    } else if (o.reservation_time) {
+      timeLabel = o.reservation_time;
+    }
 
-                  return (
-                    <Badge tone="green">
-                      Rezerwacja{timeLabel ? ` · ${timeLabel}` : ""}
-                    </Badge>
-                  );
-                })()
-              )}
+    return (
+      <Badge tone="green">
+        Rezerwacja{timeLabel ? ` · ${timeLabel}` : ""}
+      </Badge>
+    );
+  })()
+)}
 
               {paymentBadge(o)}
             </div>
