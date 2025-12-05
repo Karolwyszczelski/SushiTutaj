@@ -129,6 +129,7 @@ type Promo =
     }
   | null;
 
+
   type LoyaltyChoice = "keep" | "use_4";
 
   /* --- KONFIG PROGRAMU LOJALNOŚCIOWEGO --- */
@@ -137,6 +138,7 @@ const LOYALTY_MIN_ORDER_BASE = 50; // zł
 
 // Statusy zamówień, które liczą się do naklejek
 const LOYALTY_ELIGIBLE_STATUSES = ["accepted", "completed", "placed"] as const;
+
 
 /* Sushi sosy i dodatki */
 const BASE_SAUCES = [
@@ -2249,7 +2251,7 @@ const [loyaltyLoading, setLoyaltyLoading] = useState(false);
     };
   }, [restaurantSlug]);
 
-    useEffect(() => {
+     useEffect(() => {
     // jeśli modal zamknięty, user niezalogowany albo brak restauracji – czyścimy stan
     if (
       !isCheckoutOpen ||
@@ -2264,15 +2266,15 @@ const [loyaltyLoading, setLoyaltyLoading] = useState(false);
 
     let cancelled = false;
 
-    const loadFromOrders = async () => {
+    const load = async () => {
       try {
         setLoyaltyLoading(true);
 
-        // UWAGA: jeśli w tabeli masz kolumnę "user_id" zamiast "user",
-        // zmień .eq("user", ...) na .eq("user_id", ...)
         const { data, error } = await supabaseAuth
           .from("orders")
-          .select("total_price, discount_amount, delivery_cost, status")
+          .select(
+            "total_price, discount_amount, delivery_cost, status, loyalty_choice"
+          )
           .eq("restaurant_id", restaurantId)
           .eq("user", session.user.id);
 
@@ -2285,27 +2287,34 @@ const [loyaltyLoading, setLoyaltyLoading] = useState(false);
           return;
         }
 
-        const stickersCount = (data as any[]).filter((o) => {
+        let earned = 0; // zamówienia dające naklejki
+        let spent = 0;  // naklejki spalone na nagrody
+
+        (data as any[]).forEach((o) => {
           const status = String(o.status || "").toLowerCase();
-          if (!LOYALTY_ELIGIBLE_STATUSES.includes(status as any)) return false;
+          if (!LOYALTY_ELIGIBLE_STATUSES.includes(status as any)) return;
+
+          const choice = (o as any).loyalty_choice as LoyaltyChoice | null;
 
           const total = Number(o.total_price || 0);
           const discount = Number(o.discount_amount || 0);
           const delivery = Number(o.delivery_cost || 0);
 
-          // baza tak jak w backendzie:
-          // total (produkty + opakowanie + dostawa - rabat)
-          // + discount (przywracamy rabat do bazy)
-          // - delivery (odejmujemy dostawę)
-          //
-          // => zostaje: produkty + opakowanie
-          const basePrev = total + discount - delivery;
+          // baza = produkty + opakowanie (bez dostawy, z rabatem cofniętym)
+          const base = total + discount - delivery;
 
-          return basePrev >= LOYALTY_MIN_ORDER_BASE;
-        }).length;
+          // zamówienie z nagrodą NIE dodaje nowej naklejki – tylko spala 4
+          if (choice !== "use_4" && base >= LOYALTY_MIN_ORDER_BASE) {
+            earned += 1;
+          }
 
-        setLoyaltyStickers(stickersCount);
-        // domyślnie: nie używamy nagrody, tylko zbieramy dalej
+          if (choice === "use_4") {
+            spent += 4;
+          }
+        });
+
+        const stickers = Math.max(0, earned - spent);
+        setLoyaltyStickers(stickers);
         setLoyaltyChoice("keep");
       } catch (e) {
         if (!cancelled) {
@@ -2320,7 +2329,7 @@ const [loyaltyLoading, setLoyaltyLoading] = useState(false);
       }
     };
 
-    loadFromOrders();
+    load();
 
     return () => {
       cancelled = true;
@@ -2328,8 +2337,8 @@ const [loyaltyLoading, setLoyaltyLoading] = useState(false);
   }, [
     isCheckoutOpen,
     isLoggedIn,
-    session?.user?.id,
     restaurantId,
+    session?.user?.id,
     supabaseAuth,
   ]);
 
