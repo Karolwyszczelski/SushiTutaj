@@ -191,6 +191,53 @@ const WATER_VARIANTS = [
 ] as const;
 type WaterVariant = (typeof WATER_VARIANTS)[number];
 
+/* Bubble tea – wybór smaku */
+const BUBBLE_TEA_ADDON_PREFIX = "Bubble tea: ";
+const BUBBLE_TEA_VARIANTS = [
+  `${BUBBLE_TEA_ADDON_PREFIX}mango`,
+  `${BUBBLE_TEA_ADDON_PREFIX}brzoskwinia`,
+  `${BUBBLE_TEA_ADDON_PREFIX}jabłko`,
+] as const;
+type BubbleTeaVariant = (typeof BUBBLE_TEA_VARIANTS)[number];
+
+/* Ramune – wybór smaku */
+const RAMUNE_ADDON_PREFIX = "Ramune: ";
+const RAMUNE_VARIANTS = [
+  `${RAMUNE_ADDON_PREFIX}kiwi`,
+  `${RAMUNE_ADDON_PREFIX}truskawka`,
+  `${RAMUNE_ADDON_PREFIX}winogrono`,
+  `${RAMUNE_ADDON_PREFIX}jabłko`,
+  `${RAMUNE_ADDON_PREFIX}lichi`,
+  `${RAMUNE_ADDON_PREFIX}arbuz`,
+  `${RAMUNE_ADDON_PREFIX}lemoniada`,
+] as const;
+type RamuneVariant = (typeof RAMUNE_VARIANTS)[number];
+
+/* Soki – smak */
+const JUICE_ADDON_PREFIX = "Sok: ";
+const JUICE_VARIANTS = [
+  `${JUICE_ADDON_PREFIX}jabłko`,
+  `${JUICE_ADDON_PREFIX}pomarańcza`,
+] as const;
+type JuiceVariant = (typeof JUICE_VARIANTS)[number];
+
+/* Lipton – smak */
+const LIPTON_ADDON_PREFIX = "Lipton: ";
+const LIPTON_VARIANTS = [
+  `${LIPTON_ADDON_PREFIX}brzoskwinia`,
+  `${LIPTON_ADDON_PREFIX}cytryna`,
+  `${LIPTON_ADDON_PREFIX}herbata`,
+] as const;
+type LiptonVariant = (typeof LIPTON_VARIANTS)[number];
+
+/* Coca-Cola / Pepsi – zwykła / zero */
+const COLA_ADDON_PREFIX = "Cola: ";
+const COLA_VARIANTS = [
+  `${COLA_ADDON_PREFIX}zwykła`,
+  `${COLA_ADDON_PREFIX}zero`,
+] as const;
+type ColaVariant = (typeof COLA_VARIANTS)[number];
+
 
 /** Dopłata za wersję pieczoną całego zestawu – per zestaw (z menu) */
 const SET_BAKE_PRICES: Record<string, number> = {
@@ -315,7 +362,75 @@ function isWaterProduct(prod: any, prodInfo?: ProductDb | null): boolean {
   return text.includes("woda");
 }
 
+function isBubbleTeaProduct(prod: any, prodInfo?: ProductDb | null): boolean {
+  const text = `${prod?.name || ""} ${prodInfo?.name || ""} ${
+    prodInfo?.description || ""
+  }`
+    .toLowerCase()
+    .trim();
 
+  if (!text) return false;
+
+  return (
+    text.includes("bubble tea") ||
+    text.includes("bubbletea") ||
+    text.includes("buble tea") ||
+    text.includes("boba")
+  );
+}
+
+function isRamuneProduct(prod: any, prodInfo?: ProductDb | null): boolean {
+  const text = `${prod?.name || ""} ${prodInfo?.name || ""} ${
+    prodInfo?.description || ""
+  }`
+    .toLowerCase()
+    .trim();
+
+  if (!text) return false;
+
+  return text.includes("ramune");
+}
+
+function isJuiceProduct(prod: any, prodInfo?: ProductDb | null): boolean {
+  const text = `${prod?.name || ""} ${prodInfo?.name || ""} ${
+    prodInfo?.description || ""
+  }`
+    .toLowerCase()
+    .trim();
+
+  if (!text) return false;
+
+  return text.includes("sok");
+}
+
+function isLiptonProduct(prod: any, prodInfo?: ProductDb | null): boolean {
+  const text = `${prod?.name || ""} ${prodInfo?.name || ""} ${
+    prodInfo?.description || ""
+  }`
+    .toLowerCase()
+    .trim();
+
+  if (!text) return false;
+
+  return text.includes("lipton");
+}
+
+function isColaProduct(prod: any, prodInfo?: ProductDb | null): boolean {
+  const text = `${prod?.name || ""} ${prodInfo?.name || ""} ${
+    prodInfo?.description || ""
+  }`
+    .toLowerCase()
+    .trim();
+
+  if (!text) return false;
+
+  return (
+    text.includes("coca-cola") ||
+    text.includes("coca cola") ||
+    text.includes("cola") ||
+    text.includes("pepsi")
+  );
+}
 
 function computeAddonPrice(addon: string, product?: ProductDb | null): number {
   if (ALL_SAUCES.includes(addon)) return 3;
@@ -329,6 +444,17 @@ function computeAddonPrice(addon: string, product?: ProductDb | null): number {
 
    // Wariant wody – 0 zł, tylko informacja
   if (addon.startsWith(WATER_ADDON_PREFIX)) return 0;
+
+  // Bubble tea / Ramune / soki / Lipton / Cola – też 0 zł
+  if (
+    addon.startsWith(BUBBLE_TEA_ADDON_PREFIX) ||
+    addon.startsWith(RAMUNE_ADDON_PREFIX) ||
+    addon.startsWith(JUICE_ADDON_PREFIX) ||
+    addon.startsWith(LIPTON_ADDON_PREFIX) ||
+    addon.startsWith(COLA_ADDON_PREFIX)
+  ) {
+    return 0;
+  }
 
   // Wersja pieczona całego zestawu – cena zależy od konkretnego zestawu
   if (addon === RAW_SET_BAKE_ALL || addon === RAW_SET_BAKE_ALL_LEGACY) {
@@ -1020,6 +1146,36 @@ const ProductItem: React.FC<{
     [prod, prodInfo]
   );
 
+   // Bubble tea – wybór smaku
+  const isBubbleTea = useMemo(
+    () => isBubbleTeaProduct(prod, prodInfo),
+    [prod, prodInfo]
+  );
+
+  // Ramune – wybór smaku
+  const isRamune = useMemo(
+    () => isRamuneProduct(prod, prodInfo),
+    [prod, prodInfo]
+  );
+
+  // Soki – smak
+  const isJuice = useMemo(
+    () => isJuiceProduct(prod, prodInfo),
+    [prod, prodInfo]
+  );
+
+  // Lipton – smak
+  const isLipton = useMemo(
+    () => isLiptonProduct(prod, prodInfo),
+    [prod, prodInfo]
+  );
+
+  // Cola / Pepsi – zwykła vs Zero
+  const isCola = useMemo(
+    () => isColaProduct(prod, prodInfo),
+    [prod, prodInfo]
+  );
+
   const currentGyozaVariant = useMemo<GyozaVariant | null>(() => {
     if (!isGyoza) return null;
     const addonsArr = Array.isArray(prod.addons)
@@ -1062,6 +1218,101 @@ const ProductItem: React.FC<{
     if (variant) {
       addAddon(prod.name, variant);
     }
+  };
+
+  const currentBubbleTeaVariant = useMemo<BubbleTeaVariant | null>(() => {
+    if (!isBubbleTea) return null;
+    const addonsArr = Array.isArray(prod.addons)
+      ? (prod.addons as string[])
+      : [];
+    const found = addonsArr.find((a) =>
+      typeof a === "string" &&
+      BUBBLE_TEA_VARIANTS.includes(a as BubbleTeaVariant)
+    ) as BubbleTeaVariant | undefined;
+    return found ?? null;
+  }, [isBubbleTea, prod.addons]);
+
+  const setBubbleTeaVariant = (variant: BubbleTeaVariant | null) => {
+    BUBBLE_TEA_VARIANTS.forEach((v) => {
+      if (prod.addons?.includes(v)) removeAddon(prod.name, v);
+    });
+    if (variant) addAddon(prod.name, variant);
+  };
+
+  const currentRamuneVariant = useMemo<RamuneVariant | null>(() => {
+    if (!isRamune) return null;
+    const addonsArr = Array.isArray(prod.addons)
+      ? (prod.addons as string[])
+      : [];
+    const found = addonsArr.find((a) =>
+      typeof a === "string" &&
+      RAMUNE_VARIANTS.includes(a as RamuneVariant)
+    ) as RamuneVariant | undefined;
+    return found ?? null;
+  }, [isRamune, prod.addons]);
+
+  const setRamuneVariant = (variant: RamuneVariant | null) => {
+    RAMUNE_VARIANTS.forEach((v) => {
+      if (prod.addons?.includes(v)) removeAddon(prod.name, v);
+    });
+    if (variant) addAddon(prod.name, variant);
+  };
+
+  const currentJuiceVariant = useMemo<JuiceVariant | null>(() => {
+    if (!isJuice) return null;
+    const addonsArr = Array.isArray(prod.addons)
+      ? (prod.addons as string[])
+      : [];
+    const found = addonsArr.find((a) =>
+      typeof a === "string" &&
+      JUICE_VARIANTS.includes(a as JuiceVariant)
+    ) as JuiceVariant | undefined;
+    return found ?? null;
+  }, [isJuice, prod.addons]);
+
+  const setJuiceVariant = (variant: JuiceVariant | null) => {
+    JUICE_VARIANTS.forEach((v) => {
+      if (prod.addons?.includes(v)) removeAddon(prod.name, v);
+    });
+    if (variant) addAddon(prod.name, variant);
+  };
+
+  const currentLiptonVariant = useMemo<LiptonVariant | null>(() => {
+    if (!isLipton) return null;
+    const addonsArr = Array.isArray(prod.addons)
+      ? (prod.addons as string[])
+      : [];
+    const found = addonsArr.find((a) =>
+      typeof a === "string" &&
+      LIPTON_VARIANTS.includes(a as LiptonVariant)
+    ) as LiptonVariant | undefined;
+    return found ?? null;
+  }, [isLipton, prod.addons]);
+
+  const setLiptonVariant = (variant: LiptonVariant | null) => {
+    LIPTON_VARIANTS.forEach((v) => {
+      if (prod.addons?.includes(v)) removeAddon(prod.name, v);
+    });
+    if (variant) addAddon(prod.name, variant);
+  };
+
+  const currentColaVariant = useMemo<ColaVariant | null>(() => {
+    if (!isCola) return null;
+    const addonsArr = Array.isArray(prod.addons)
+      ? (prod.addons as string[])
+      : [];
+    const found = addonsArr.find((a) =>
+      typeof a === "string" &&
+      COLA_VARIANTS.includes(a as ColaVariant)
+    ) as ColaVariant | undefined;
+    return found ?? null;
+  }, [isCola, prod.addons]);
+
+  const setColaVariant = (variant: ColaVariant | null) => {
+    COLA_VARIANTS.forEach((v) => {
+      if (prod.addons?.includes(v)) removeAddon(prod.name, v);
+    });
+    if (variant) addAddon(prod.name, variant);
   };
 
   const toggleAddon = (a: string) => {
@@ -1456,6 +1707,176 @@ const canUseExtraForRow = (ex: string): boolean => {
                     onClick={() =>
                       setWaterVariant(
                         isActive ? null : (variant as WaterVariant)
+                      )
+                    }
+                    className={clsx(
+                      "px-2 py-1 rounded text-xs border",
+                      isActive
+                        ? "bg-black text-white border-black"
+                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                    )}
+                  >
+                    {isActive ? `✓ ${label}` : label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+         {isBubbleTea && (
+          <div>
+            <div className="font-semibold mb-1">Smak Bubble tea</div>
+            <p className="text-[11px] text-black/60 mb-1">
+              Wybierz smak Bubble tea. Informacja trafi do kuchni – bez dopłaty.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {BUBBLE_TEA_VARIANTS.map((variant) => {
+                const isActive = currentBubbleTeaVariant === variant;
+                const label = variant.replace(BUBBLE_TEA_ADDON_PREFIX, "");
+                return (
+                  <button
+                    key={variant}
+                    type="button"
+                    onClick={() =>
+                      setBubbleTeaVariant(
+                        isActive ? null : (variant as BubbleTeaVariant)
+                      )
+                    }
+                    className={clsx(
+                      "px-2 py-1 rounded text-xs border",
+                      isActive
+                        ? "bg-black text-white border-black"
+                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                    )}
+                  >
+                    {isActive ? `✓ ${label}` : label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {isRamune && (
+          <div>
+            <div className="font-semibold mb-1">Smak Ramune</div>
+            <p className="text-[11px] text-black/60 mb-1">
+              Wybierz smak Ramune. Informacja trafi do kuchni – bez dopłaty.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {RAMUNE_VARIANTS.map((variant) => {
+                const isActive = currentRamuneVariant === variant;
+                const label = variant.replace(RAMUNE_ADDON_PREFIX, "");
+                return (
+                  <button
+                    key={variant}
+                    type="button"
+                    onClick={() =>
+                      setRamuneVariant(
+                        isActive ? null : (variant as RamuneVariant)
+                      )
+                    }
+                    className={clsx(
+                      "px-2 py-1 rounded text-xs border",
+                      isActive
+                        ? "bg-black text-white border-black"
+                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                    )}
+                  >
+                    {isActive ? `✓ ${label}` : label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {isJuice && (
+          <div>
+            <div className="font-semibold mb-1">Smak soku</div>
+            <p className="text-[11px] text-black/60 mb-1">
+              Wybierz smak soku. Informacja trafi do kuchni – bez dopłaty.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {JUICE_VARIANTS.map((variant) => {
+                const isActive = currentJuiceVariant === variant;
+                const label = variant.replace(JUICE_ADDON_PREFIX, "");
+                return (
+                  <button
+                    key={variant}
+                    type="button"
+                    onClick={() =>
+                      setJuiceVariant(
+                        isActive ? null : (variant as JuiceVariant)
+                      )
+                    }
+                    className={clsx(
+                      "px-2 py-1 rounded text-xs border",
+                      isActive
+                        ? "bg-black text-white border-black"
+                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                    )}
+                  >
+                    {isActive ? `✓ ${label}` : label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {isLipton && (
+          <div>
+            <div className="font-semibold mb-1">Smak Liptona</div>
+            <p className="text-[11px] text-black/60 mb-1">
+              Wybierz smak mrożonej herbaty Lipton. Informacja trafi do kuchni – bez dopłaty.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {LIPTON_VARIANTS.map((variant) => {
+                const isActive = currentLiptonVariant === variant;
+                const label = variant.replace(LIPTON_ADDON_PREFIX, "");
+                return (
+                  <button
+                    key={variant}
+                    type="button"
+                    onClick={() =>
+                      setLiptonVariant(
+                        isActive ? null : (variant as LiptonVariant)
+                      )
+                    }
+                    className={clsx(
+                      "px-2 py-1 rounded text-xs border",
+                      isActive
+                        ? "bg-black text-white border-black"
+                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                    )}
+                  >
+                    {isActive ? `✓ ${label}` : label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {isCola && (
+          <div>
+            <div className="font-semibold mb-1">Wariant napoju</div>
+            <p className="text-[11px] text-black/60 mb-1">
+              Wybierz, czy chcesz napój w wersji zwykłej czy Zero. Informacja trafi do kuchni – bez dopłaty.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {COLA_VARIANTS.map((variant) => {
+                const isActive = currentColaVariant === variant;
+                const label = variant.replace(COLA_ADDON_PREFIX, "");
+                return (
+                  <button
+                    key={variant}
+                    type="button"
+                    onClick={() =>
+                      setColaVariant(
+                        isActive ? null : (variant as ColaVariant)
                       )
                     }
                     className={clsx(
