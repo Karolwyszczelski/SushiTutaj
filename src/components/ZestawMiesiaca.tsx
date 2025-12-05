@@ -449,7 +449,7 @@ export default function ZestawMiesiaca() {
               >
                 {price !== null ? (
                   <span className="leading-tight text-lg">
-                    {price.toFixed(22)}
+                    {price.toFixed(2)}
                     <br />
                     zł
                   </span>
