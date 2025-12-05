@@ -463,7 +463,7 @@ export default function ZestawMiesiaca() {
                 aria-hidden
               >
                 <span className="leading-tight text-base">
-                  {pieces ?? 28}
+                  {pieces ?? 32}
                   <br />
                   szt.
                 </span>
