@@ -64,6 +64,8 @@ function getRestaurantPhone(slug: string): string | null {
 /** WYMÓG: adres musi być wybrany z Autocomplete (posiadamy współrzędne) */
 const REQUIRE_AUTOCOMPLETE = true;
 
+
+
 type OrderOption = "takeaway" | "delivery";
 type Zone = {
   id: string;
@@ -128,6 +130,13 @@ type Promo =
   | null;
 
   type LoyaltyChoice = "keep" | "use_4";
+
+  /* --- KONFIG PROGRAMU LOJALNOŚCIOWEGO --- */
+// Minimalna baza do naliczenia 1 naklejki – produkty + opakowanie, bez dostawy
+const LOYALTY_MIN_ORDER_BASE = 50; // zł
+
+// Statusy zamówień, które liczą się do naklejek
+const LOYALTY_ELIGIBLE_STATUSES = ["accepted", "completed", "placed"] as const;
 
 /* Sushi sosy i dodatki */
 const BASE_SAUCES = [
@@ -2240,46 +2249,89 @@ const [loyaltyLoading, setLoyaltyLoading] = useState(false);
     };
   }, [restaurantSlug]);
 
-  useEffect(() => {
-  if (!isCheckoutOpen || !isLoggedIn || !session?.user?.id) {
-    setLoyaltyStickers(null);
-    setLoyaltyChoice("keep");
-    return;
-  }
-
-  let cancelled = false;
-
-  const load = async () => {
-    try {
-      setLoyaltyLoading(true);
-      const { data, error } = await supabaseAuth
-        .from("loyalty_accounts")
-        .select("stickers")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
-
-      if (cancelled) return;
-
-      if (error || !data) {
-        // brak rekordu = 0 naklejek
-        setLoyaltyStickers(0);
-      } else {
-        const raw = Number((data as any).stickers ?? 0);
-        setLoyaltyStickers(Number.isFinite(raw) ? raw : 0);
-      }
-    } catch {
-      if (!cancelled) setLoyaltyStickers(0);
-    } finally {
-      if (!cancelled) setLoyaltyLoading(false);
+    useEffect(() => {
+    // jeśli modal zamknięty, user niezalogowany albo brak restauracji – czyścimy stan
+    if (
+      !isCheckoutOpen ||
+      !isLoggedIn ||
+      !session?.user?.id ||
+      !restaurantId
+    ) {
+      setLoyaltyStickers(null);
+      setLoyaltyChoice("keep");
+      return;
     }
-  };
 
-  load();
+    let cancelled = false;
 
-  return () => {
-    cancelled = true;
-  };
-}, [isCheckoutOpen, isLoggedIn, session?.user?.id, supabaseAuth]);
+    const loadFromOrders = async () => {
+      try {
+        setLoyaltyLoading(true);
+
+        // UWAGA: jeśli w tabeli masz kolumnę "user_id" zamiast "user",
+        // zmień .eq("user", ...) na .eq("user_id", ...)
+        const { data, error } = await supabaseAuth
+          .from("orders")
+          .select("total_price, discount_amount, delivery_cost, status")
+          .eq("restaurant_id", restaurantId)
+          .eq("user", session.user.id);
+
+        if (cancelled) return;
+
+        if (error || !data) {
+          console.error("Loyalty: błąd pobierania orders", error);
+          setLoyaltyStickers(0);
+          setLoyaltyChoice("keep");
+          return;
+        }
+
+        const stickersCount = (data as any[]).filter((o) => {
+          const status = String(o.status || "").toLowerCase();
+          if (!LOYALTY_ELIGIBLE_STATUSES.includes(status as any)) return false;
+
+          const total = Number(o.total_price || 0);
+          const discount = Number(o.discount_amount || 0);
+          const delivery = Number(o.delivery_cost || 0);
+
+          // baza tak jak w backendzie:
+          // total (produkty + opakowanie + dostawa - rabat)
+          // + discount (przywracamy rabat do bazy)
+          // - delivery (odejmujemy dostawę)
+          //
+          // => zostaje: produkty + opakowanie
+          const basePrev = total + discount - delivery;
+
+          return basePrev >= LOYALTY_MIN_ORDER_BASE;
+        }).length;
+
+        setLoyaltyStickers(stickersCount);
+        // domyślnie: nie używamy nagrody, tylko zbieramy dalej
+        setLoyaltyChoice("keep");
+      } catch (e) {
+        if (!cancelled) {
+          console.error("Loyalty: wyjątek przy liczeniu naklejek", e);
+          setLoyaltyStickers(0);
+          setLoyaltyChoice("keep");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoyaltyLoading(false);
+        }
+      }
+    };
+
+    loadFromOrders();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isCheckoutOpen,
+    isLoggedIn,
+    session?.user?.id,
+    restaurantId,
+    supabaseAuth,
+  ]);
 
   const [submitting, setSubmitting] = useState(false);
   const [confirmCityOk, setConfirmCityOk] = useState(false);

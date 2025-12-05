@@ -77,12 +77,12 @@ const fromDBPaymentStatus = (v: any): PaymentStatus => {
 
 const formatTimeLabel = (value?: string | null): string => {
   if (!value) return "-";
-  if (value === "asap") return "Jak najszybciej";
 
   const v = value.trim();
+  if (v === "asap") return "Jak najszybciej";
 
-  // 1) obsługa "gołej" godziny z bazy, np. "16:20"
-  const m = v.match(/^(\d{1,2}):(\d{2})$/);
+  // 1) goła godzina z bazy, np. "18:00" lub "8:05"
+  const m = v.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
   if (m) {
     const h = parseInt(m[1], 10);
     const min = parseInt(m[2], 10);
@@ -91,16 +91,17 @@ const formatTimeLabel = (value?: string | null): string => {
     }
   }
 
-  // 2) standardowo – pełny datetime (ISO itp.)
+  // 2) pełna data/czas (ISO itd.)
   const dt = new Date(v);
-  if (Number.isNaN(dt.getTime())) return "-";
+  if (!Number.isNaN(dt.getTime())) {
+    return dt.toLocaleTimeString("pl-PL", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
 
-  return dt.toLocaleTimeString("pl-PL", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return "-";
 };
-
 
 const getOptionLabel = (opt?: Order["selected_option"]) =>
   opt === "delivery"
