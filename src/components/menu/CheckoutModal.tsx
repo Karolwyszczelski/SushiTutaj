@@ -3233,7 +3233,7 @@ return (
                             {deliveryTimeOption === "schedule" && (
                               <input
                                 type="time"
-                                className="border border-black/15 rounded-xl px-2 py-1"
+                                className="border border-black/15 rounded-xl px-2 py-1 bg-white"
                                 min={timeMin}
                                 max={timeMax}
                                 value={scheduledTime}
