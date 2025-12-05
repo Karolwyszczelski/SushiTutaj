@@ -511,13 +511,22 @@ const InlineCountdown: React.FC<{
   );
 };
 
+const formatMinutes = (m: number): string => {
+  if (m < 60) return `${m} min`;
+
+  const h = Math.floor(m / 60);
+  const rest = m % 60;
+
+  if (rest === 0) return `${h} h`;       // 60 → 1 h, 120 → 2 h
+  return `${h} h ${rest} min`;          // 80 → 1 h 20 min, 100 → 1 h 40 min
+};
+
 const AcceptButton: React.FC<{
   order: Order;
   onAccept: (minutes: number) => Promise<void> | void;
 }> = ({ order, onAccept }) => {
   const [open, setOpen] = useState(false);
 
-  // tylko delivery / takeaway
   const options: number[] = useMemo(
     () =>
       order.selected_option === "delivery"
@@ -545,8 +554,7 @@ const AcceptButton: React.FC<{
         className="h-10 rounded-l-md bg-emerald-600 px-4 text-sm font-semibold text-white shadow hover:bg-emerald-500"
         onClick={() => onAccept(minutes)}
       >
-        Akceptuj{" "}
-        {minutes >= 60 ? `(${minutes / 60} h)` : `(${minutes} min)`}
+        Akceptuj ({formatMinutes(minutes)})
       </button>
       <button
         type="button"
@@ -570,7 +578,7 @@ const AcceptButton: React.FC<{
               }}
               className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-slate-50"
             >
-              <span>{m >= 60 ? `${m / 60} h` : `${m} min`}</span>
+              <span>{formatMinutes(m)}</span>
               {minutes === m && (
                 <span className="text-emerald-600">✓</span>
               )}
@@ -883,6 +891,51 @@ export default function PickupOrdersPage() {
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
+
+  // <-- NOWE: fallback polling zamówień co 8 sekund
+  useEffect(() => {
+    if (!booted) return;           // dopóki nie wiemy, którą restaurację ładujemy
+    if (editingOrderId) return;    // nie odświeżaj w trakcie edycji zamówienia
+
+    const iv = setInterval(() => {
+      fetchOrders();               // pobierz aktualną listę
+    }, 8000);                      // 8 000 ms = 8 sekund
+
+    return () => clearInterval(iv);
+  }, [booted, editingOrderId, fetchOrders]);
+
+  /* realtime tylko dla tej restauracji */
+  useEffect(() => {
+    if (!booted) return;
+    const filter = restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined;
+    const ch = supabase
+      .channel("orders-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+          ...(filter ? { filter } : {}),
+        },
+        (payload: any) => {
+          if (restaurantId) {
+            const ridNew = payload.new?.restaurant_id;
+            const ridOld = payload.old?.restaurant_id;
+            if (ridNew !== restaurantId && ridOld !== restaurantId) return;
+          }
+          fetchOrders();
+        }
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(ch);
+    };
+  }, [supabase, fetchOrders, restaurantId, booted]);
 
   /* realtime tylko dla tej restauracji */
   useEffect(() => {
@@ -1706,14 +1759,14 @@ export default function PickupOrdersPage() {
                 onOrderUpdated={() => fetchOrders()}
               />
               {[20, 40, 60, 80].map((m) => (
-                <button
-                  key={m}
-                  onClick={() => extendTime(o, m)}
-                  className="h-10 rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white shadow hover:bg-emerald-500"
-                >
-                  +{m >= 60 ? `${m / 60} h` : `${m} min`}
-                </button>
-              ))}
+  <button
+    key={m}
+    onClick={() => extendTime(o, m)}
+    className="h-10 rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white shadow hover:bg-emerald-500"
+  >
+    +{formatMinutes(m)}
+  </button>
+))}
               <EditOrderButton
                 orderId={o.id}
                 currentProducts={parseProducts(o.items).map(
