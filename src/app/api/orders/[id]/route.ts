@@ -134,46 +134,72 @@ export async function PATCH(request: Request, ctx: any) {
 
   /* ====== Mapowanie pól do update ====== */
 
-  const employeeTime: string | undefined =
-    body.deliveryTime ?? body.employee_delivery_time;
-  const clientTime: string | undefined =
-    body.client_delivery_time ?? body.delivery_time;
+  // sprawdzamy obecność kluczy, nie tylko "truthy" wartość
+  const hasEmployeeTime =
+    "deliveryTime" in body || "employee_delivery_time" in body;
+  const hasClientTime =
+    "client_delivery_time" in body || "delivery_time" in body;
+
+  const employeeTime: string | null = hasEmployeeTime
+    ? body.deliveryTime ?? body.employee_delivery_time ?? null
+    : null;
+
+  const clientTime: string | null = hasClientTime
+    ? body.client_delivery_time ?? body.delivery_time ?? null
+    : null;
 
   const updateData: Record<string, any> = {};
 
-  if (body.status) updateData.status = body.status;
+  // status zamówienia
+  if ("status" in body) {
+    updateData.status = body.status;
+  }
 
-  // "deliveryTime" (timestamptz) i "client_delivery_time" (text) – tak masz w DDL
-  if (employeeTime) updateData.deliveryTime = employeeTime;
-  if (clientTime) updateData.client_delivery_time = clientTime;
+  // "deliveryTime" (timestamptz) i "client_delivery_time" (text)
+  if (hasEmployeeTime) {
+    updateData.deliveryTime = employeeTime;
+  }
+  if (hasClientTime) {
+    updateData.client_delivery_time = clientTime;
+  }
 
-  if (body.items !== undefined) {
+  // items
+  if ("items" in body) {
     updateData.items =
       typeof body.items === "string" ? body.items : JSON.stringify(body.items);
   }
 
-  if (body.selected_option) updateData.selected_option = body.selected_option;
-  if (body.payment_method) updateData.payment_method = body.payment_method;
-  if (body.payment_status !== undefined) {
+  // opcja (na wynos / dostawa)
+  if ("selected_option" in body) {
+    updateData.selected_option = body.selected_option;
+  }
+
+  // metoda płatności (cash / terminal / online)
+  if ("payment_method" in body) {
+    updateData.payment_method = body.payment_method;
+  }
+
+  // status płatności (pending / paid / failed / null)
+  if ("payment_status" in body) {
     updateData.payment_status = body.payment_status;
   }
-  if (body.total_price !== undefined) updateData.total_price = body.total_price;
 
-  if (body.address) updateData.address = body.address;
-  if (body.street) updateData.street = body.street;
-  if (body.postal_code) updateData.postal_code = body.postal_code;
-  if (body.city) updateData.city = body.city;
-  if (body.flat_number) updateData.flat_number = body.flat_number;
-
-  if (body.phone) updateData.phone = body.phone;
-  if (body.contact_email) updateData.contact_email = body.contact_email;
-  if (body.name) updateData.name = body.name;
-  if (body.customer_name) updateData.name = body.customer_name;
-
-  if (body.promo_code !== undefined) updateData.promo_code = body.promo_code;
-  if (body.discount_amount !== undefined) {
-    updateData.discount_amount = body.discount_amount;
+  // kwota
+  if ("total_price" in body) {
+    updateData.total_price = body.total_price;
   }
+
+  // adres / kontakt
+  if ("address" in body) updateData.address = body.address;
+  if ("street" in body) updateData.street = body.street;
+  if ("postal_code" in body) updateData.postal_code = body.postal_code;
+  if ("city" in body) updateData.city = body.city;
+  if ("flat_number" in body) updateData.flat_number = body.flat_number;
+
+  if ("phone" in body) updateData.phone = body.phone;
+  if ("contact_email" in body) updateData.contact_email = body.contact_email;
+  if ("name" in body) updateData.name = body.name;
+  if ("customer_name" in body) updateData.name = body.customer_name;
 
   // Pałeczki → chopsticks_qty (smallint, CHECK 0–10)
   const chopsticksRaw =
@@ -222,7 +248,9 @@ export async function PATCH(request: Request, ctx: any) {
   /* ====== SMS (SMSAPI przez sendSms) ====== */
 
   const onlyTimeUpdate =
-    !!employeeTime && updated.status === "accepted" && body.status !== "accepted";
+    (hasEmployeeTime || hasClientTime) &&
+    updated.status === "accepted" &&
+    body.status !== "accepted";
 
   let smsBody = "";
   if (onlyTimeUpdate) {
@@ -275,7 +303,9 @@ export async function PATCH(request: Request, ctx: any) {
     // jeśli nie ma maila w orders, spróbuj dociągnąć z auth.users
     if (!toEmail && userId) {
       // @ts-ignore — adminAuth.auth.admin jest słabo typowany w supabase-js
-      const { data: userRes } = await adminAuth.auth.admin.getUserById(userId);
+      const { data: userRes } = await (adminAuth as any).auth.admin.getUserById(
+        userId
+      );
       toEmail = userRes?.user?.email || toEmail;
     }
 
@@ -364,7 +394,6 @@ export async function PATCH(request: Request, ctx: any) {
           </div>
         `;
 
-        // Tu faktycznie odpala się Twoja bramka mailowa (Resend/SMTP) z lib/e-mail
         await sendEmail({
           to: toEmail,
           subject,
