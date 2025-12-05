@@ -2,6 +2,7 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseAdmin = createClient(
@@ -10,11 +11,21 @@ const supabaseAdmin = createClient(
   { auth: { persistSession: false } }
 );
 
+type NormalizedStatus =
+  | "new"
+  | "pending"
+  | "placed"
+  | "accepted"
+  | "completed"
+  | "cancelled";
+
+type FulfillOption = "takeaway" | "delivery" | null;
+
 type OrderRow = {
   id: string;
   created_at: string;
   status: string | null;
-  selected_option: "takeaway" | "delivery" | null;
+  selected_option: FulfillOption;
   total_price: number | null;
   client_delivery_time: string | null;
   deliveryTime: string | null;
@@ -24,15 +35,10 @@ type OrderRow = {
   name: string | null;
 };
 
-function normalizeStatus(raw: any):
-  | "new"
-  | "pending"
-  | "placed"
-  | "accepted"
-  | "completed"
-  | "cancelled" {
+function normalizeStatus(raw: any): NormalizedStatus {
   const s0 = String(raw || "").toLowerCase();
-  const map: Record<string, OrderRow["status"]> = {
+
+  const map: Record<string, NormalizedStatus> = {
     pending: "pending",
     created: "new",
     confirmed: "accepted",
@@ -42,7 +48,9 @@ function normalizeStatus(raw: any):
     delivered: "completed",
     canceled: "cancelled",
   };
-  const s = (map[s0] as any) ?? s0;
+
+  const s = map[s0] ?? (s0 as NormalizedStatus);
+
   if (
     s === "new" ||
     s === "pending" ||
@@ -56,7 +64,7 @@ function normalizeStatus(raw: any):
   return "new";
 }
 
-function statusLabel(status: ReturnType<typeof normalizeStatus>): string {
+function statusLabel(status: NormalizedStatus): string {
   switch (status) {
     case "new":
     case "pending":
@@ -72,8 +80,8 @@ function statusLabel(status: ReturnType<typeof normalizeStatus>): string {
 }
 
 function statusDescription(
-  status: ReturnType<typeof normalizeStatus>,
-  option: "takeaway" | "delivery" | null
+  status: NormalizedStatus,
+  option: FulfillOption
 ): string {
   const where =
     option === "delivery"
@@ -104,7 +112,7 @@ function cityLabel(slug?: string | null): string {
   return "SUSHI Tutaj";
 }
 
-function optionLabel(opt: "takeaway" | "delivery" | null): string {
+function optionLabel(opt: FulfillOption): string {
   if (opt === "delivery") return "Dostawa";
   return "Odbiór osobisty";
 }
@@ -149,11 +157,11 @@ function paymentStatusLabel(status: string | null): string {
   return s;
 }
 
-export default async function OrderTrackingPage({
-  params,
-}: {
+type PageProps = {
   params: { id: string };
-}) {
+};
+
+export default async function OrderTrackingPage({ params }: PageProps) {
   const orderId = params.id;
 
   let order: OrderRow | null = null;
@@ -182,7 +190,7 @@ export default async function OrderTrackingPage({
     if (error) {
       console.error("[order-tracking] select error:", error.message);
     } else {
-      order = data as OrderRow | null;
+      order = (data as OrderRow) ?? null;
     }
   } catch (e) {
     console.error("[order-tracking] unexpected error:", e);
@@ -191,10 +199,12 @@ export default async function OrderTrackingPage({
   if (!order) {
     return (
       <main className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center px-4 py-16 text-center text-slate-100">
-        <h1 className="mb-3 text-2xl font-semibold">Nie znaleziono zamówienia</h1>
+        <h1 className="mb-3 text-2xl font-semibold">
+          Nie znaleziono zamówienia
+        </h1>
         <p className="text-sm text-slate-300">
-          Sprawdź, czy link z e-maila jest kompletny. Jeśli problem się powtarza,
-          skontaktuj się bezpośrednio z restauracją.
+          Sprawdź, czy link z e-maila jest kompletny. Jeśli problem się
+          powtarza, skontaktuj się bezpośrednio z restauracją.
         </p>
       </main>
     );
@@ -210,7 +220,9 @@ export default async function OrderTrackingPage({
   const clientTime = formatTimeLabel(order.client_delivery_time);
   const localTime = order.deliveryTime ? formatTimeLabel(order.deliveryTime) : "–";
 
-  const total = Number(order.total_price || 0).toFixed(2).replace(".", ",");
+  const total = Number(order.total_price || 0)
+    .toFixed(2)
+    .replace(".", ",");
 
   return (
     <main className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center px-4 py-10 text-slate-50">
@@ -294,15 +306,15 @@ export default async function OrderTrackingPage({
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
           <p className="max-w-xs text-[11px] leading-snug text-zinc-500">
             Jeśli coś się nie zgadza ze statusem zamówienia, skontaktuj się
-            telefonicznie z wybraną restauracją. Ten link służy tylko do podglądu
-            postępu realizacji.
+            telefonicznie z wybraną restauracją. Ten link służy tylko do
+            podglądu postępu realizacji.
           </p>
-          <a
-            href=""
+          <Link
+            href={`/order/${orderId}?r=${Date.now()}`}
             className="inline-flex items-center justify-center rounded-full bg-zinc-50 px-4 py-2 text-xs font-semibold text-zinc-950 hover:bg-zinc-200"
           >
             Odśwież status
-          </a>
+          </Link>
         </div>
       </div>
     </main>
