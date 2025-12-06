@@ -10,4 +10,5 @@ export const LEGAL = {
   email: "kontakt@sushitutaj.pl",
   docsVersion: "2025-02",
   effectiveDate: "2025-02-01",
+  domain: "sushitutaj.pl",
 };
