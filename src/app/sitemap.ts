@@ -9,8 +9,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "",
     "/#menu",
     "/#kontakt",
-    "/legal/regulamin",
-    "/legal/polityka-prywatnosci",
+    "[city]/regulamin",
+    "[city]/polityka-cookies",
+    "[city]/polityka-prywatnosci",
   ];
 
   return paths.map((p) => ({
