@@ -209,19 +209,23 @@ export default function MenuSection() {
 
   useEffect(() => {
     const readSlug = () => {
-      if (typeof window === "undefined") return null;
-      const keys = ["restaurant_slug", "restaurantSlug", "branch", "citySlug"];
-      for (const k of keys) {
-        const v = window.localStorage.getItem(k);
-        if (v) return v;
-      }
-      try {
-        const u = new URL(window.location.href);
-        return u.searchParams.get("slug");
-      } catch {
-        return null;
-      }
-    };
+  if (typeof window === "undefined") return null;
+
+  // NOWA KOLEJNOŚĆ – najpierw aktualne klucze
+  const keys = ["citySlug", "branch", "restaurantSlug", "restaurant_slug"];
+
+  for (const k of keys) {
+    const v = window.localStorage.getItem(k);
+    if (v) return v;
+  }
+
+  try {
+    const u = new URL(window.location.href);
+    return u.searchParams.get("slug");
+  } catch {
+    return null;
+  }
+};
 
     let mounted = true;
     (async () => {
