@@ -1,4 +1,4 @@
-// src/app/order/[id]/page.tsx
+// src/app/orders/success/page.tsx
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -34,6 +34,8 @@ type OrderRow = {
   payment_status: string | null;
   name: string | null;
 };
+
+/* ================== Helpers ================== */
 
 function normalizeStatus(raw: any): NormalizedStatus {
   const s0 = String(raw || "").toLowerCase();
@@ -127,7 +129,10 @@ function formatTimeLabel(v?: string | null): string {
     const h = parseInt(m[1], 10);
     const min = parseInt(m[2], 10);
     if (h >= 0 && h < 24 && min >= 0 && min < 60) {
-      return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+      return `${String(h).padStart(2, "0")}:${String(min).padStart(
+        2,
+        "0"
+      )}`;
     }
   }
 
@@ -157,12 +162,65 @@ function paymentStatusLabel(status: string | null): string {
   return s;
 }
 
-type PageProps = {
-  params: { id: string };
+// bierze pierwszą wartość z searchParams (string | string[])
+const firstVal = (v: unknown): string | null => {
+  if (Array.isArray(v)) return (v[0] as string) ?? null;
+  return typeof v === "string" ? v : null;
 };
 
-export default async function OrderTrackingPage({ params }: PageProps) {
-  const orderId = params.id;
+// obsługa sytuacji gdy Next poda params/searchParams jako Promise
+async function unwrap<T>(v: T | Promise<T> | undefined): Promise<T | undefined> {
+  if (!v) return undefined;
+  if (typeof (v as any).then === "function") {
+    try {
+      return (await (v as any)) as T;
+    } catch {
+      return undefined;
+    }
+  }
+  return v as T;
+}
+
+/* ================== Page ================== */
+
+export default async function OrderSuccessPage(props: any) {
+  const params = await unwrap<any>(props?.params);
+  const searchParams = await unwrap<any>(props?.searchParams);
+
+  let orderId: string | null = null;
+
+  // 1) jeśli kiedykolwiek zrobisz dynamiczny segment [id]
+  if (params && typeof params === "object" && "id" in params) {
+    const v = (params as any).id;
+    if (typeof v === "string") orderId = v;
+  }
+
+  // 2) standardowo: bierzemy z query ?orderId= lub ?id=
+  if (!orderId && searchParams && typeof searchParams === "object") {
+    const raw = (searchParams as any).orderId ?? (searchParams as any).id;
+    orderId = firstVal(raw);
+  }
+
+  if (!orderId) {
+    // brak ID w URL – pokazujemy prosty ekran
+    return (
+      <main className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center px-4 py-16 text-center text-slate-100">
+        <h1 className="mb-3 text-2xl font-semibold">
+          Brak informacji o zamówieniu
+        </h1>
+        <p className="mb-4 text-sm text-slate-300">
+          Nie udało się odczytać numeru zamówienia z adresu strony.
+          Spróbuj wrócić do strony głównej i złożyć zamówienie ponownie.
+        </p>
+        <Link
+          href="/"
+          className="inline-flex items-center justify-center rounded-full bg-zinc-50 px-4 py-2 text-xs font-semibold text-zinc-950 hover:bg-zinc-200"
+        >
+          Wróć na stronę główną
+        </Link>
+      </main>
+    );
+  }
 
   let order: OrderRow | null = null;
 
@@ -188,15 +246,16 @@ export default async function OrderTrackingPage({ params }: PageProps) {
       .maybeSingle();
 
     if (error) {
-      console.error("[order-tracking] select error:", error.message);
+      console.error("[orders/success] select error:", error.message);
     } else {
       order = (data as OrderRow) ?? null;
     }
   } catch (e) {
-    console.error("[order-tracking] unexpected error:", e);
+    console.error("[orders/success] unexpected error:", e);
   }
 
   if (!order) {
+    // mamy ID, ale nic nie znaleziono w bazie
     return (
       <main className="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center px-4 py-16 text-center text-slate-100">
         <h1 className="mb-3 text-2xl font-semibold">
@@ -218,7 +277,9 @@ export default async function OrderTrackingPage({ params }: PageProps) {
 
   const createdLabel = new Date(order.created_at).toLocaleString("pl-PL");
   const clientTime = formatTimeLabel(order.client_delivery_time);
-  const localTime = order.deliveryTime ? formatTimeLabel(order.deliveryTime) : "–";
+  const localTime = order.deliveryTime
+    ? formatTimeLabel(order.deliveryTime)
+    : "–";
 
   const total = Number(order.total_price || 0)
     .toFixed(2)
