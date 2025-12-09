@@ -46,6 +46,7 @@ type FormState = {
   excludeCategories: string;
   includeProducts: string;
   excludeProducts: string;
+  isGlobal: boolean; // NOWE: rabat globalny (restaurant_id = NULL)
 };
 
 const supabase = createClientComponentClient();
@@ -65,6 +66,7 @@ const emptyForm = (): FormState => ({
   excludeCategories: "",
   includeProducts: "",
   excludeProducts: "",
+  isGlobal: true, // nowy rabat domyślnie globalny
 });
 
 function joinList(arr: string[] | null | undefined): string {
@@ -97,6 +99,7 @@ function toFormState(row: DiscountCodeRow): FormState {
     excludeCategories: joinList(row.exclude_categories),
     includeProducts: joinList(row.include_products),
     excludeProducts: joinList(row.exclude_products),
+    isGlobal: row.restaurant_id === null, // KLUCZOWE
   };
 }
 
@@ -114,40 +117,53 @@ export default function DiscountCodesForm() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 1) Wczytanie aktualnej restauracji + kodów
+  // 1) Wczytanie aktualnej restauracji (ze sluga w URL) + kodów (lokalne + globalne)
   useEffect(() => {
     const loadRestaurantAndCodes = async () => {
       setLoading(true);
       setError(null);
       try {
-        const { data, error } = await supabase
-          .from("restaurants")
-          .select("id")
-          .limit(1)
-          .maybeSingle();
+        // slug lokalu z ?restaurant=...
+        const params = new URLSearchParams(window.location.search);
+        const slug = params.get("restaurant");
 
-        if (error || !data?.id) {
+        let restQuery = supabase.from("restaurants").select("id, slug");
+
+        if (slug) {
+          restQuery = restQuery.eq("slug", slug);
+        } else {
+          restQuery = restQuery.limit(1);
+        }
+
+        const { data: restaurant, error: restErr } =
+          await restQuery.maybeSingle();
+
+        if (restErr || !restaurant?.id) {
+          console.error("restaurant load error", restErr);
           setError("Nie udało się odczytać aktualnej restauracji.");
           setRestaurantId(null);
           setLoading(false);
           return;
         }
 
-        const restId = data.id as string;
+        const restId = restaurant.id as string;
         setRestaurantId(restId);
 
+        // Pobierz rabaty: globalne (restaurant_id IS NULL) + lokalne dla tego lokalu
         const { data: codes, error: codesErr } = await supabase
           .from("discount_codes")
           .select("*")
-          .eq("restaurant_id", restId)
+          .or(`restaurant_id.is.null,restaurant_id.eq.${restId}`)
           .order("created_at", { ascending: false });
 
         if (codesErr) {
+          console.error("discount_codes load error", codesErr);
           setError("Nie udało się pobrać listy kodów rabatowych.");
         } else {
           setRows((codes || []) as DiscountCodeRow[]);
         }
       } catch (e: any) {
+        console.error("discount_codes unexpected error", e);
         setError(e?.message || "Nieoczekiwany błąd.");
       } finally {
         setLoading(false);
@@ -169,100 +185,110 @@ export default function DiscountCodesForm() {
     setEditing(null);
   };
 
-  const handleChange = (
-    field: keyof FormState,
-    value: string | boolean
-  ) => {
+  const handleChange = (field: keyof FormState, value: string | boolean) => {
     if (!editing) return;
     setEditing({ ...editing, [field]: value } as FormState);
   };
 
- const handleSave = async () => {
-  if (!editing || !restaurantId) return;
-  setSaving(true);
-  setError(null);
+  const handleSave = async () => {
+    if (!editing) return;
+    // dla lokalnego rabatu wymagamy ID restauracji
+    if (!editing.isGlobal && !restaurantId) return;
 
-  const valueNum = numOrNull(editing.value);
-  const minOrderNum = numOrNull(editing.minOrder);
+    setSaving(true);
+    setError(null);
 
-  // <<< NOWE: zawsze zwracamy tablice, nigdy null >>>
-  const includeCategoriesArr =
-    editing.applyScope === "include_categories"
-      ? parseList(editing.includeCategories) ?? []
-      : [];
+    const valueNum = numOrNull(editing.value);
+    const minOrderNum = numOrNull(editing.minOrder);
 
-  const excludeCategoriesArr =
-    editing.applyScope === "exclude_categories"
-      ? parseList(editing.excludeCategories) ?? []
-      : [];
+    const includeCategoriesArr =
+      editing.applyScope === "include_categories"
+        ? parseList(editing.includeCategories) ?? []
+        : [];
 
-  const includeProductsArr =
-    editing.applyScope === "include_products"
-      ? parseList(editing.includeProducts) ?? []
-      : [];
+    const excludeCategoriesArr =
+      editing.applyScope === "exclude_categories"
+        ? parseList(editing.excludeCategories) ?? []
+        : [];
 
-  const excludeProductsArr =
-    editing.applyScope === "exclude_products"
-      ? parseList(editing.excludeProducts) ?? []
-      : [];
-  // >>>>>
+    const includeProductsArr =
+      editing.applyScope === "include_products"
+        ? parseList(editing.includeProducts) ?? []
+        : [];
 
-  const payload: Partial<DiscountCodeRow> = {
-    code: editing.requireCode ? editing.code.trim() || null : null,
-    description: editing.description.trim() || null,
-    active: editing.active,
-    type: editing.type,
-    value: valueNum,
-    min_order: minOrderNum,
-    expires_at: editing.expiresAt
-      ? new Date(editing.expiresAt).toISOString()
-      : null,
-    require_code: editing.requireCode,
-    apply_scope: editing.applyScope,
+    const excludeProductsArr =
+      editing.applyScope === "exclude_products"
+        ? parseList(editing.excludeProducts) ?? []
+        : [];
 
-    // <<< TU wstawiamy już przygotowane tablice >>>
-    include_categories: includeCategoriesArr,
-    exclude_categories: excludeCategoriesArr,
-    include_products: includeProductsArr,
-    exclude_products: excludeProductsArr,
-    // >>>>>
+    const payload: Partial<DiscountCodeRow> = {
+      code: editing.requireCode ? editing.code.trim() || null : null,
+      description: editing.description.trim() || null,
+      active: editing.active,
+      type: editing.type,
+      value: valueNum,
+      min_order: minOrderNum,
+      expires_at: editing.expiresAt
+        ? new Date(editing.expiresAt).toISOString()
+        : null,
+      require_code: editing.requireCode,
+      apply_scope: editing.applyScope,
+      include_categories: includeCategoriesArr,
+      exclude_categories: excludeCategoriesArr,
+      include_products: includeProductsArr,
+      exclude_products: excludeProductsArr,
+      // KLUCZOWE: globalny = restaurant_id NULL, lokalny = ID aktualnego lokalu
+      restaurant_id: editing.isGlobal ? null : restaurantId,
+    };
 
-    restaurant_id: restaurantId,
+    try {
+      if (editing.id) {
+        const { error } = await supabase
+          .from("discount_codes")
+          .update(payload)
+          .eq("id", editing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("discount_codes")
+          .insert(payload);
+        if (error) throw error;
+      }
+
+      if (!restaurantId) {
+        // teoretycznie nie powinno się zdarzyć, bo lokalne wymagają ID,
+        // ale dla porządku odświeżamy bez filtra
+        const { data: codes, error: codesErr } = await supabase
+          .from("discount_codes")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (codesErr) {
+          setError("Zapisano, ale nie udało się odświeżyć listy.");
+        } else {
+          setRows((codes || []) as DiscountCodeRow[]);
+        }
+      } else {
+        const { data: codes, error: codesErr } = await supabase
+          .from("discount_codes")
+          .select("*")
+          .or(`restaurant_id.is.null,restaurant_id.eq.${restaurantId}`)
+          .order("created_at", { ascending: false });
+
+        if (codesErr) {
+          setError("Zapisano, ale nie udało się odświeżyć listy.");
+        } else {
+          setRows((codes || []) as DiscountCodeRow[]);
+        }
+      }
+
+      setEditing(null);
+    } catch (e: any) {
+      setError(e?.message || "Nie udało się zapisać kodu rabatowego.");
+    } finally {
+      setSaving(false);
+    }
   };
-
-  try {
-    if (editing.id) {
-      const { error } = await supabase
-        .from("discount_codes")
-        .update(payload)
-        .eq("id", editing.id);
-      if (error) throw error;
-    } else {
-      const { error } = await supabase
-        .from("discount_codes")
-        .insert(payload);
-      if (error) throw error;
-    }
-
-    const { data: codes, error: codesErr } = await supabase
-      .from("discount_codes")
-      .select("*")
-      .eq("restaurant_id", restaurantId)
-      .order("created_at", { ascending: false });
-
-    if (codesErr) {
-      setError("Zapisano, ale nie udało się odświeżyć listy.");
-    } else {
-      setRows((codes || []) as DiscountCodeRow[]);
-    }
-
-    setEditing(null);
-  } catch (e: any) {
-    setError(e?.message || "Nie udało się zapisać kodu rabatowego.");
-  } finally {
-    setSaving(false);
-  }
-};
 
   const handleDelete = async (id: string) => {
     if (!id) return;
@@ -293,9 +319,7 @@ export default function DiscountCodesForm() {
       )}
 
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">
-          Promocje i kody rabatowe
-        </h2>
+        <h2 className="text-lg font-semibold">Promocje i kody rabatowe</h2>
         <button
           type="button"
           onClick={startCreate}
@@ -310,7 +334,7 @@ export default function DiscountCodesForm() {
         <p className="text-sm text-slate-600">Ładowanie…</p>
       ) : rows.length === 0 ? (
         <p className="text-sm text-slate-600">
-          Brak zdefiniowanych rabatów dla tego lokalu.
+          Brak zdefiniowanych rabatów (lokalnych ani globalnych).
         </p>
       ) : (
         <div className="overflow-x-auto rounded-xl border bg-white">
@@ -322,7 +346,8 @@ export default function DiscountCodesForm() {
                 <th className="px-3 py-2">Typ</th>
                 <th className="px-3 py-2">Wartość</th>
                 <th className="px-3 py-2">Min. zamówienie</th>
-                <th className="px-3 py-2">Zakres</th>
+                <th className="px-3 py-2">Zakres produktów</th>
+                <th className="px-3 py-2">Zakres lokali</th>
                 <th className="px-3 py-2">Ważny do</th>
                 <th className="px-3 py-2">Aktywny</th>
                 <th className="px-3 py-2"></th>
@@ -358,6 +383,11 @@ export default function DiscountCodesForm() {
                       "tylko produkty (include)"}
                     {row.apply_scope === "exclude_products" &&
                       "wszystko oprócz produktów (exclude)"}
+                  </td>
+                  <td className="px-3 py-2">
+                    {row.restaurant_id === null
+                      ? "Wszystkie lokale"
+                      : "Tylko ten lokal"}
                   </td>
                   <td className="px-3 py-2">
                     {row.expires_at
@@ -487,6 +517,19 @@ export default function DiscountCodesForm() {
                 onChange={(e) => handleChange("active", e.target.checked)}
               />
               <span>Rabat aktywny</span>
+            </label>
+
+            <label className="flex items-center gap-2 text-sm md:col-span-2">
+              <input
+                type="checkbox"
+                className="h-4 w-4"
+                checked={editing.isGlobal}
+                onChange={(e) => handleChange("isGlobal", e.target.checked)}
+              />
+              <span>
+                Globalny – obowiązuje we wszystkich lokalach (jeśli odznaczysz,
+                rabat będzie działał tylko w tym lokalu)
+              </span>
             </label>
 
             <label className="flex flex-col gap-1 md:col-span-2">
