@@ -46,26 +46,36 @@ export default function DeliveryZonesForm() {
   );
 
   async function load() {
-    setLoading(true);
-    setError(null);
-    try {
-      const r = await fetch("/api/admin/delivery-zones", {
-        cache: "no-store",
-      });
-      if (!r.ok) {
-        setError("Nie udało się pobrać stref.");
-        setLoading(false);
-        return;
+  setLoading(true);
+  setError(null);
+  try {
+    const r = await fetch("/api/admin/delivery-zones", {
+      cache: "no-store",
+    });
+
+    if (!r.ok) {
+      let msg = "Nie udało się pobrać stref.";
+      try {
+        const j = await r.json();
+        if (j?.error) msg = j.error;
+        console.error("delivery-zones GET error", r.status, j);
+      } catch (e) {
+        console.error("delivery-zones GET error", r.status, e);
       }
-      const j = await r.json();
-      setZones((j.zones || []) as Zone[]);
-    } catch (e) {
-      console.error(e);
-      setError("Błąd połączenia z API.");
-    } finally {
+      setError(msg);
       setLoading(false);
+      return;
     }
+
+    const j = await r.json();
+    setZones((j.zones || []) as Zone[]);
+  } catch (e) {
+    console.error(e);
+    setError("Błąd połączenia z API.");
+  } finally {
+    setLoading(false);
   }
+}
 
   useEffect(() => {
     void load();

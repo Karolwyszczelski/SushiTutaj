@@ -58,10 +58,10 @@ const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY || "";
 const TERMS_VERSION = process.env.TERMS_VERSION || "2025-01";
 const PRIVACY_VERSION = process.env.PRIVACY_VERSION || "2025-01";
 const TERMS_URL =
-  process.env.TERMS_URL || "https://www.mediagalaxy.pl/regulamin";
+  process.env.TERMS_URL || "https://www.sushitutaj.pl/regulamin";
 const PRIVACY_URL =
   process.env.PRIVACY_URL ||
-  "https://www.mediagalaxy.pl/polityka-prywatnosci";
+  "https://www.sushitutaj.pl/polityka-prywatnosci";
 
 /* ===== Godziny otwarcia per miasto ===== */
 type Day = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = niedziela
