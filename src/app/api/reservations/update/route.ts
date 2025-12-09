@@ -33,7 +33,7 @@ async function sendEmail(to: string, subject: string, html: string) {
         Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({
-        from: process.env.MAIL_FROM || "restauracja@mediagalaxy.pl",
+        from: process.env.MAIL_FROM || "restauracja@sushitutaj.pl",
         to: [to],
         subject,
         html,
@@ -53,7 +53,7 @@ async function sendEmail(to: string, subject: string, html: string) {
 
     const transporter = (nodemailer as any).createTransport(url);
     await transporter.sendMail({
-      from: process.env.MAIL_FROM || "restauracja@mediagalaxy.pl",
+      from: process.env.MAIL_FROM || "restauracja@sushitutaj.pl",
       to,
       subject,
       html,

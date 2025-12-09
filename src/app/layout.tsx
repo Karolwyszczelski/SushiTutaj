@@ -7,7 +7,7 @@ import Footer from "@/components/Footer";
 import CookieBanner from "@/components/legal/CookieBanner";
 import AuthCookieSync from "@/components/AuthCookieSync";
 
-const BASE = process.env.NEXT_PUBLIC_BASE_URL || "https://www.mediagalaxy.pl";
+const BASE = process.env.NEXT_PUBLIC_BASE_URL || "https://www.sushitutaj.pl";
 
 
 

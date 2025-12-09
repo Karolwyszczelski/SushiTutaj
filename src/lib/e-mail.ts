@@ -1,6 +1,6 @@
 // src/lib/e-mail.ts
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const FROM = process.env.MAIL_FROM || "Sushi Tutaj <restauracja@mediagalaxy.pl>";
+const FROM = process.env.MAIL_FROM || "Sushi Tutaj <restauracja@sushitutaj.pl>";
 const RESEND_URL = "https://api.resend.com/emails";
 
 type SendArgs = {

@@ -14,9 +14,9 @@ import type { Database } from "@/types/supabase";
 /* ====== Wersje/Linki regulaminów ====== */
 const TERMS_VERSION = process.env.TERMS_VERSION || "2025-01";
 const PRIVACY_VERSION = process.env.PRIVACY_VERSION || "2025-01";
-const TERMS_URL = process.env.TERMS_URL || "https://mediagalaxy.pl/regulamin";
+const TERMS_URL = process.env.TERMS_URL || "https://www.sushitutaj.pl/regulamin";
 const PRIVACY_URL =
-  process.env.PRIVACY_URL || "https://www.mediagalaxy.pl/polityka-prywatnosci";
+  process.env.PRIVACY_URL || "https://www.sushitutaj.pl/polityka-prywatnosci";
 
 /* ====== Supabase admin (service role) ====== */
 const supabaseAdmin = createClient<Database>(

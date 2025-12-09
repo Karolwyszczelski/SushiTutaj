@@ -8,7 +8,7 @@ import type { Database } from "@/types/supabase";
 const CANONICAL_HOST =
   process.env.NEXT_PUBLIC_BASE_HOST ||
   process.env.NEXT_PUBLIC_BASE_URL?.replace(/^https?:\/\//, "") ||
-  "www.mediagalaxy.pl";
+  "www.sushitutaj.pl";
 
 /** Ścieżki po starem WP */
 const WP_PREFIXES = [
