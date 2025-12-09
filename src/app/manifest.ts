@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Sushi Tutaj Burger & Pancakes",
+    name: "Sushi Tutaj",
     short_name: "Sushi Tutaj",
     start_url: "/",
     display: "standalone",

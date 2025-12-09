@@ -1,3 +1,4 @@
+// src/components/admin/settings/BlockedAddressesForm.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -18,6 +19,8 @@ const emptyEntry: Omit<Address, "id"> = {
   active: true,
   type: "address",
 };
+
+const API_BASE = "/api/admin/blocked-addresses";
 
 export default function AddressesForm() {
   const [rows, setRows] = useState<Address[]>([]);
@@ -55,14 +58,24 @@ export default function AddressesForm() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch("/api/admin/-addresses", {
+      const r = await fetch(API_BASE, {
         cache: "no-store",
       });
+
       if (!r.ok) {
-        setError("Nie udało się pobrać listy blokowanych wpisów.");
+        let msg = "Nie udało się pobrać listy blokowanych wpisów.";
+        try {
+          const j = await r.json();
+          if (j?.error) msg = j.error;
+          console.error("blocked-addresses GET error", r.status, j);
+        } catch (e) {
+          console.error("blocked-addresses GET error", r.status, e);
+        }
+        setError(msg);
         setLoading(false);
         return;
       }
+
       const j = await r.json();
       const list = (j.addresses || []) as any[];
 
@@ -72,6 +85,7 @@ export default function AddressesForm() {
           pattern: row.pattern ?? "",
           note: row.note ?? "",
           active: row.active ?? row.is_active ?? true,
+          // w bazie nie ma kolumny "type", więc domyślnie "address"
           type: (row.type as BlockType) || "address",
         }))
       );
@@ -99,10 +113,10 @@ export default function AddressesForm() {
         pattern: draft.pattern.trim(),
         note: draft.note?.trim() || null,
         active: draft.active,
-        type: draft.type,
+        type: draft.type, // API i tak to zignoruje dopóki nie dodamy kolumny w bazie
       };
 
-      const r = await fetch("/api/admin/-addresses", {
+      const r = await fetch(API_BASE, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -131,7 +145,7 @@ export default function AddressesForm() {
         type: rest.type,
       };
 
-      const r = await fetch(`/api/admin/-addresses/${id}`, {
+      const r = await fetch(`${API_BASE}/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -150,7 +164,7 @@ export default function AddressesForm() {
   async function remove(id: string) {
     if (!confirm("Usunąć ten wpis?")) return;
     setError(null);
-    const r = await fetch(`/api/admin/-addresses/${id}`, {
+    const r = await fetch(`${API_BASE}/${id}`, {
       method: "DELETE",
     });
     if (!r.ok) {
