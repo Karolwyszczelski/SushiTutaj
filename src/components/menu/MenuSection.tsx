@@ -207,25 +207,41 @@ export default function MenuSection() {
 
   const stopProp = (e: any) => e.stopPropagation();
 
+  // ---------------- SLUG → restaurant_id ----------------
   useEffect(() => {
     const readSlug = () => {
-  if (typeof window === "undefined") return null;
+      if (typeof window === "undefined") return null;
 
-  // NOWA KOLEJNOŚĆ – najpierw aktualne klucze
-  const keys = ["citySlug", "branch", "restaurantSlug", "restaurant_slug"];
+      // 1) slug z pierwszego segmentu ścieżki: /przasnysz, /ciechanow/regulamin
+      try {
+        const path = window.location.pathname || "";
+        const segments = path.split("/").filter(Boolean);
+        if (segments.length > 0) {
+          return segments[0]; // "przasnysz", "ciechanow", "szczytno", ...
+        }
+      } catch {
+        // ignore
+      }
 
-  for (const k of keys) {
-    const v = window.localStorage.getItem(k);
-    if (v) return v;
-  }
+      // 2) localStorage – gdyby ktoś wszedł np. z /?slug=...
+      const keys = ["citySlug", "branch", "restaurantSlug", "restaurant_slug"];
+      for (const k of keys) {
+        try {
+          const v = window.localStorage.getItem(k);
+          if (v) return v;
+        } catch {
+          // brak dostępu do localStorage
+        }
+      }
 
-  try {
-    const u = new URL(window.location.href);
-    return u.searchParams.get("slug");
-  } catch {
-    return null;
-  }
-};
+      // 3) query param ?slug=
+      try {
+        const u = new URL(window.location.href);
+        return u.searchParams.get("slug");
+      } catch {
+        return null;
+      }
+    };
 
     let mounted = true;
     (async () => {
@@ -239,7 +255,9 @@ export default function MenuSection() {
           .eq("slug", slug)
           .maybeSingle<RestaurantIdRow>();
 
-        if (mounted) setRestaurantId(r?.id ?? null);
+        if (mounted) {
+          setRestaurantId(r?.id ?? null);
+        }
       } else {
         const { data: rFirst } = await supabase
           .from("restaurants")
@@ -247,7 +265,9 @@ export default function MenuSection() {
           .limit(1)
           .maybeSingle<RestaurantIdRow>();
 
-        if (mounted) setRestaurantId(rFirst?.id ?? null);
+        if (mounted) {
+          setRestaurantId(rFirst?.id ?? null);
+        }
       }
 
       if (mounted) setLoading(false);
@@ -258,6 +278,7 @@ export default function MenuSection() {
     };
   }, [supabase]);
 
+  // ---------------- produkty dla danego restaurant_id ----------------
   useEffect(() => {
     if (!restaurantId) return;
     let mounted = true;
@@ -398,32 +419,28 @@ export default function MenuSection() {
   }, [restaurantId, supabase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const visible = useMemo(() => {
-  const term = norm(q.trim());
+    const term = norm(q.trim());
 
-  return products.filter((p) => {
-    // 1) produkt wyłączony w panelu – w ogóle go nie pokazujemy
-    if (p.available === false) return false;
+    return products.filter((p) => {
+      // 1) produkt wyłączony w panelu – w ogóle go nie pokazujemy
+      if (p.available === false) return false;
 
-    // 2) filtr kategorii
-    const inCat =
-      activeCat === "Wszystko" || (p.subcategory || "Inne") === activeCat;
-    if (!inCat) return false;
+      // 2) filtr kategorii
+      const inCat =
+        activeCat === "Wszystko" || (p.subcategory || "Inne") === activeCat;
+      if (!inCat) return false;
 
-    // 3) brak frazy – wszystko z danej kategorii
-    if (!term) return true;
+      // 3) brak frazy – wszystko z danej kategorii
+      if (!term) return true;
 
-    // 4) wyszukiwanie po nazwie / opisie / kategorii
-    const name = norm(p.name || "");
-    const desc = norm(p.description || "");
-    const sub = norm(p.subcategory || "");
+      // 4) wyszukiwanie po nazwie / opisie / kategorii
+      const name = norm(p.name || "");
+      const desc = norm(p.description || "");
+      const sub = norm(p.subcategory || "");
 
-    return (
-      name.includes(term) ||
-      desc.includes(term) ||
-      sub.includes(term)
-    );
-  });
-}, [products, activeCat, q]);
+      return name.includes(term) || desc.includes(term) || sub.includes(term);
+    });
+  }, [products, activeCat, q]);
 
   // limit widocznych pozycji: desktop 8, mobile 4
   useEffect(() => {
@@ -447,7 +464,6 @@ export default function MenuSection() {
       900
     );
   };
-
 
   const arrowBtnSm =
     `h-10 w-10 rounded-full text-white ${ACCENT} ring-1 ring-black/30 ` +
@@ -684,7 +700,6 @@ export default function MenuSection() {
         } as CSSProperties
       }
     >
-      
       {/* dekoracje desktop */}
       <div
         aria-hidden
@@ -869,7 +884,7 @@ export default function MenuSection() {
         style={{ paddingLeft: GUTTER, paddingRight: GUTTER }}
       >
         <div className="py-14 md:py-20 grid grid-cols-12 gap-10">
-           {/* SIDEBAR */}
+          {/* SIDEBAR */}
           <aside className="hidden md:block col-span-3">
             <div className="sticky top-20">
               <h3 className="mb-4 text-xs tracking-widest font-light text-white/60">
