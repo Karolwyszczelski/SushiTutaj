@@ -8,6 +8,10 @@ import "react-day-picker/dist/style.css";
 import { format, startOfMonth, endOfMonth, isSameDay } from "date-fns";
 import { pl } from "date-fns/locale";
 import { createClient } from "@supabase/supabase-js";
+import { toZonedTime } from "date-fns-tz";
+
+const TZ = "Europe/Warsaw";
+const nowPL = () => toZonedTime(new Date(), TZ);
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -179,22 +183,30 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
     if (!selectedDate) return [];
     const slots: string[] = [];
 
-    const now = new Date();
-    const isToday = isSameDay(now, selectedDate);
+    // "teraz" w Polsce
+    const now = nowPL();
 
-    let d = new Date(selectedDate);
+    const dayKey = format(selectedDate, "yyyy-MM-dd");
+    const isToday = dayKey === format(now, "yyyy-MM-dd");
+
+    // startowy slot w strefie PL
+    let d = toZonedTime(selectedDate, TZ);
     d.setHours(START_HOUR, START_MIN, 0, 0);
 
     for (let i = 0; i < SLOT_COUNT; i++) {
       const hhmm = format(d, "HH:mm");
+
       if (!isToday) {
+        // dla innych dni wszystkie sloty są dostępne
         slots.push(hhmm);
       } else {
+        // dla dzisiaj – filtrujemy po MIN_LEAD_MIN, ale w czasie PL
         const diffMinutes = (d.getTime() - now.getTime()) / 60000;
         if (diffMinutes >= MIN_LEAD_MIN) {
           slots.push(hhmm);
         }
       }
+
       d = new Date(d.getTime() + SLOT_DURATION_MIN * 60000);
     }
 
@@ -203,7 +215,9 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
 
   /** Koloryzacja dni (pełny dzień = wszystkie sloty zajęte) */
   const modifiers = {
-    past: (day: Date) => day < new Date(),
+    past: (day: Date) =>
+      format(day, "yyyy-MM-dd") <
+      format(nowPL(), "yyyy-MM-dd"),
     full: (day: Date) => {
       const key = format(day, "yyyy-MM-dd");
       return (countsPerDay[key] || 0) >= MAX_PER_SLOT * SLOT_COUNT;
@@ -361,7 +375,7 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
                 selected={selectedDate}
                 onSelect={setSelectedDate}
                 locale={pl}
-                fromDate={new Date()}
+                fromDate={nowPL()}
                 modifiers={modifiers as any}
                 modifiersClassNames={modifiersClassNames as any}
                 styles={{
