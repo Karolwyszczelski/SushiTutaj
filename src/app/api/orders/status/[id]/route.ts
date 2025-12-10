@@ -2,7 +2,7 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 
@@ -24,6 +24,7 @@ function normalizeOption(
     v === "takeaway" ||
     v === "na_wynos" ||
     v === "local" ||
+    v === "lokal" ||
     v === "pickup" ||
     v === "odbior"
   ) {
@@ -52,12 +53,8 @@ function resolveClientRequestedTime(row: any): string | null {
   return String(val);
 }
 
-export async function GET(
-  _request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  // W NEXT 15 params jest Promise – trzeba je odczekać:
-  const { id } = await params;
+export async function GET(request: Request, ctx: any) {
+  const id = ctx?.params?.id as string | undefined;
 
   if (!id) {
     return NextResponse.json(
