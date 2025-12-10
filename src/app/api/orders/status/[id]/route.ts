@@ -2,7 +2,7 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 
@@ -33,27 +33,75 @@ function normalizeOption(
   return raw;
 }
 
-// wybieramy sensowne ETA z dostępnych kolumn
+/**
+ * ETA (godzina realizacji / odbioru)
+ *
+ * Priorytety:
+ * 1) deliveryTime (timestamptz) – kanoniczny czas ustawiony po stronie systemu
+ * 2) scheduled_delivery_at (timestamptz) – jeśli kiedyś zaczniesz ją używać
+ * 3) client_delivery_time (text) – jeśli jest godziną typu HH:mm (nie "asap")
+ * 4) fallback: created_at + X minut (inne dla dostawy / odbioru)
+ *
+ * Zwracamy zawsze string parsowalny przez Date.parse (ISO) albo HH:mm.
+ */
 function resolveEta(row: any): string | null {
-  // w bazie mamy "deliveryTime" (timestamptz) i client_delivery_time (text)
-  const planned =
-    row?.deliveryTime ?? // główne źródło – timestamp z bazy
-    row?.client_delivery_time ??
-    null;
+  // 1) Najpierw twarde timestampy
+  if (row?.deliveryTime) {
+    return String(row.deliveryTime);
+  }
 
-  if (!planned) return null;
-  return String(planned);
+  if (row?.scheduled_delivery_at) {
+    return String(row.scheduled_delivery_at);
+  }
+
+  // 2) Jeśli klient wybrał konkretną godzinę (HH:mm), to jej użyjemy,
+  //    ale ignorujemy specjalną wartość "asap"
+  const cdt = row?.client_delivery_time as string | null;
+  if (cdt && cdt !== "asap") {
+    return String(cdt);
+  }
+
+  // 3) Fallback: created_at + domyślny czas
+  if (!row?.created_at) return null;
+
+  try {
+    const created = new Date(row.created_at);
+    if (Number.isNaN(created.getTime())) return null;
+
+    const opt = String(row.selected_option || "").toLowerCase();
+    const isDelivery = opt === "delivery" || opt === "dostawa";
+
+    // Tu możesz łatwo podpiąć strefy dostaw – na razie proste stałe:
+    const minutes = isDelivery ? 40 : 20; // DOSTAWA ~40 min, NA WYNOS ~20 min
+
+    const etaDate = new Date(created.getTime() + minutes * 60 * 1000);
+    return etaDate.toISOString();
+  } catch {
+    return null;
+  }
 }
 
-// czas wybrany przez klienta – też z kilku możliwych kolumn
+/**
+ * Czas wybrany przez klienta
+ * - "asap" – klient wybrał "jak najszybciej"
+ * - HH:mm albo ISO – konkretna godzina
+ *
+ * Front ma już:
+ *   data.clientRequestedTime === "asap" ? "Jak najszybciej" : fmtHM(...)
+ */
 function resolveClientRequestedTime(row: any): string | null {
-  const val = row?.client_delivery_time ?? row?.deliveryTime ?? null;
+  const val =
+    row?.client_delivery_time ??
+    row?.scheduled_delivery_at ??
+    row?.deliveryTime ??
+    null;
+
   if (!val) return null;
   return String(val);
 }
 
-// UWAGA: dla świętego spokoju typów w Next 15 używamy ctx: any
-export async function GET(_request: NextRequest, ctx: any) {
+// Używamy luźnego ctx: any (jak w /api/orders/[id]/route.ts), żeby nie walczyć z typami Next 15
+export async function GET(_request: Request, ctx: any) {
   const id = ctx?.params?.id as string | undefined;
 
   if (!id) {
@@ -74,6 +122,7 @@ export async function GET(_request: NextRequest, ctx: any) {
         created_at,
         selected_option,
         client_delivery_time,
+        scheduled_delivery_at,
         "deliveryTime"
       `
       )
