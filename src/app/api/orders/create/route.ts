@@ -457,6 +457,7 @@ async function getDistanceKmFromGoogle(
 /* ===== Normalizacja BODY ===== */
 function normalizeBody(raw: any, req: Request): any {
   const base = raw?.orderPayload ? raw.orderPayload : raw;
+
   const rawItems =
     raw?.items ??
     base?.items ??
@@ -523,16 +524,40 @@ function normalizeBody(raw: any, req: Request): any {
     )
   );
 
+  // sposób realizacji z payloadu
+  const selected_option: "delivery" | "takeaway" =
+    (base?.selected_option as any) === "delivery" ? "delivery" : "takeaway";
+
+  // surowy address i note z payloadu
+  const rawAddress = base?.address ?? null;
+  const rawNote =
+    base?.note ??
+    base?.order_note ??
+    base?.orderNote ??
+    base?.comments ??
+    base?.comment ??
+    null;
+
+  // Dla dostawy: address = adres, note = notatka z osobnego pola
+  // Dla "na wynos": address = null, note = osobne pole LUB (fallback) to,
+  // co stary frontend wysyłał w address
+  const address =
+    selected_option === "delivery" ? rawAddress : null;
+
+  const note =
+    rawNote ??
+    (selected_option === "takeaway" ? rawAddress : null);
+
   return {
     name: base?.name ?? base?.customer_name ?? null,
     phone: extractPhone(base),
     contact_email: base?.contact_email ?? base?.email ?? null,
-    address: base?.address ?? null,
+    address,
     street: base?.street ?? null,
     postal_code: base?.postal_code ?? null,
     city: base?.city ?? null,
     flat_number: base?.flat_number ?? null,
-    selected_option: (base?.selected_option as any) ?? "takeaway",
+    selected_option,
     payment_method: "Gotówka", // wymuszamy gotówkę
     payment_status: "unpaid",
     total_price: num(base?.total_price, 0),
@@ -555,6 +580,7 @@ function normalizeBody(raw: any, req: Request): any {
       (base?.loyalty_choice as LoyaltyChoice | null) ??
       (base?.loyaltyChoice as LoyaltyChoice | null) ??
       null,
+    note,
   };
 }
 
@@ -1128,6 +1154,7 @@ export async function POST(req: Request) {
         phone: n.phone,
         contact_email: n.contact_email,
         address: n.address,
+        note: n.note ?? null,
         street: n.street,
         postal_code: n.postal_code
           ? String(n.postal_code).slice(0, 10)
