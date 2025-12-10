@@ -2,7 +2,7 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 
@@ -24,7 +24,6 @@ function normalizeOption(
     v === "takeaway" ||
     v === "na_wynos" ||
     v === "local" ||
-    v === "lokal" ||
     v === "pickup" ||
     v === "odbior"
   ) {
@@ -36,9 +35,9 @@ function normalizeOption(
 
 // wybieramy sensowne ETA z dostępnych kolumn
 function resolveEta(row: any): string | null {
+  // w bazie mamy "deliveryTime" (timestamptz) i client_delivery_time (text)
   const planned =
-    row?.delivery_time ??
-    row?.deliveryTime ??
+    row?.deliveryTime ?? // główne źródło – timestamp z bazy
     row?.client_delivery_time ??
     null;
 
@@ -53,7 +52,8 @@ function resolveClientRequestedTime(row: any): string | null {
   return String(val);
 }
 
-export async function GET(request: Request, ctx: any) {
+// UWAGA: dla świętego spokoju typów w Next 15 używamy ctx: any
+export async function GET(_request: NextRequest, ctx: any) {
   const id = ctx?.params?.id as string | undefined;
 
   if (!id) {
@@ -74,7 +74,6 @@ export async function GET(request: Request, ctx: any) {
         created_at,
         selected_option,
         client_delivery_time,
-        delivery_time,
         "deliveryTime"
       `
       )
