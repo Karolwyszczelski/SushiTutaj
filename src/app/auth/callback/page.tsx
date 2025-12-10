@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
-type Mode = "loading" | "confirmed" | "recovery" | "done" | "error";
+type Mode = "loading" | "recovery" | "done" | "error";
 
 export default function AuthCallbackPage() {
   const supabase = createClientComponentClient();
@@ -13,22 +13,45 @@ export default function AuthCallbackPage() {
   const [pass2, setPass2] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Ustalenie, czy to potwierdzenie maila, czy reset hasła
+  // rozpoznanie trybu + ewentualne zalogowanie po code i przekierowanie
   useEffect(() => {
-    const hash = window.location.hash.startsWith("#")
-      ? window.location.hash.slice(1)
-      : window.location.hash;
-    const params = new URLSearchParams(hash);
-    const type = params.get("type");
+    const run = async () => {
+      try {
+        const url = new URL(window.location.href);
+        const hash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
+        const hashParams = new URLSearchParams(hash);
+        const type = hashParams.get("type");
+        const code = url.searchParams.get("code");
 
-    if (type === "recovery") {
-      // tryb: reset hasła
-      setMode("recovery");
-    } else {
-      // tryb: potwierdzenie adresu e-mail (rejestracja)
-      setMode("confirmed");
-    }
-  }, []);
+        // 1) Reset hasła – zostajemy na tej stronie
+        if (type === "recovery") {
+          setMode("recovery");
+          return;
+        }
+
+        // 2) Potwierdzenie rejestracji / magic link – wymiana code -> session (jeśli jest)
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) {
+            console.error(error);
+            throw error;
+          }
+        }
+
+        // 3) Sukces – przekierowanie na stronę główną z parametrem do popupu
+        const origin = url.origin; // na prod będzie https://sushitutaj.pl
+        window.location.href = `${origin}/?auth=signup-success`;
+      } catch (err) {
+        console.error(err);
+        setError(
+          "Link jest nieprawidłowy lub wygasł. Spróbuj ponownie zalogować się lub zresetować hasło."
+        );
+        setMode("error");
+      }
+    };
+
+    run();
+  }, [supabase]);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,22 +80,12 @@ export default function AuthCallbackPage() {
           <p className="text-sm text-black/70">Przetwarzamy link…</p>
         )}
 
-        {mode === "confirmed" && (
-          <div className="space-y-2 text-sm text-black/80">
-            <h1 className="text-xl font-semibold">Adres e-mail potwierdzony</h1>
-            <p>
-              Twoje konto zostało aktywowane. Możesz wrócić na stronę restauracji
-              i zalogować się używając podanego e-maila i hasła.
-            </p>
-          </div>
-        )}
-
         {mode === "recovery" && (
           <div>
             <h1 className="text-xl font-semibold mb-2">Ustaw nowe hasło</h1>
             <p className="text-xs text-black/60 mb-4">
-              Ten ekran otworzył się po kliknięciu w link „reset hasła”.
-              Po zapisaniu nowego hasła możesz zalogować się w panelu konta.
+              Ten ekran otworzył się po kliknięciu w link „reset hasła”. Po
+              zapisaniu nowego hasła możesz zalogować się w panelu konta.
             </p>
 
             {error && (
@@ -132,7 +145,7 @@ export default function AuthCallbackPage() {
             <h1 className="text-xl font-semibold">Błąd linku</h1>
             <p>
               Link jest nieprawidłowy lub wygasł. Spróbuj ponownie wysłać reset
-              hasła z panelu logowania.
+              hasła z panelu logowania albo poprosić obsługę o nowy link.
             </p>
           </div>
         )}
