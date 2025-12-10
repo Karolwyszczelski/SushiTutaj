@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { X, LogIn, UserPlus, BadgePercent, Package, Settings, RefreshCcw } from "lucide-react";
+import {
+  X,
+  LogIn,
+  UserPlus,
+  BadgePercent,
+  Package,
+  Settings,
+  RefreshCcw,
+} from "lucide-react";
 import clsx from "clsx";
 import { useSession } from "@supabase/auth-helpers-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
@@ -59,7 +67,7 @@ export default function AccountModal({
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
 
-    // panel: loyalty
+  // panel: loyalty
   const [loyaltyStickers, setLoyaltyStickers] = useState<number | null>(null);
   const [loyaltyLoading, setLoyaltyLoading] = useState(false);
 
@@ -76,7 +84,9 @@ export default function AccountModal({
 
   // koszyk (zamów ponownie)
   const addItem = useCartStore((s) => (s as any).addItem);
-  const openCheckoutModal = useCartStore((s) => (s as any).openCheckoutModal);
+  const openCheckoutModal = useCartStore(
+    (s) => (s as any).openCheckoutModal
+  );
 
   // gdy użytkownik się zaloguje — pokaż panel
   useEffect(() => {
@@ -151,6 +161,10 @@ export default function AccountModal({
       return;
     }
     setBusy(true);
+
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : "";
+
     const { error } = await supabase.auth.signUp({
       email,
       password: pass,
@@ -159,7 +173,7 @@ export default function AccountModal({
           full_name: name || "",
           phone: phone || "",
         },
-        emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined,
+        emailRedirectTo: origin ? `${origin}/auth/callback` : undefined,
       },
     });
     setBusy(false);
@@ -173,16 +187,27 @@ export default function AccountModal({
   const handleSendReset = async () => {
     setErr(null);
     setMsg(null);
-    if (!email) return setErr("Podaj e-mail, aby wysłać link resetu hasła.");
+    if (!email) {
+      setErr("Podaj e-mail, aby wysłać link resetu hasła.");
+      return;
+    }
+
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : "";
+
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo:
-        typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined,
+      redirectTo: origin ? `${origin}/auth/callback` : undefined,
     });
+
     if (error) setErr(error.message);
-    else setMsg("Wysłaliśmy link resetu hasła na podany e-mail.");
+    else {
+      setMsg(
+        "Wysłaliśmy link resetu hasła na podany e-mail. Po kliknięciu w link ustawisz nowe hasło."
+      );
+    }
   };
 
-    // pobierz stan programu lojalnościowego
+  // pobierz stan programu lojalnościowego
   useEffect(() => {
     const fetchLoyalty = async () => {
       if (!user) return;
@@ -207,7 +232,6 @@ export default function AccountModal({
       fetchLoyalty();
     }
   }, [tab, user, supabase]);
-
 
   /* ---------------- PANEL: PROFIL ---------------- */
   const saveProfile = async () => {
@@ -291,7 +315,8 @@ export default function AccountModal({
           <h3 className="text-xl font-semibold mb-2">Konto</h3>
           {!user ? (
             <div className="text-sm text-black/70">
-              Zaloguj się lub załóż konto, by śledzić zamówienia i korzystać z programu lojalnościowego.
+              Zaloguj się lub załóż konto, by śledzić zamówienia i korzystać z
+              programu lojalnościowego.
             </div>
           ) : (
             <>
@@ -342,7 +367,9 @@ export default function AccountModal({
             <div
               className={clsx(
                 "mb-3 rounded-xl px-3 py-2 text-sm",
-                err ? "bg-red-50 text-red-700 border border-red-200" : "bg-green-50 text-green-700 border border-green-200"
+                err
+                  ? "bg-red-50 text-red-700 border border-red-200"
+                  : "bg-green-50 text-green-700 border border-green-200"
               )}
             >
               {err || msg}
@@ -352,124 +379,194 @@ export default function AccountModal({
           {/* ------ AUTH ------ */}
           {!user && tab === "auth" && (
             <div className="max-w-md">
+              <h3 className="text-xl font-semibold mb-1">
+                Zaloguj się lub załóż konto
+              </h3>
+              <p className="text-xs text-black/60 mb-4">
+                Konto służy wyłącznie do obsługi zamówień w tym systemie. Hasła
+                są szyfrowane, nie wysyłamy spamu ani nie udostępniamy danych
+                dalej.
+              </p>
+
               <div className="flex gap-2 mb-4">
                 <button
                   onClick={() => setAuthMode("login")}
                   className={clsx(
-                    "flex-1 rounded-xl px-3 py-2 text-sm border",
-                    authMode === "login" ? gradBtn : "bg-white"
+                    "flex-1 rounded-xl px-3 py-2 text-sm border transition",
+                    authMode === "login"
+                      ? gradBtn
+                      : "bg-white hover:bg-black/5 border-black/10"
                   )}
                 >
-                  <span className={clsx(authMode === "login" ? "text-white" : "text-black")}>
-                    <LogIn className="inline-block w-4 h-4 mr-1 -mt-1" />
+                  <span
+                    className={clsx(
+                      "inline-flex items-center justify-center gap-1",
+                      authMode === "login" ? "text-white" : "text-black"
+                    )}
+                  >
+                    <LogIn className="w-4 h-4" />
                     Zaloguj się
                   </span>
                 </button>
                 <button
                   onClick={() => setAuthMode("register")}
                   className={clsx(
-                    "flex-1 rounded-xl px-3 py-2 text-sm border",
-                    authMode === "register" ? gradBtn : "bg-white"
+                    "flex-1 rounded-xl px-3 py-2 text-sm border transition",
+                    authMode === "register"
+                      ? gradBtn
+                      : "bg-white hover:bg-black/5 border-black/10"
                   )}
                 >
-                  <span className={clsx(authMode === "register" ? "text-white" : "text-black")}>
-                    <UserPlus className="inline-block w-4 h-4 mr-1 -mt-1" />
-                    Zarejestruj
+                  <span
+                    className={clsx(
+                      "inline-flex items-center justify-center gap-1",
+                      authMode === "register" ? "text-white" : "text-black"
+                    )}
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    Załóż konto
                   </span>
                 </button>
               </div>
 
               {authMode === "login" ? (
                 <form onSubmit={handleLogin} className="space-y-3">
-                  <input
-                    className={inputCls}
-                    type="email"
-                    placeholder="E-mail"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                  <input
-                    className={inputCls}
-                    type="password"
-                    placeholder="Hasło"
-                    value={pass}
-                    onChange={(e) => setPass(e.target.value)}
-                    required
-                  />
-                  <div className="flex items-center justify-between text-xs">
+                  <label className="text-xs text-black/70">
+                    E-mail
+                    <input
+                      className={clsx(inputCls, "mt-1")}
+                      type="email"
+                      placeholder="np. jan.kowalski@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </label>
+
+                  <label className="text-xs text-black/70">
+                    Hasło
+                    <input
+                      className={clsx(inputCls, "mt-1")}
+                      type="password"
+                      placeholder="Twoje hasło do tego konta"
+                      value={pass}
+                      onChange={(e) => setPass(e.target.value)}
+                      required
+                    />
+                  </label>
+
+                  <div className="flex items-center justify-between text-[11px] text-black/70">
                     <button
                       type="button"
                       onClick={handleSendReset}
-                      className="underline text-black/70 hover:text-black"
+                      className="underline hover:text-black"
                     >
                       Zapomniałem hasła
                     </button>
+                    <span>Masz już konto? Zaloguj się tutaj.</span>
                   </div>
+
                   <button
                     type="submit"
                     disabled={busy}
                     className={clsx(
-                      "w-full rounded-xl px-4 py-2 font-semibold disabled:opacity-60",
+                      "w-full rounded-xl px-4 py-2 mt-1 font-semibold disabled:opacity-60",
                       gradBtn
                     )}
                   >
                     {busy ? "Logowanie…" : "Zaloguj się"}
                   </button>
+
+                  <p className="text-[11px] text-black/50 mt-2">
+                    Logujesz się tylko do systemu zamówień tej restauracji. Nie
+                    prosimy o żadne dane bankowe.
+                  </p>
                 </form>
               ) : (
                 <form onSubmit={handleRegister} className="space-y-3">
-                  <input
-                    className={inputCls}
-                    type="text"
-                    placeholder="Imię i nazwisko (opcjonalnie)"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                  <input
-                    className={inputCls}
-                    type="tel"
-                    placeholder="Telefon (opcjonalnie)"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                  />
-                  <input
-                    className={inputCls}
-                    type="email"
-                    placeholder="E-mail"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                  <input
-                    className={inputCls}
-                    type="password"
-                    placeholder="Hasło"
-                    value={pass}
-                    onChange={(e) => setPass(e.target.value)}
-                    required
-                  />
-                  <input
-                    className={inputCls}
-                    type="password"
-                    placeholder="Powtórz hasło"
-                    value={pass2}
-                    onChange={(e) => setPass2(e.target.value)}
-                    required
-                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <label className="text-xs text-black/70 md:col-span-2">
+                      Imię i nazwisko (opcjonalnie)
+                      <input
+                        className={clsx(inputCls, "mt-1")}
+                        type="text"
+                        placeholder="Do przypisania zamówień"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                      />
+                    </label>
+
+                    <label className="text-xs text-black/70">
+                      Telefon (opcjonalnie)
+                      <input
+                        className={clsx(inputCls, "mt-1")}
+                        type="tel"
+                        placeholder="Ułatwia kontakt z dostawcą"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                      />
+                    </label>
+
+                    <label className="text-xs text-black/70 md:col-span-2">
+                      E-mail (do logowania i potwierdzeń)
+                      <input
+                        className={clsx(inputCls, "mt-1")}
+                        type="email"
+                        placeholder="np. jan.kowalski@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                      />
+                    </label>
+
+                    <label className="text-xs text-black/70">
+                      Hasło
+                      <input
+                        className={clsx(inputCls, "mt-1")}
+                        type="password"
+                        placeholder="Min. 6 znaków"
+                        value={pass}
+                        onChange={(e) => setPass(e.target.value)}
+                        required
+                      />
+                    </label>
+
+                    <label className="text-xs text-black/70">
+                      Powtórz hasło
+                      <input
+                        className={clsx(inputCls, "mt-1")}
+                        type="password"
+                        placeholder="Powtórz hasło"
+                        value={pass2}
+                        onChange={(e) => setPass2(e.target.value)}
+                        required
+                      />
+                    </label>
+                  </div>
+
                   <button
                     type="submit"
                     disabled={busy}
                     className={clsx(
-                      "w-full rounded-xl px-4 py-2 font-semibold disabled:opacity-60",
+                      "w-full rounded-xl px-4 py-2 font-semibold disabled:opacity-60 mt-1",
                       gradBtn
                     )}
                   >
                     {busy ? "Rejestracja…" : "Załóż konto"}
                   </button>
-                  <p className="text-xs text-black/60">
-                    Po rejestracji wyślemy link aktywacyjny na e-mail.
-                  </p>
+
+                  <div className="mt-2 space-y-1 text-[11px] text-black/55">
+                    <p>
+                      • Hasło jest przechowywane w postaci zaszyfrowanej (hash).
+                    </p>
+                    <p>
+                      • Konto służy tylko do tej restauracji – nie łączymy go z
+                      innymi usługami.
+                    </p>
+                    <p>
+                      • Zawsze możesz poprosić o usunięcie konta i danych.
+                    </p>
+                  </div>
                 </form>
               )}
             </div>
@@ -478,7 +575,9 @@ export default function AccountModal({
           {/* ------ PANEL PO ZALOGOWANIU ------ */}
           {user && tab === "orders" && (
             <div>
-              <h3 className="text-xl font-semibold mb-3">Twoje zamówienia</h3>
+              <h3 className="text-xl font-semibold mb-3">
+                Twoje zamówienia
+              </h3>
               {ordersLoading ? (
                 <p className="text-black/70 text-sm">Ładowanie…</p>
               ) : orders.length === 0 ? (
@@ -493,8 +592,13 @@ export default function AccountModal({
                       <div className="text-sm">
                         <div className="font-semibold">#{o.id}</div>
                         <div className="text-black/70">
-                          {o.created_at ? new Date(o.created_at).toLocaleString() : ""} •{" "}
-                          {(o.total_price ?? 0).toFixed(2)} zł • {o.status || "przyjęte"}
+                          {o.created_at
+                            ? new Date(
+                                o.created_at
+                              ).toLocaleString()
+                            : ""}{" "}
+                          • {(o.total_price ?? 0).toFixed(2)} zł •{" "}
+                          {o.status || "przyjęte"}
                         </div>
                       </div>
                       <button
@@ -512,53 +616,115 @@ export default function AccountModal({
             </div>
           )}
 
-         {user && tab === "loyalty" && (
+          {user && tab === "loyalty" && (
             <div>
-              <h3 className="text-xl font-semibold mb-3">Program lojalnościowy</h3>
+              <h3 className="text-xl font-semibold mb-3">
+                Program lojalnościowy
+              </h3>
               <p className="text-sm text-black/70 mb-3">
                 Za każde zrealizowane zamówienie dostajesz 1 naklejkę.
                 <br />
-                <b>4 naklejki</b> = darmowa rolka, <b>8 naklejek</b> = <b>−20%</b> na zamówienie.
+                <b>4 naklejki</b> = darmowa rolka, <b>8 naklejek</b> ={" "}
+                <b>−20%</b> na zamówienie.
               </p>
 
               {loyaltyLoading ? (
-                <p className="text-sm text-black/70">Ładujemy stan programu…</p>
+                <p className="text-sm text-black/70">
+                  Ładujemy stan programu…
+                </p>
               ) : (
                 <LoyaltyProgress stickers={loyaltyStickers ?? 0} />
               )}
 
               <p className="text-xs text-black/50 mt-2">
-                Promocje naliczamy przy składaniu zamówienia, po weryfikacji statusu poprzednich.
+                Promocje naliczamy przy składaniu zamówienia, po weryfikacji
+                statusu poprzednich.
               </p>
             </div>
           )}
 
           {user && tab === "profile" && (
             <div className="max-w-xl">
-              <h3 className="text-xl font-semibold mb-3">Profil i adres</h3>
+              <h3 className="text-xl font-semibold mb-3">
+                Profil i adres
+              </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <input className={inputCls} placeholder="Imię i nazwisko" value={name} onChange={(e) => setName(e.target.value)} />
-                <input className={inputCls} placeholder="Telefon" value={phone} onChange={(e) => setPhone(e.target.value)} />
-                <input className={clsx(inputCls, "md:col-span-2")} placeholder="Ulica i numer" value={street} onChange={(e) => setStreet(e.target.value)} />
-                <input className={inputCls} placeholder="Kod pocztowy" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
-                <input className={inputCls} placeholder="Miasto" value={city} onChange={(e) => setCity(e.target.value)} />
-                <input className={inputCls} placeholder="Nr mieszkania (opc.)" value={flatNumber} onChange={(e) => setFlatNumber(e.target.value)} />
+                <input
+                  className={inputCls}
+                  placeholder="Imię i nazwisko"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+                <input
+                  className={inputCls}
+                  placeholder="Telefon"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+                <input
+                  className={clsx(inputCls, "md:col-span-2")}
+                  placeholder="Ulica i numer"
+                  value={street}
+                  onChange={(e) => setStreet(e.target.value)}
+                />
+                <input
+                  className={inputCls}
+                  placeholder="Kod pocztowy"
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value)}
+                />
+                <input
+                  className={inputCls}
+                  placeholder="Miasto"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                />
+                <input
+                  className={inputCls}
+                  placeholder="Nr mieszkania (opc.)"
+                  value={flatNumber}
+                  onChange={(e) => setFlatNumber(e.target.value)}
+                />
               </div>
 
               <div className="mt-3 flex gap-2">
-                <button onClick={saveProfile} className={clsx("rounded-xl px-4 py-2 font-semibold", gradBtn)}>
+                <button
+                  onClick={saveProfile}
+                  className={clsx(
+                    "rounded-xl px-4 py-2 font-semibold",
+                    gradBtn
+                  )}
+                >
                   Zapisz profil
                 </button>
               </div>
 
               <h4 className="mt-6 mb-2 font-semibold">Zmiana hasła</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <input className={inputCls} type="password" placeholder="Nowe hasło" value={newPass} onChange={(e) => setNewPass(e.target.value)} />
-                <input className={inputCls} type="password" placeholder="Powtórz hasło" value={newPass2} onChange={(e) => setNewPass2(e.target.value)} />
+                <input
+                  className={inputCls}
+                  type="password"
+                  placeholder="Nowe hasło"
+                  value={newPass}
+                  onChange={(e) => setNewPass(e.target.value)}
+                />
+                <input
+                  className={inputCls}
+                  type="password"
+                  placeholder="Powtórz hasło"
+                  value={newPass2}
+                  onChange={(e) => setNewPass2(e.target.value)}
+                />
               </div>
               <div className="mt-3">
-                <button onClick={changePassword} className={clsx("rounded-xl px-4 py-2 font-semibold", gradBtn)}>
+                <button
+                  onClick={changePassword}
+                  className={clsx(
+                    "rounded-xl px-4 py-2 font-semibold",
+                    gradBtn
+                  )}
+                >
                   Zmień hasło
                 </button>
               </div>
@@ -601,16 +767,18 @@ function LoyaltyProgress({ stickers }: { stickers: number }) {
       <div className="mt-2 text-sm">
         {usable >= 8 ? (
           <span className="font-semibold">
-            Masz {usable} naklejek — przy następnym zamówieniu naliczymy −20% i licznik się wyzeruje.
+            Masz {usable} naklejek — przy następnym zamówieniu naliczymy −20%
+            i licznik się wyzeruje.
           </span>
         ) : usable >= 4 ? (
           <span>
-            Masz <b>{usable}</b> naklejki. Możesz wymienić <b>4</b> na darmową rolkę albo zbierać dalej.
-            Do −20% brakuje <b>{toDiscount}</b>.
+            Masz <b>{usable}</b> naklejki. Możesz wymienić <b>4</b> na darmową
+            rolkę albo zbierać dalej. Do −20% brakuje <b>{toDiscount}</b>.
           </span>
         ) : (
           <span>
-            Masz <b>{usable}</b> naklejki. Do darmowej rolki brakuje <b>{toFreeRoll}</b>.
+            Masz <b>{usable}</b> naklejki. Do darmowej rolki brakuje{" "}
+            <b>{toFreeRoll}</b>.
           </span>
         )}
       </div>
