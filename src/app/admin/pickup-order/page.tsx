@@ -933,10 +933,6 @@ export default function PickupOrdersPage() {
     fetchOrders();
   }, [fetchOrders]);
 
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
-
   // <-- NOWE: fallback polling zamówień co 8 sekund
   useEffect(() => {
     if (!booted) return;           // dopóki nie wiemy, którą restaurację ładujemy
@@ -948,35 +944,6 @@ export default function PickupOrdersPage() {
 
     return () => clearInterval(iv);
   }, [booted, editingOrderId, fetchOrders]);
-
-  /* realtime tylko dla tej restauracji */
-  useEffect(() => {
-    if (!booted) return;
-    const filter = restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined;
-    const ch = supabase
-      .channel("orders-realtime")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "orders",
-          ...(filter ? { filter } : {}),
-        },
-        (payload: any) => {
-          if (restaurantId) {
-            const ridNew = payload.new?.restaurant_id;
-            const ridOld = payload.old?.restaurant_id;
-            if (ridNew !== restaurantId && ridOld !== restaurantId) return;
-          }
-          fetchOrders();
-        }
-      )
-      .subscribe();
-    return () => {
-      void supabase.removeChannel(ch);
-    };
-  }, [supabase, fetchOrders, restaurantId, booted]);
 
   /* realtime tylko dla tej restauracji */
   useEffect(() => {
@@ -1673,20 +1640,17 @@ export default function PickupOrdersPage() {
               </div>
             )}
 
-            {/* Notatka klienta / dla lokalu */}
-  {(o.note ||
-    (o.selected_option === "takeaway" && o.address)) && (
-    <div className="mt-2 rounded-xl bg-slate-50 px-3 py-2">
-      <div className="text-xs font-semibold text-slate-700">
-        Notatka klienta
-      </div>
-      <div className="mt-0.5 text-sm text-slate-900">
-        {o.note ||
-          (o.selected_option === "takeaway" && o.address) ||
-          ""}
-      </div>
+            {/* Notatka klienta / dla lokalu – z kolumny `note` */}
+{o.note && (
+  <div className="mt-2 rounded-xl bg-slate-50 px-3 py-2">
+    <div className="text-xs font-semibold text-slate-700">
+      Notatka klienta
     </div>
-  )}
+    <div className="mt-0.5 text-sm text-slate-900 whitespace-pre-line">
+      {o.note}
+    </div>
+  </div>
+)}
 
             <div className="mt-1">
               <b>Płatność:</b>{" "}
