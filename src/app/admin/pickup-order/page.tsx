@@ -420,10 +420,15 @@ const normalizeProduct = (raw: Any) => {
     ...collectStrings(srcOptions?.addons),
     ...collectStrings(source.selected_addons),
     ...collectStrings(source.toppings),
-  ].filter((s) => s && s !== "0");
+  ]
+    .map((s) => (s || "").trim())
+    .filter((s) => s && s !== "0");
+
+  // deduplikacja – żeby sos z addons + options.addons nie był dwa razy
+  const uniqueAddons = Array.from(new Set(rawAddons));
 
   const { plain, setMeta, tartarBases } = parseSetAddonsFromAddons(
-    rawAddons
+    uniqueAddons
   );
 
   const addons = [...plain, ...swapLabels];

@@ -162,7 +162,7 @@ const SWAP_FEE_NAME = "Zamiana w zestawie";
 /** Cennik dodatków (poza sosami) */
 const EXTRA_PRICES: Record<string, number> = {
   Tempura: 4,
-  "Płatek sojowy": 4,
+  "Płatek sojowy": 3,
   Tamago: 4,
   "Ryba pieczona": 2, // zawsze 2 zł
 };
@@ -347,6 +347,33 @@ function isSpecialCaliforniaBakedFishProduct(
   return hasSalmon && isRaw && hasCrab && hasShrimp;
 }
 
+function normalizePlain(input: string): string {
+  return input
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+/**
+ * California „obłożona” – np. obłożona łososiem na wierzchu.
+ * Używamy tego, żeby rozróżnić:
+ * - Californię obłożoną
+ * - Californię „czystą” (bez obłożenia na wierzchu)
+ */
+function isCaliforniaToppedByText(
+  name: string,
+  description?: string | null
+): boolean {
+  const txt = normalizePlain(`${name || ""} ${description || ""}`);
+
+  return (
+    txt.includes("oblozon") ||  // obłożona / obłożony / obłożone
+    txt.includes("oblozona") ||
+    txt.includes("oblozone") ||
+    txt.includes("na wierzchu") // np. „łosoś na wierzchu”
+  );
+}
+
 function isGyozaProduct(prod: any, prodInfo?: ProductDb | null): boolean {
   const text = `${prod?.name || ""} ${prodInfo?.name || ""} ${
     prodInfo?.description || ""
@@ -444,7 +471,7 @@ function isColaProduct(prod: any, prodInfo?: ProductDb | null): boolean {
 }
 
 function computeAddonPrice(addon: string, product?: ProductDb | null): number {
-  if (ALL_SAUCES.includes(addon)) return 3;
+  if (ALL_SAUCES.includes(addon)) return 2;
   if (addon === SWAP_FEE_NAME) return 5;
 
   // Bazowe opcje podania tatara – 0 zł
@@ -1384,193 +1411,206 @@ const ProductItem: React.FC<{
           <div className="space-y-2">
             <div className="font-semibold">Zamiany w zestawie</div>
             {setRows.map((row, i) => {
-              const catKey = normalize(row.cat);
-              const pool = (optionsByCat[catKey] || []).filter(
-                (n) =>
-                  (productCategory(n) || "").toLowerCase() !== "specjały"
-              );
-              const current = getSetSwapCurrent(row.from);
+  const catKey = normalize(row.cat);
+  const isCaliforniaRow = /california/i.test(row.cat || "");
 
-              // znormalizowany klucz tej rolki w zestawie
-              const rowKeyBase = normalizeSetRowKey(row);
+  const current = getSetSwapCurrent(row.from);
+  const currentProduct =
+    byName.get(current) || byName.get(row.from) || prodInfo;
 
-              // pieczenie konkretnej rolki w zestawie
-              const rollAddonLabel = RAW_SET_BAKE_ROLL_PREFIX + rowKeyBase;
-              const rawRow = isRawRow(row);
-              const rollBaked = (prod.addons ?? []).includes(rollAddonLabel);
+  // bazowa pula zamian w obrębie kategorii (bez specjałów)
+  let pool = (optionsByCat[catKey] || []).filter(
+    (n) =>
+      (productCategory(n) || "").toLowerCase() !== "specjały"
+  );
 
-              const toggleRowBake = () => {
-                if (!rawRow || isWholeSetBaked) return;
-                if (rollBaked) {
-                  removeAddon(prod.name, rollAddonLabel);
-                } else {
-                  addAddon(prod.name, rollAddonLabel);
-                }
-              };
+  // DLA CALIFORNI: filtrujemy tylko do tej samej „klasy”
+  // – obłożona ↔ obłożona
+  // – klasyczna ↔ klasyczna
+  if (isCaliforniaRow) {
+    const currentIsTopped = currentProduct
+      ? isCaliforniaToppedByText(
+          currentProduct.name,
+          currentProduct.description
+        )
+      : isCaliforniaToppedByText(row.from, null);
 
-              // Dodatki per konkretna rolka w zestawie – ten sam znormalizowany klucz
-              const extraKey = (ex: string) =>
-                `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — ${ex}`;
-
-              // BIERZEMY aktualnie wybraną rolkę w tym miejscu zestawu:
-const currentProduct =
-  byName.get(current) || byName.get(row.from) || prodInfo;
-
-// kategorię bierzemy z opisu zestawu (row.cat),
-// bo produkt "Zestaw X" ma subcategory = "zestawy"
-const rowCatLc = (row.cat || "").toLowerCase();
-
-// tekst do sprawdzania "surowy", "łosoś" itd.
-const text = `${currentProduct?.name || row.cat} ${
-  currentProduct?.description || row.from
-}`.toLowerCase();
-
-const canUseExtraForRow = (ex: string): boolean => {
-  const parentNameLc = (prodInfo?.name || prod.name || "").toLowerCase();
-
-  // SPEC CASE: w Zestawie 2 hosomaki bez dodatków (w tym „Ryba pieczona”)
-  if (parentNameLc.startsWith("zestaw 2") && rowCatLc.includes("hosomaki")) {
-    return false;
+    pool = pool.filter((n) => {
+      const p = byName.get(n);
+      if (!p) return false;
+      const pIsTopped = isCaliforniaToppedByText(p.name, p.description);
+      return pIsTopped === currentIsTopped;
+    });
   }
 
-  // === California w zestawie ===
-  if (rowCatLc.includes("california")) {
-    if (ex === "Ryba pieczona") {
-      const rowText = row.from.toLowerCase();
-      // jeśli ta California w zestawie jest już pieczona / w tempurze – blokujemy
-      if (isAlreadyBakedOrTempura(rowText)) return false;
+  // OPCJE SELECTA:
+  // - aktualnie wybrana rolka (current)
+  // - oryginalna rolka z opisu zestawu (row.from)
+  // - pozostałe rolki z puli
+  const rawOptions = [current, row.from, ...pool];
+  const selectOptions = Array.from(new Set(rawOptions));
 
-      return isSpecialCaliforniaBakedFishProduct(
-        currentProduct?.name || "",
-        currentProduct?.description || ""
-      );
+  // znormalizowany klucz tej rolki w zestawie
+  const rowKeyBase = normalizeSetRowKey(row);
+
+  // pieczenie konkretnej rolki w zestawie
+  const rollAddonLabel = RAW_SET_BAKE_ROLL_PREFIX + rowKeyBase;
+  const rawRow = isRawRow(row);
+  const rollBaked = (prod.addons ?? []).includes(rollAddonLabel);
+
+  const toggleRowBake = () => {
+    if (!rawRow || isWholeSetBaked) return;
+    if (rollBaked) {
+      removeAddon(prod.name, rollAddonLabel);
+    } else {
+      addAddon(prod.name, rollAddonLabel);
     }
-    // inne EXTRAS wyłączone dla California w zestawach
-    return false;
-  }
+  };
 
-  // === Hosomaki / Hoso ===
-  if (rowCatLc.includes("hosomaki") || rowCatLc.includes("hoso")) {
-    // Hoso mają tylko Tempurę
-    return ex === "Tempura";
-  }
+  // Dodatki per konkretną rolkę
+  const extraKey = (ex: string) =>
+    `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — ${ex}`;
 
-  // === Futomaki / Futo ===
-  if (rowCatLc.includes("futomaki") || rowCatLc.includes("futo")) {
-    if (ex === "Ryba pieczona") {
-      const rowText = row.from.toLowerCase();
-      // jeśli ta rolka w opisie ma „pieczona” lub „w tempurze” – nie dokładamy „Ryby pieczonej”
-      if (isAlreadyBakedOrTempura(rowText)) return false;
-      // tylko przy surowych futomakach (sprawdzamy opis KONKRETNEJ rolki, nie całego zestawu)
-      return /surowy/i.test(rowText);
+  const rowCatLc = (row.cat || "").toLowerCase();
+
+  const text = `${currentProduct?.name || row.cat} ${
+    currentProduct?.description || row.from
+  }`.toLowerCase();
+
+  const canUseExtraForRow = (ex: string): boolean => {
+    const parentNameLc = (prodInfo?.name || prod.name || "").toLowerCase();
+
+    // SPEC CASE: w Zestawie 2 hosomaki bez dodatków
+    if (parentNameLc.startsWith("zestaw 2") && rowCatLc.includes("hosomaki")) {
+      return false;
     }
-    if (ex === "Tamago") return true;
-    return ex === "Tempura" || ex === "Płatek sojowy";
-  }
 
-  // === Nigiri – logika bez zmian ===
-  if (rowCatLc.includes("nigiri")) {
-    if (ex !== "Ryba pieczona") return false;
-    const hasFish =
-      text.includes("łosoś") ||
-      text.includes("losos") ||
-      text.includes("tuńczyk") ||
-      text.includes("tunczyk");
-    return hasFish;
-  }
+    // === California w zestawie ===
+    if (rowCatLc.includes("california")) {
+      if (ex === "Ryba pieczona") {
+        const rowText = row.from.toLowerCase();
+        // jeśli ta California jest już pieczona / w tempurze – blokujemy
+        if (isAlreadyBakedOrTempura(rowText)) return false;
 
-  return false;
-};
+        return isSpecialCaliforniaBakedFishProduct(
+          currentProduct?.name || "",
+          currentProduct?.description || ""
+        );
+      }
+      // inne EXTRAS wyłączone dla Californii w zestawach
+      return false;
+    }
 
-             const isCaliforniaRow = /california/i.test(row.cat || "");
+    // === Hosomaki / Hoso ===
+    if (rowCatLc.includes("hosomaki") || rowCatLc.includes("hoso")) {
+      // Hoso mają tylko Tempurę
+      return ex === "Tempura";
+    }
 
-              return (
-                <div key={i} className="flex flex-col gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="px-2 py-1 rounded bg-gray-50 border border-gray-200">
-                      {row.qty}× {row.cat}
-                    </span>
+    // === Futomaki / Futo ===
+    if (rowCatLc.includes("futomaki") || rowCatLc.includes("futo")) {
+      const rowText = row.from.toLowerCase();
+      if (ex === "Ryba pieczona") {
+        if (isAlreadyBakedOrTempura(rowText)) return false;
+        return /surowy/i.test(rowText);
+      }
+      if (ex === "Tamago") return true;
+      return ex === "Tempura" || ex === "Płatek sojowy";
+    }
 
-                    {isCaliforniaRow ? (
-                      // Dla Californii w zestawach nie ma pełnej zamiany – pokazujemy tylko opis
-                      <span className="text-black/70 text-[11px]">
-                        {row.from}
-                      </span>
-                    ) : (
-                      <>
-                        <span className="text-black/70">zamień:</span>
-                        <select
-                          className="border border-black/15 rounded px-2 py-1 bg-white"
-                          value={current}
-                          onChange={(e) => doSetSwap(row.from, e.target.value)}
-                        >
-                          {[current, ...pool.filter((n) => n !== current)].map(
-                            (n) => (
-                              <option key={n} value={n}>
-                                {withCategoryPrefix(n, row.cat)}
-                              </option>
-                            )
-                          )}
-                        </select>
-                      </>
-                    )}
+    // === Nigiri ===
+    if (rowCatLc.includes("nigiri")) {
+      if (ex !== "Ryba pieczona") return false;
+      const hasFish =
+        text.includes("łosoś") ||
+        text.includes("losos") ||
+        text.includes("tuńczyk") ||
+        text.includes("tunczyk");
+      return hasFish;
+    }
 
-                    {rawRow && (
-                      <button
-                        type="button"
-                        onClick={toggleRowBake}
-                        disabled={isWholeSetBaked}
-                        className={clsx(
-                          "px-2 py-1 rounded text-[11px] border",
-                          isWholeSetBaked
-                            ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
-                            : rollBaked
-                            ? "bg-black text-white border-black"
-                            : "bg-white text-black hover:bg-gray-50 border-gray-200"
-                        )}
-                      >
-                        {rollBaked
-                          ? "✓ Ta rolka pieczona (+2 zł)"
-                          : "+ Zamień tę rolkę na pieczoną (+2 zł)"}
-                      </button>
-                    )}
-                  </div>
+    return false;
+  };
 
-                  {/* Dodatki dla tej KONKRETNEJ rolki */}
-                  <div className="flex flex-wrap items-center gap-2 pl-2">
-                    <span className="text-black/70 text-[11px]">
-                      Dodatki do tej rolki:
-                    </span>
-                    {EXTRAS.map((ex) => {
-                      const key = extraKey(ex);
-                      const allowed = canUseExtraForRow(ex);
-                      const on = (prod.addons ?? []).includes(key);
-                      return (
-                        <button
-                          key={ex}
-                          type="button"
-                          onClick={() => {
-                            if (!allowed) return;
-                            if (on) removeAddon(prod.name, key);
-                            else addAddon(prod.name, key);
-                          }}
-                          className={clsx(
-                            "px-2 py-1 rounded text-[11px] border",
-                            !allowed
-                              ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
-                              : on
-                              ? "bg-black text-white border-black"
-                              : "bg-white text-black hover:bg-gray-50 border-gray-200"
-                          )}
-                        >
-                          {on ? `✓ ${ex}` : `+ ${ex}`}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
+  return (
+    <div key={i} className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="px-2 py-1 rounded bg-gray-50 border border-gray-200">
+          {row.qty}× {row.cat}
+        </span>
+
+        {/* DLA KAŻDEJ ROLKI (także California) jest select – ale dla California pool jest przefiltrowany */}
+        <span className="text-black/70">zamień:</span>
+        <select
+          className="border border-black/15 rounded px-2 py-1 bg-white"
+          value={current}
+          onChange={(e) => doSetSwap(row.from, e.target.value)}
+        >
+          {selectOptions.map((n) => (
+            <option key={n} value={n}>
+              {n === row.from
+                ? `Skład zestawu — ${withCategoryPrefix(n, row.cat)}`
+                : withCategoryPrefix(n, row.cat)}
+            </option>
+          ))}
+        </select>
+
+        {rawRow && (
+          <button
+            type="button"
+            onClick={toggleRowBake}
+            disabled={isWholeSetBaked}
+            className={clsx(
+              "px-2 py-1 rounded text-[11px] border",
+              isWholeSetBaked
+                ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
+                : rollBaked
+                ? "bg-black text-white border-black"
+                : "bg-white text-black hover:bg-gray-50 border-gray-200"
+            )}
+          >
+            {rollBaked
+              ? "✓ Ta rolka pieczona (+2 zł)"
+              : "+ Zamień tę rolkę na pieczoną (+2 zł)"}
+          </button>
+        )}
+      </div>
+
+      {/* Dodatki dla tej KONKRETNEJ rolki */}
+      <div className="flex flex-wrap items-center gap-2 pl-2">
+        <span className="text-black/70 text-[11px]">
+          Dodatki do tej rolki:
+        </span>
+        {EXTRAS.map((ex) => {
+          const key = extraKey(ex);
+          const allowed = canUseExtraForRow(ex);
+          const on = (prod.addons ?? []).includes(key);
+          return (
+            <button
+              key={ex}
+              type="button"
+              onClick={() => {
+                if (!allowed) return;
+                if (on) removeAddon(prod.name, key);
+                else addAddon(prod.name, key);
+              }}
+              className={clsx(
+                "px-2 py-1 rounded text-[11px] border",
+                !allowed
+                  ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
+                  : on
+                  ? "bg-black text-white border-black"
+                  : "bg-white text-black hover:bg-gray-50 border-gray-200"
+              )}
+            >
+              {on ? `✓ ${ex}` : `+ ${ex}`}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+})}
 
             {/* Rozmiar zestawu: standard vs powiększony (+szt za 1–2 zł) */}
             {setUpgradeInfo && (
@@ -1610,10 +1650,12 @@ const canUseExtraForRow = (ex: string): boolean => {
             )}
 
             <p className="text-[11px] text-black/60">
-              Zamiany tylko w obrębie tej samej kategorii (Futomaki ↔ Futomaki,
-              Hosomaki ↔ Hosomaki itd.). Californię w zestawach pozostawiamy
-              bez zamiany. Bez specjałów. Dodajemy pozycję „{SWAP_FEE_NAME}”.
-            </p>
+  Zamiany tylko w obrębie tej samej kategorii (Futomaki ↔ Futomaki,
+  Hosomaki ↔ Hosomaki, California ↔ California itd.). California
+  może być zamieniana tylko na inne rolki California z tej samej
+  „klasy” (obłożone ↔ obłożone, klasyczne ↔ klasyczne). Bez
+  specjałów. Dodajemy pozycję „{SWAP_FEE_NAME}”.
+</p>
 
             {isSet && setBakePrice != null && (
               <div className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-2 space-y-1">
