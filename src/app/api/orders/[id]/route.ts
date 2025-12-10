@@ -310,21 +310,13 @@ export async function PATCH(request: Request, ctx: any) {
     }
 
     if (toEmail) {
-      const origin =
-        request.headers.get("origin") ||
-        process.env.APP_BASE_URL ||
-        process.env.NEXT_PUBLIC_BASE_URL ||
-        "";
-
       let trackUrl: string | null = null;
-      if (origin) {
-        try {
-          trackUrl = trackingUrl(origin, String(orderId));
-        } catch (e) {
-          console.error("[orders.patch] trackingUrl error:", e);
-          trackUrl = null; // brak linku, ale mail dalej idzie
-        }
-      }
+try {
+  trackUrl = trackingUrl(String(orderId));
+} catch (e) {
+  console.error("[orders.patch] trackingUrl error:", e);
+  trackUrl = null; // brak linku, ale mail dalej idzie
+}
 
       const timeStr = fmtTime(when);
       const optionTxt = optLabel(updated.selected_option);

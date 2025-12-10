@@ -1248,15 +1248,13 @@ export async function POST(req: Request) {
     }
 
     // 8) Mail do klienta
-    try {
-      if (n.contact_email) {
-        const origin =
-          process.env.APP_BASE_URL || new URL(req.url).origin;
-        const urlTrack = trackingUrl(origin, String(newOrderId));
-        const total =
-          typeof orderRow.total_price === "number"
-            ? orderRow.total_price.toFixed(2).replace(".", ",")
-            : String(orderRow.total_price ?? "0");
+try {
+  if (n.contact_email) {
+    const urlTrack = trackingUrl(String(newOrderId));
+    const total =
+      typeof orderRow.total_price === "number"
+        ? orderRow.total_price.toFixed(2).replace(".", ",")
+        : String(orderRow.total_price ?? "0");
 
         const html = `
           <div style="font-family:Inter,Arial,sans-serif;line-height:1.5;color:#111">
@@ -1294,23 +1292,17 @@ export async function POST(req: Request) {
 
     // 9) SMS do klienta
     try {
-      const origin =
-        process.env.APP_BASE_URL || new URL(req.url).origin;
-      const urlTrackShort = trackingUrl(origin, String(newOrderId));
-      const totalLabel =
-        typeof orderRow.total_price === "number"
-          ? orderRow.total_price.toFixed(2).replace(".", ",")
-          : String(orderRow.total_price ?? "0");
+  const urlTrackShort = trackingUrl(String(newOrderId));
+  const totalLabel =
+    typeof orderRow.total_price === "number"
+      ? orderRow.total_price.toFixed(2).replace(".", ",")
+      : String(orderRow.total_price ?? "0");
 
-      const msg =
-        `Przyjęliśmy Twoje zamówienie #${newOrderId}. Kwota: ${totalLabel} zł. ` +
-        `Status/śledzenie: ${urlTrackShort}`;
-      await sendSms(n.phone, msg);
-    } catch (smsErr) {
-      console.error(
-        "[orders.create] SMS client error:",
-        (smsErr as any)?.message || smsErr
-      );
+  const msg =
+    `Przyjęliśmy Twoje zamówienie #${newOrderId}. Kwota: ${totalLabel} zł. ` +
+    `Status/śledzenie: ${urlTrackShort}`;
+  await sendSms(n.phone, msg);
+} catch (smsErr) {
     }
 
     return NextResponse.json({ orderId: newOrderId }, { status: 201 });

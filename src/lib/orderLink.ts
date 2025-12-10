@@ -1,8 +1,12 @@
-const BASE =
-  (process.env.NEXT_PUBLIC_BASE_URL || "https://sushitutaj.pl").replace(
-    /\/+$/,
-    ""
-  );
+// src/lib/orderLink.ts
+const RAW_BASE =
+  process.env.APP_BASE_URL ||
+  process.env.NEXT_PUBLIC_BASE_URL ||
+  (process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : "http://localhost:3000");
+
+const BASE = RAW_BASE.replace(/\/+$/, "");
 
 type WithTracking = {
   id: string;
