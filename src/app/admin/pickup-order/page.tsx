@@ -37,6 +37,12 @@ interface Order {
   payment_method?: PaymentMethod;
   payment_status?: PaymentStatus;
 
+  /** NOWE: notatka klienta / dla lokalu */
+  note?: string | null;
+  /** (opcjonalnie) notatka kuchni z kolumny kitchen_note */
+  kitchen_note?: string | null;
+
+
   // rabaty / kody / lojalność
   promo_code?: string | null;
   discount_amount?: number | null;
@@ -797,73 +803,89 @@ export default function PickupOrdersPage() {
       const raw = Array.isArray(json.orders) ? json.orders : [];
       const totalCount = Number(json.totalCount || 0);
 
-      const mapped: Order[] = raw.map((o: any) => {
-        const chopsticksRaw =
-          asInt(o.chopsticks_qty) ??
-          asInt(o.chopsticksQty) ??
-          asInt(o.chopsticksqty) ??
-          asInt(o.chopsticks) ??
-          extractChopsticksFromOrderRaw(o);
+     const mapped: Order[] = raw.map((o: any) => {
+  const chopsticksRaw =
+    asInt(o.chopsticks_qty) ??
+    asInt(o.chopsticksQty) ??
+    asInt(o.chopsticksqty) ??
+    asInt(o.chopsticks) ??
+    extractChopsticksFromOrderRaw(o);
 
-        return {
-          id: String(o.id),
-          name: o.name ?? o.customer_name ?? o.client_name ?? undefined,
-          total_price: toNumber(o.total_price),
-          delivery_cost: o.delivery_cost ?? null,
-          created_at: o.created_at,
-          status: o.status,
-          clientDelivery:
-            o.client_delivery_time ??
-            o.delivery_time ??
-            o.clientDelivery,
-          deliveryTime: o.deliveryTime ?? o.delivery_time ?? null,
-          address:
-            o.selected_option === "delivery"
-              ? `${o.street || ""}${
-                  o.flat_number ? `, nr ${o.flat_number}` : ""
-                }${o.city ? `, ${o.city}` : ""}`
-              : o.address || "",
-          street: o.street,
-          flat_number: o.flat_number,
-          city: o.city,
-          phone: o.phone,
-          items: o.items ?? o.order_items ?? [],
-          selected_option: o.selected_option,
-          payment_method: fromDBPaymentMethod(o.payment_method),
-          payment_status: fromDBPaymentStatus(o.payment_status),
+  // jeśli to „Na wynos” i w kolumnie address siedzi tekst,
+  // traktujemy go jako notatkę klienta (kompatybilność wsteczna)
+  const noteFromAddress =
+    o.selected_option === "takeaway" &&
+    typeof o.address === "string" &&
+    o.address.trim()
+      ? o.address.trim()
+      : null;
 
-          // rabat / lojalność
-          promo_code: o.promo_code ?? null,
-          discount_amount:
-            o.discount_amount != null ? Number(o.discount_amount) || 0 : 0,
-          loyalty_stickers_before:
-            typeof o.loyalty_stickers_before === "number"
-              ? o.loyalty_stickers_before
-              : null,
-          loyalty_stickers_after:
-            typeof o.loyalty_stickers_after === "number"
-              ? o.loyalty_stickers_after
-              : null,
-          loyalty_applied: !!o.loyalty_applied,
-          loyalty_reward_type: o.loyalty_reward_type ?? null,
-          loyalty_reward_value:
-            o.loyalty_reward_value != null
-              ? Number(o.loyalty_reward_value)
-              : null,
-          loyalty_min_order:
-            o.loyalty_min_order != null
-              ? Number(o.loyalty_min_order)
-              : null,
+  return {
+    id: String(o.id),
+    name: o.name ?? o.customer_name ?? o.client_name ?? undefined,
+    total_price: toNumber(o.total_price),
+    delivery_cost: o.delivery_cost ?? null,
+    created_at: o.created_at,
+    status: o.status,
+    clientDelivery:
+      o.client_delivery_time ??
+      o.delivery_time ??
+      o.clientDelivery,
+    deliveryTime: o.deliveryTime ?? o.delivery_time ?? null,
 
-          // rezerwacja
-          reservation_id: o.reservation_id ?? null,
-          reservation_date: o.reservation_date ?? null,
-          reservation_time: o.reservation_time ?? null,
+    // adres – normalnie tylko dla dostawy
+    address:
+      o.selected_option === "delivery"
+        ? `${o.street || ""}${
+            o.flat_number ? `, nr ${o.flat_number}` : ""
+          }${o.city ? `, ${o.city}` : ""}`
+        : o.address || "",
 
-          // liczba pałeczek tylko do odczytu
-          chopsticks: chopsticksRaw ?? 0,
-        };
-      });
+    street: o.street,
+    flat_number: o.flat_number,
+    city: o.city,
+    phone: o.phone,
+    items: o.items ?? o.order_items ?? [],
+    selected_option: o.selected_option,
+    payment_method: fromDBPaymentMethod(o.payment_method),
+    payment_status: fromDBPaymentStatus(o.payment_status),
+
+    // NOWE: notatki
+    note: o.note ?? noteFromAddress ?? null,
+    kitchen_note: o.kitchen_note ?? null,
+
+    // rabaty / lojalność
+    promo_code: o.promo_code ?? null,
+    discount_amount:
+      o.discount_amount != null ? Number(o.discount_amount) || 0 : 0,
+    loyalty_stickers_before:
+      typeof o.loyalty_stickers_before === "number"
+        ? o.loyalty_stickers_before
+        : null,
+    loyalty_stickers_after:
+      typeof o.loyalty_stickers_after === "number"
+        ? o.loyalty_stickers_after
+        : null,
+    loyalty_applied: !!o.loyalty_applied,
+    loyalty_reward_type: o.loyalty_reward_type ?? null,
+    loyalty_reward_value:
+      o.loyalty_reward_value != null
+        ? Number(o.loyalty_reward_value)
+        : null,
+    loyalty_min_order:
+      o.loyalty_min_order != null
+        ? Number(o.loyalty_min_order)
+        : null,
+
+    // rezerwacja
+    reservation_id: o.reservation_id ?? null,
+    reservation_date: o.reservation_date ?? null,
+    reservation_time: o.reservation_time ?? null,
+
+    // pałeczki
+    chopsticks: chopsticksRaw ?? 0,
+  };
+});
 
       setTotal(totalCount);
 
@@ -1650,6 +1672,21 @@ export default function PickupOrdersPage() {
                 <b>Telefon:</b> {o.phone}
               </div>
             )}
+
+            {/* Notatka klienta / dla lokalu */}
+  {(o.note ||
+    (o.selected_option === "takeaway" && o.address)) && (
+    <div className="mt-2 rounded-xl bg-slate-50 px-3 py-2">
+      <div className="text-xs font-semibold text-slate-700">
+        Notatka klienta
+      </div>
+      <div className="mt-0.5 text-sm text-slate-900">
+        {o.note ||
+          (o.selected_option === "takeaway" && o.address) ||
+          ""}
+      </div>
+    </div>
+  )}
 
             <div className="mt-1">
               <b>Płatność:</b>{" "}
