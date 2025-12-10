@@ -36,7 +36,7 @@ const fmtHM = (value?: string | null) => {
   if (!value) return null;
   const v = value.trim();
 
-  // Format HH:mm (opcjonalnie z sekundami)
+  // HH:mm lub HH:mm:ss
   const m = v.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
   if (m) {
     const h = String(parseInt(m[1], 10)).padStart(2, "0");
@@ -133,12 +133,12 @@ export default function ClientOrderTrackPage() {
 
   if (err) {
     return (
-      <section className="min-h-[60vh] flex items-center justify-center px-4 py-16 text-white">
-        <div className="w-full max-w-md rounded-2xl border border-red-500/40 bg-red-950/40 px-6 py-5 text-center">
-          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-red-500/20">
-            <AlertCircle className="h-6 w-6 text-red-400" />
+      <section className="min-h-[70vh] flex items-center justify-center px-4 py-16 text-white">
+        <div className="w-full max-w-md rounded-3xl border border-red-500/40 bg-gradient-to-br from-red-900/80 via-black/90 to-black/95 px-6 py-7 text-center shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-500/20">
+            <AlertCircle className="h-6 w-6 text-red-300" />
           </div>
-          <h1 className="mb-1 text-lg font-semibold">Błąd ładowania</h1>
+          <h1 className="mb-1 text-xl font-semibold">Błąd ładowania</h1>
           <p className="text-sm text-red-100/80">
             {err || "Wystąpił błąd podczas pobierania statusu zamówienia."}
           </p>
@@ -149,12 +149,15 @@ export default function ClientOrderTrackPage() {
 
   if (!data) {
     return (
-      <section className="min-h-[60vh] flex items-center justify-center px-4 py-16 text-white">
-        <div className="w-full max-w-md rounded-2xl border border-white/15 bg-black/40 px-6 py-5 text-center">
-          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-white/10">
+      <section className="min-h-[70vh] flex items-center justify-center px-4 py-16 text-white">
+        <div className="w-full max-w-md rounded-3xl border border-white/10 bg-gradient-to-br from-zinc-900/80 via-black/90 to-black/95 px-6 py-7 text-center shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/10">
             <Clock className="h-6 w-6" />
           </div>
-          <p className="text-sm opacity-80">Ładowanie statusu zamówienia…</p>
+          <h1 className="mb-1 text-xl font-semibold">Ładujemy zamówienie</h1>
+          <p className="text-sm text-white/70">
+            Za chwilę pokażemy aktualny status Twojego sushi.
+          </p>
         </div>
       </section>
     );
@@ -173,7 +176,7 @@ export default function ClientOrderTrackPage() {
   const shortId = String(data.id).slice(-6).toUpperCase();
 
   const steps = [
-    { id: "new", label: "Złożone" },
+    { id: "placed", label: "Złożone" },
     {
       id: "accepted",
       label:
@@ -182,7 +185,7 @@ export default function ClientOrderTrackPage() {
           : "Przyjęte / przygotowujemy",
     },
     {
-      id: "completed",
+      id: data.status === "cancelled" ? "cancelled" : "completed",
       label: data.status === "cancelled" ? "Anulowane" : "Zrealizowane",
     },
   ] as const;
@@ -195,21 +198,25 @@ export default function ClientOrderTrackPage() {
       : 0;
 
   return (
-    <section className="min-h-[70vh] w-full px-4 py-16 text-white">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 lg:flex-row">
-        {/* Główna karta zamówienia */}
-        <div className="flex-1">
-          <div className="relative overflow-hidden rounded-3xl border border-white/15 bg-gradient-to-br from-zinc-900/90 via-black/90 to-zinc-950/90 px-8 py-7 shadow-[0_20px_50px_rgba(0,0,0,0.7)]">
-            <div className="pointer-events-none absolute inset-x-[-40%] -top-40 h-56 bg-[radial-gradient(circle_at_top,_rgba(239,68,68,0.35),_transparent_60%)]" />
-            <header className="relative mb-5 flex flex-col gap-2 text-left">
-              <p className="text-xs uppercase tracking-[0.2em] text-red-300/80">
-                Śledzenie zamówienia
+    <section className="min-h-[72vh] w-full px-4 py-16 text-white">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
+        {/* TOP: karta z gradientem */}
+        <div className="relative overflow-hidden rounded-[32px] border border-white/12 bg-gradient-to-br from-zinc-900/95 via-black/95 to-zinc-950/95 shadow-[0_26px_80px_rgba(0,0,0,0.9)]">
+          {/* Glow */}
+          <div className="pointer-events-none absolute inset-x-[-30%] -top-40 h-56 bg-[radial-gradient(circle_at_top,_rgba(248,113,113,0.45),_transparent_60%)]" />
+          <div className="pointer-events-none absolute inset-x-[-20%] bottom-[-40%] h-72 bg-[radial-gradient(circle_at_bottom,_rgba(250,250,250,0.08),_transparent_60%)]" />
+
+          {/* HEADER */}
+          <header className="relative flex flex-col gap-4 border-b border-white/10 px-7 py-6 md:flex-row md:items-center md:justify-between">
+            <div className="space-y-1">
+              <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-red-200/80">
+                ŚLEDZENIE ZAMÓWIENIA
               </p>
-              <h1 className="text-2xl font-semibold">
+              <h1 className="text-2xl font-semibold md:text-[26px]">
                 Zamówienie #{data.id}
               </h1>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-3 py-1 uppercase tracking-wide">
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="inline-flex items-center gap-1 rounded-full border border-white/18 bg-white/5 px-3 py-1 font-semibold uppercase tracking-wide">
                   {data.option === "delivery" ? (
                     <>
                       <Bike className="h-3.5 w-3.5" />
@@ -223,82 +230,108 @@ export default function ClientOrderTrackPage() {
                   )}
                 </span>
                 {placedHM && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-3 py-1 text-[11px]">
-                    <Clock className="h-3 w-3" />
+                  <span className="inline-flex items-center gap-1 rounded-full bg-white/8 px-3 py-1 text-white/80">
+                    <Clock className="h-3.5 w-3.5" />
                     Złożone {placedHM}
                   </span>
                 )}
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/0 px-3 py-1 text-[11px] text-white/60">
-                  Kod odbioru:{" "}
-                  <span className="font-mono text-xs font-semibold text-white">
-                    {shortId}
-                  </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-start gap-2 text-sm md:items-end">
+              <div className="flex items-center gap-2 text-xs text-white/60">
+                Kod odbioru:
+                <span className="font-mono text-sm font-semibold tracking-[0.18em] text-white">
+                  {shortId}
                 </span>
               </div>
-            </header>
+              <div className="rounded-2xl bg-white/5 px-3 py-2 text-xs text-white/70">
+                Suma zamówienia{" "}
+                <span className="ml-1 font-semibold text-white">
+                  {Number(data.total).toFixed(2)} zł
+                </span>
+              </div>
+            </div>
+          </header>
 
+          {/* BODY: status + „mapka” */}
+          <div className="relative grid gap-6 px-7 py-7 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1.15fr)]">
             {/* Status + ETA */}
-            <div className="relative mt-2 grid gap-5 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
-              <div className="text-left">
-                <p className="text-xs uppercase tracking-[0.16em] text-white/50">
+            <div className="space-y-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.2em] text-white/50">
                   Aktualny status
                 </p>
-                <div className="mt-1 flex items-center gap-2 text-lg">
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-lg">
                   <span className="font-semibold">
                     {statusLabel(data.status, data.eta)}
                   </span>
                   {isFinished ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] text-emerald-300">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/18 px-2.5 py-0.5 text-[11px] text-emerald-200">
                       <CheckCircle2 className="h-3.5 w-3.5" />
                       Zakończone
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-yellow-400/10 px-2.5 py-0.5 text-[11px] text-yellow-200">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-yellow-400/14 px-2.5 py-0.5 text-[11px] text-yellow-100">
                       <Clock className="h-3.5 w-3.5" />
                       W trakcie realizacji
                     </span>
                   )}
                 </div>
+              </div>
 
-                <div className="mt-3 space-y-1.5 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1 text-white/70">
+              <div className="rounded-2xl border border-white/12 bg-black/60 px-4 py-3 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-white/70">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5">
                       <Clock className="h-4 w-4" />
-                      ETA:
                     </span>
-                    <span className="font-medium">
-                      {etaHM ?? "w przygotowaniu"}
-                    </span>
-                    {!isFinished && etaHM && msLeft !== null && (
-                      <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px]">
-                        Odliczanie: {countdown}
+                    <div className="flex flex-col">
+                      <span className="text-[11px] uppercase tracking-[0.18em] text-white/50">
+                        Szacowany czas
                       </span>
-                    )}
+                      <span className="text-base font-medium">
+                        {etaHM ?? "W przygotowaniu"}
+                      </span>
+                    </div>
                   </div>
+                  {!isFinished && etaHM && msLeft !== null && (
+                    <div className="text-right">
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-white/45">
+                        Odliczanie
+                      </p>
+                      <p className="mt-0.5 rounded-full bg-white/8 px-3 py-1 text-xs font-medium">
+                        {countdown}
+                      </p>
+                    </div>
+                  )}
+                </div>
 
+                <div className="mt-3 grid gap-1.5 text-xs text-white/70">
                   {clientReq && (
-                    <div className="flex items-center justify-between text-xs text-white/70">
+                    <div className="flex items-center justify-between gap-2">
                       <span>Czas wybrany przez klienta:</span>
                       <span className="font-medium text-white">
                         {clientReq}
                       </span>
                     </div>
                   )}
-
-                  <div className="pt-1 text-xs text-white/60">
-                    Suma zamówienia:{" "}
-                    <span className="font-semibold text-white">
-                      {Number(data.total).toFixed(2)} zł
-                    </span>
-                  </div>
+                  {placedHM && (
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Zamówienie złożone:</span>
+                      <span>{placedHM}</span>
+                    </div>
+                  )}
                 </div>
               </div>
+            </div>
 
-              {/* „Mapa” / blok informacyjny */}
-              <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-red-500/20 via-red-500/5 to-amber-400/10 p-3.5 text-xs lg:text-[13px]">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="inline-flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/40">
+            {/* Prawy panel: „mapka” / info o dostawie/odbiorze */}
+            <div className="space-y-3">
+              <div className="rounded-3xl border border-white/14 bg-gradient-to-br from-red-500/28 via-red-500/10 to-amber-400/12 p-4 text-xs lg:text-[13px]">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-black/50 shadow-md shadow-black/40">
                       {data.option === "delivery" ? (
                         <Bike className="h-4 w-4" />
                       ) : (
@@ -306,110 +339,128 @@ export default function ClientOrderTrackPage() {
                       )}
                     </div>
                     <div>
-                      <p className="text-[11px] uppercase tracking-[0.16em] text-red-100/80">
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-red-100/80">
                         {data.option === "delivery"
-                          ? "Dostawa Sushi Tutaj"
+                          ? "Dostawa sushi"
                           : "Odbiór osobisty"}
                       </p>
-                      <p className="text-sm font-medium">
+                      <p className="text-sm font-medium text-white">
                         {data.option === "delivery"
                           ? "Twoje sushi jest w drodze"
                           : "Twoje sushi czeka w lokalu"}
                       </p>
                     </div>
                   </div>
-                  <MapPin className="h-5 w-5 text-red-200/90" />
+                  <MapPin className="h-5 w-5 text-red-100/90" />
                 </div>
 
                 {data.option === "delivery" ? (
-                  <p className="mb-2 text-[12px] text-red-50/90">
-                    Kurier ruszy z restauracji niebawem. Jeśli masz dodatkowe
-                    pytania, zadzwoń bezpośrednio do lokalu i podaj numer
-                    zamówienia{" "}
+                  <p className="mb-3 text-[12px] text-red-50/90">
+                    Kurier wyruszy z restauracji niebawem. Jeśli chcesz
+                    upewnić się co do adresu lub czasu, zadzwoń do lokalu i
+                    podaj kod zamówienia{" "}
                     <span className="font-mono font-semibold">{shortId}</span>.
                   </p>
                 ) : (
-                  <p className="mb-2 text-[12px] text-red-50/90">
-                    Przygotujemy Twoje sushi na wskazaną godzinę. W lokalu
-                    podaj numer zamówienia{" "}
+                  <p className="mb-3 text-[12px] text-red-50/90">
+                    Przyjdź do lokalu na wskazaną godzinę i podaj przy barze
+                    numer{" "}
                     <span className="font-mono font-semibold">{shortId}</span>,
-                    aby szybko odebrać zestaw.
+                    żeby szybko odebrać zestaw.
                   </p>
                 )}
 
-                {/* Pasek „trasy” jako pseudo-mapa */}
-                <div className="mt-3 h-16 rounded-xl bg-[radial-gradient(circle_at_top,_rgba(248,250,252,0.12),_transparent_55%),linear-gradient(120deg,rgba(248,250,252,0.08),transparent)] p-2">
+                {/* pseudo-mapa / trasa */}
+                <div className="mt-3 h-20 rounded-2xl bg-[radial-gradient(circle_at_top,_rgba(248,250,252,0.18),_transparent_55%),linear-gradient(120deg,rgba(15,23,42,0.9),rgba(15,23,42,0.95))] p-3">
                   <div className="flex h-full items-center justify-between">
-                    <div className="flex flex-col items-start gap-1 text-[11px] text-white/65">
-                      <span className="rounded-full bg-black/40 px-2 py-0.5">
+                    <div className="flex flex-col gap-1 text-[11px] text-white/65">
+                      <span className="rounded-full bg-black/60 px-2 py-0.5">
                         Restauracja
                       </span>
-                      <span className="rounded-full bg-black/20 px-2 py-0.5">
+                      <span className="rounded-full bg-black/40 px-2 py-0.5">
                         {data.option === "delivery"
-                          ? "Dostawa pod wskazany adres"
+                          ? "Trasa do klienta"
                           : "Odbiór przy barze"}
                       </span>
                     </div>
+
                     <div className="relative flex h-full flex-1 items-center justify-center">
-                      <div className="absolute inset-x-4 h-[2px] rounded-full bg-white/20" />
-                      <div className="relative flex h-full w-full items-center justify-between px-3">
-                        <span className="h-2 w-2 rounded-full bg-white/80" />
-                        <span className="relative flex h-8 w-8 items-center justify-center rounded-full bg-black/70 shadow-lg shadow-black/60">
+                      <div className="absolute inset-x-5 h-[2px] rounded-full bg-white/20" />
+                      <div className="relative flex h-full w-full items-center justify-between px-4">
+                        <span className="h-2 w-2 rounded-full bg-white/80 shadow-[0_0_8px_rgba(255,255,255,0.7)]" />
+                        <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-black/80 shadow-[0_0_18px_rgba(0,0,0,0.9)]">
                           {data.option === "delivery" ? (
                             <Bike className="h-4 w-4" />
                           ) : (
                             <Store className="h-4 w-4" />
                           )}
                         </span>
-                        <span className="h-2 w-2 rounded-full bg-white/40" />
+                        <span className="h-2 w-2 rounded-full bg-white/30" />
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Oś postępu statusu */}
-            <div className="relative mt-6 border-t border-white/10 pt-5">
-              <p className="mb-3 text-xs uppercase tracking-[0.16em] text-white/50">
-                Postęp realizacji
+              <p className="text-[11px] text-white/45">
+                W razie problemów z zamówieniem skontaktuj się bezpośrednio z
+                restauracją, podając pełny numer zamówienia{" "}
+                <span className="font-mono">{String(data.id)}</span>.
               </p>
-              <ol className="flex items-center justify-between gap-3 text-xs">
-                {steps.map((step, index) => {
-                  const done = index <= currentStepIndex;
-                  const isCurrent = index === currentStepIndex;
-
-                  return (
-                    <li key={step.id} className="flex flex-1 items-center gap-2">
-                      <div
-                        className={[
-                          "flex h-7 w-7 items-center justify-center rounded-full border text-[11px]",
-                          done
-                            ? "border-emerald-400 bg-emerald-500/20 text-emerald-100"
-                            : "border-white/25 bg-white/5 text-white/60",
-                        ].join(" ")}
-                      >
-                        {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : index + 1}
-                      </div>
-                      <div className="flex flex-col">
-                        <span
-                          className={
-                            isCurrent
-                              ? "font-medium text-white"
-                              : "text-white/70"
-                          }
-                        >
-                          {step.label}
-                        </span>
-                      </div>
-                      {index < steps.length - 1 && (
-                        <div className="mx-2 h-px flex-1 bg-gradient-to-r from-white/30 via-white/10 to-transparent" />
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
             </div>
+          </div>
+
+          {/* OŚ POSTĘPU */}
+          <div className="relative border-t border-white/10 px-7 py-5">
+            <p className="mb-3 text-[11px] uppercase tracking-[0.2em] text-white/50">
+              Postęp realizacji
+            </p>
+            <ol className="flex flex-col gap-4 text-xs md:flex-row md:items-center md:justify-between">
+              {steps.map((step, index) => {
+                const done =
+                  index < currentStepIndex ||
+                  (index === currentStepIndex && isFinished);
+                const isCurrent = index === currentStepIndex;
+
+                return (
+                  <li
+                    key={step.id}
+                    className="flex flex-1 items-center gap-3 md:gap-2"
+                  >
+                    <div
+                      className={[
+                        "flex h-8 w-8 items-center justify-center rounded-full border text-[11px] transition-colors",
+                        done || isCurrent
+                          ? "border-emerald-400 bg-emerald-500/20 text-emerald-100"
+                          : "border-white/25 bg-white/5 text-white/60",
+                      ].join(" ")}
+                    >
+                      {done || isCurrent ? (
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      ) : (
+                        index + 1
+                      )}
+                    </div>
+                    <div className="flex flex-col">
+                      <span
+                        className={
+                          isCurrent
+                            ? "text-xs font-medium text-white"
+                            : "text-xs text-white/70"
+                        }
+                      >
+                        {step.label}
+                      </span>
+                    </div>
+                    {index < steps.length - 1 && (
+                      <div className="hidden flex-1 md:block">
+                        <div className="h-px w-full bg-gradient-to-r from-white/30 via-white/10 to-transparent" />
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
           </div>
         </div>
       </div>
