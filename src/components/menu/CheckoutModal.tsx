@@ -584,19 +584,23 @@ function isOpenFor(slug: string, d = toZonedTime(new Date(), tz)) {
 }
 /* ================================================================= */
 
-/* Czas dostawy wskazany przez klienta */
+/* Czas realizacji wskazany przez klienta (dostawa + na wynos) */
 const buildClientDeliveryTime = (
   selectedOption: OrderOption | null,
   deliveryTimeOption: "asap" | "schedule",
   scheduledTime: string
 ): string | null => {
-  if (selectedOption !== "delivery") return null;
+  if (!selectedOption) return null;
   if (deliveryTimeOption === "asap") return "asap";
+
   const [hours, minutes] = scheduledTime.split(":").map(Number);
   const nowZoned = toZonedTime(new Date(), tz);
   const dt = new Date(nowZoned);
   dt.setHours(hours, minutes, 0, 0);
+
+  // jeśli klient wybierze godzinę z przeszłości – traktujemy jako jutro
   if (dt.getTime() < nowZoned.getTime()) dt.setDate(dt.getDate() + 1);
+
   return dt.toISOString();
 };
 
@@ -2946,26 +2950,32 @@ const [loyaltyLoading, setLoyaltyLoading] = useState(false);
       return;
     }
 
-    if (selectedOption === "delivery" && deliveryTimeOption === "schedule") {
-      const [h, m] = scheduledTime.split(":").map(Number);
-      if (!Number.isFinite(h) || !Number.isFinite(m)) {
-        setErrorMessage("Podaj prawidłową godzinę dostawy.");
-        return;
-      }
-      const nowZoned = toZonedTime(new Date(), tz);
-      const dt = new Date(nowZoned);
-      dt.setHours(h, m, 0, 0);
-      if (dt.getTime() < nowZoned.getTime()) {
-        dt.setDate(dt.getDate() + 1);
-      }
-      const diffMinutes = (dt.getTime() - nowZoned.getTime()) / 60000;
-      if (diffMinutes < MIN_SCHEDULE_MINUTES) {
-        setErrorMessage(
-          `Przy wyborze dostawy „na godzinę” minimalny czas to ${MIN_SCHEDULE_MINUTES} minut od teraz.`
-        );
-        return;
-      }
-    }
+    if (deliveryTimeOption === "schedule" && selectedOption) {
+  const [h, m] = scheduledTime.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) {
+    setErrorMessage(
+      selectedOption === "delivery"
+        ? "Podaj prawidłową godzinę dostawy."
+        : "Podaj prawidłową godzinę odbioru."
+    );
+    return;
+  }
+
+  const nowZoned = toZonedTime(new Date(), tz);
+  const dt = new Date(nowZoned);
+  dt.setHours(h, m, 0, 0);
+  if (dt.getTime() < nowZoned.getTime()) {
+    dt.setDate(dt.getDate() + 1);
+  }
+
+  const diffMinutes = (dt.getTime() - nowZoned.getTime()) / 60000;
+  if (diffMinutes < MIN_SCHEDULE_MINUTES) {
+    setErrorMessage(
+      `Przy wyborze realizacji „na godzinę” minimalny czas to ${MIN_SCHEDULE_MINUTES} minut od teraz.`
+    );
+    return;
+  }
+}
 
     if (!guardEmail()) return;
     if (TURNSTILE_SITE_KEY && !(await ensureFreshToken())) {
@@ -2995,59 +3005,62 @@ const [loyaltyLoading, setLoyaltyLoading] = useState(false);
     setSubmitting(true);
     try {
       const client_delivery_time = buildClientDeliveryTime(
-        selectedOption,
-        deliveryTimeOption,
-        scheduledTime
-      );
-      const slug = restaurantSlug;
+  selectedOption,
+  deliveryTimeOption,
+  scheduledTime
+);
+const slug = restaurantSlug;
 
-      try {
-        await fetch(`/api/restaurants/ensure-cookie?restaurant=${encodeURIComponent(slug)}`, {
-          method: "GET",
-          credentials: "same-origin",
-        });
-      } catch {}
+try {
+  await fetch(`/api/restaurants/ensure-cookie?restaurant=${encodeURIComponent(slug)}`, {
+    method: "GET",
+    credentials: "same-origin",
+  });
+} catch {}
 
-      const orderPayload: any = {
-        selected_option: selectedOption,
-        payment_method:
-          selectedOption === "delivery" ? "Gotówka u kierowcy" : "Gotówka przy odbiorze",
-        user: isLoggedIn ? session!.user.id : null,
-        name,
-        phone,
-        contact_email: effectiveEmail,
-        delivery_cost: deliveryInfo?.cost || 0,
-        total_price: totalWithDelivery,
-        discount_amount: discount || 0,
-        promo_code: promo?.code || (promo && !promo.require_code ? "AUTO" : null),
-        legal_accept: {
-          terms_version: TERMS_VERSION,
-          privacy_version: TERMS_VERSION,
-          marketing_opt_in: false,
-        },
-        status: "placed",
-        notice_payment:
-          selectedOption === "delivery" ? "Płatność wyłącznie gotówką u kierowcy" : null,
-        chopsticks_qty: Math.max(0, Math.min(10, Number(chopsticksQty) || 0)),
-        reservation_id: reservationId || null,
-        loyalty_choice: canUseLoyalty4 ? loyaltyChoice : null,
-        loyalty_stickers_before:
+const orderPayload: any = {
+  selected_option: selectedOption,
+  payment_method:
+    selectedOption === "delivery" ? "Gotówka u kierowcy" : "Gotówka przy odbiorze",
+  user: isLoggedIn ? session!.user.id : null,
+  name,
+  phone,
+  contact_email: effectiveEmail,
+  delivery_cost: deliveryInfo?.cost || 0,
+  total_price: totalWithDelivery,
+  discount_amount: discount || 0,
+  promo_code: promo?.code || (promo && !promo.require_code ? "AUTO" : null),
+  legal_accept: {
+    terms_version: TERMS_VERSION,
+    privacy_version: TERMS_VERSION,
+    marketing_opt_in: false,
+  },
+  status: "placed",
+  notice_payment:
+    selectedOption === "delivery" ? "Płatność wyłącznie gotówką u kierowcy" : null,
+  chopsticks_qty: Math.max(0, Math.min(10, Number(chopsticksQty) || 0)),
+  reservation_id: reservationId || null,
+  loyalty_choice: canUseLoyalty4 ? loyaltyChoice : null,
+  loyalty_stickers_before:
     typeof loyaltyStickers === "number" ? loyaltyStickers : null,
-      };
+  // NOWE: zapisujemy godzinę również dla "Na wynos"
+  client_delivery_time,
+};
 
       if (selectedOption === "delivery") {
-        orderPayload.street = street || null;
-        orderPayload.postal_code = postalCode || null;
-        orderPayload.city = city || null;
-        orderPayload.flat_number = flatNumber || null;
-        orderPayload.client_delivery_time = client_delivery_time;
-        if (custCoords) {
-          orderPayload.delivery_lat = custCoords.lat;
-          orderPayload.delivery_lng = custCoords.lng;
-        }
-      } else if (optionalAddress.trim()) {
-        orderPayload.address = optionalAddress.trim();
-      }
+  orderPayload.street = street || null;
+  orderPayload.postal_code = postalCode || null;
+  orderPayload.city = city || null;
+  orderPayload.flat_number = flatNumber || null;
+  if (custCoords) {
+    orderPayload.delivery_lat = custCoords.lat;
+    orderPayload.delivery_lng = custCoords.lng;
+  }
+} else if (selectedOption === "takeaway") {
+  if (optionalAddress.trim()) {
+    orderPayload.address = optionalAddress.trim();
+  }
+}
 
        const itemsPayload = items.map((item: any, index: number) => {
         const product = resolveProduct(item);
@@ -3305,53 +3318,48 @@ return (
                         </div>
                       )}
 
-                      {selectedOption === "delivery" && (
-                        <div className="space-y-2">
-                          <h4 className="font-semibold">Czas dostawy</h4>
-                          <div className="flex flex-wrap gap-6 items-center">
-                            <label className="flex items-center gap-2">
-                              <input
-                                type="radio"
-                                name="timeOption"
-                                value="asap"
-                                checked={deliveryTimeOption === "asap"}
-                                onChange={() =>
-                                  setDeliveryTimeOption("asap")
-                                }
-                              />
-                              <span>Jak najszybciej</span>
-                            </label>
-                            <label className="flex items-center gap-2">
-                              <input
-                                type="radio"
-                                name="timeOption"
-                                value="schedule"
-                                checked={deliveryTimeOption === "schedule"}
-                                onChange={() =>
-                                  setDeliveryTimeOption("schedule")
-                                }
-                              />
-                              <span>Na godzinę</span>
-                            </label>
-                            {deliveryTimeOption === "schedule" && (
-                              <input
-                                type="time"
-                                className="border border-black/15 rounded-xl px-2 py-1 bg-white"
-                                min={timeMin}
-                                max={timeMax}
-                                value={scheduledTime}
-                                onChange={(e) =>
-                                  setScheduledTime(e.target.value)
-                                }
-                              />
-                            )}
-                          </div>
-                          <p className="text-xs text-black/60">
-                            Dzisiejsze godziny w {restaurantCityLabel}:{" "}
-                            {openInfo.label}
-                          </p>
-                        </div>
-                      )}
+                     {selectedOption && (
+  <div className="space-y-2">
+    <h4 className="font-semibold">
+      {selectedOption === "delivery" ? "Czas dostawy" : "Czas odbioru"}
+    </h4>
+    <div className="flex flex-wrap gap-6 items-center">
+      <label className="flex items-center gap-2">
+        <input
+          type="radio"
+          name="timeOption"
+          value="asap"
+          checked={deliveryTimeOption === "asap"}
+          onChange={() => setDeliveryTimeOption("asap")}
+        />
+        <span>Jak najszybciej</span>
+      </label>
+      <label className="flex items-center gap-2">
+        <input
+          type="radio"
+          name="timeOption"
+          value="schedule"
+          checked={deliveryTimeOption === "schedule"}
+          onChange={() => setDeliveryTimeOption("schedule")}
+        />
+        <span>Na godzinę</span>
+      </label>
+      {deliveryTimeOption === "schedule" && (
+        <input
+          type="time"
+          className="border border-black/15 rounded-xl px-2 py-1 bg-white"
+          min={timeMin}
+          max={timeMax}
+          value={scheduledTime}
+          onChange={(e) => setScheduledTime(e.target.value)}
+        />
+      )}
+    </div>
+    <p className="text-xs text-black/60">
+      Dzisiejsze godziny w {restaurantCityLabel}: {openInfo.label}
+    </p>
+  </div>
+)}
 
                       <div className="flex justify-between gap-3 pt-2 border-t border-black/10">
                         {isMobile && (
