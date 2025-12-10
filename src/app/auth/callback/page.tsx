@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
 type Mode = "loading" | "recovery" | "done" | "error";
@@ -13,33 +13,50 @@ export default function AuthCallbackPage() {
   const [pass2, setPass2] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // rozpoznanie trybu + ewentualne zalogowanie po code i przekierowanie
   useEffect(() => {
     const run = async () => {
       try {
         const url = new URL(window.location.href);
-        const hash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
-        const hashParams = new URLSearchParams(hash);
-        const type = hashParams.get("type");
-        const code = url.searchParams.get("code");
 
-        // 1) Reset hasła – zostajemy na tej stronie
+        // Supabase potrafi zwrócić parametry zarówno w hashu, jak i w query
+        const rawHash = url.hash.startsWith("#") ? url.hash.slice(1) : url.hash;
+        const hashParams = new URLSearchParams(rawHash);
+
+        const typeFromSearch = url.searchParams.get("type");
+        const typeFromHash = hashParams.get("type");
+        const type = typeFromSearch || typeFromHash || undefined;
+
+        const codeFromSearch = url.searchParams.get("code");
+        const codeFromHash = hashParams.get("code");
+        const code = codeFromSearch || codeFromHash || undefined;
+
+        // Gdy ktoś wejdzie na /auth/callback ręcznie – brak parametrów
+        if (!type && !code) {
+          setMode("error");
+          setError(
+            "Brak wymaganych danych w linku. Użyj najnowszego linku z wiadomości e-mail."
+          );
+          return;
+        }
+
+        // 1) RESET HASŁA
         if (type === "recovery") {
+          // Dla projektu z PKCE Supabase doda tu ?code=...
+          if (code) {
+            const { error } = await supabase.auth.exchangeCodeForSession(code);
+            if (error) {
+              console.error(error);
+              throw error;
+            }
+          }
+          // Zostajemy na stronie i pokazujemy formularz zmiany hasła
           setMode("recovery");
           return;
         }
 
-        // 2) Potwierdzenie rejestracji / magic link – wymiana code -> session (jeśli jest)
-        if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) {
-            console.error(error);
-            throw error;
-          }
-        }
-
-        // 3) Sukces – przekierowanie na stronę główną z parametrem do popupu
-        const origin = url.origin; // na prod będzie https://sushitutaj.pl
+        // 2) POZOSTAŁE LINKI (potwierdzenie rejestracji / magic link itp.)
+        // Nie wymuszamy tutaj exchangeCodeForSession – i tak nie logujemy automatycznie.
+        const origin = url.origin;
         window.location.href = `${origin}/?auth=signup-success`;
       } catch (err) {
         console.error(err);
@@ -53,7 +70,7 @@ export default function AuthCallbackPage() {
     run();
   }, [supabase]);
 
-  const handleChangePassword = async (e: React.FormEvent) => {
+  const handleChangePassword = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -67,6 +84,7 @@ export default function AuthCallbackPage() {
     setBusy(false);
 
     if (error) {
+      console.error(error);
       setError(error.message || "Nie udało się zmienić hasła.");
     } else {
       setMode("done");

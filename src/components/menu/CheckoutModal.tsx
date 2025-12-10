@@ -249,6 +249,19 @@ const COLA_VARIANTS = [
 ] as const;
 type ColaVariant = (typeof COLA_VARIANTS)[number];
 
+/* Zestaw SUSHI SPECJAŁ – proporcje pieczone/surowe */
+const SUSHI_SPECJAL_ADDON_PREFIX = "SUSHI SPECJAŁ: ";
+const SUSHI_SPECJAL_VARIANTS = [
+  `${SUSHI_SPECJAL_ADDON_PREFIX}100% pieczone`,
+  `${SUSHI_SPECJAL_ADDON_PREFIX}80% pieczone / 20% surowe`,
+  `${SUSHI_SPECJAL_ADDON_PREFIX}60% pieczone / 40% surowe`,
+  `${SUSHI_SPECJAL_ADDON_PREFIX}50% pieczone / 50% surowe`,
+  `${SUSHI_SPECJAL_ADDON_PREFIX}40% pieczone / 60% surowe`,
+  `${SUSHI_SPECJAL_ADDON_PREFIX}20% pieczone / 80% surowe`,
+  `${SUSHI_SPECJAL_ADDON_PREFIX}100% surowe`,
+] as const;
+type SushiSpecjalVariant = (typeof SUSHI_SPECJAL_VARIANTS)[number];
+
 
 /** Dopłata za wersję pieczoną całego zestawu – per zestaw (z menu) */
 const SET_BAKE_PRICES: Record<string, number> = {
@@ -489,7 +502,8 @@ function computeAddonPrice(addon: string, product?: ProductDb | null): number {
     addon.startsWith(RAMUNE_ADDON_PREFIX) ||
     addon.startsWith(JUICE_ADDON_PREFIX) ||
     addon.startsWith(LIPTON_ADDON_PREFIX) ||
-    addon.startsWith(COLA_ADDON_PREFIX)
+    addon.startsWith(COLA_ADDON_PREFIX) ||
+    addon.startsWith(SUSHI_SPECJAL_ADDON_PREFIX)
   ) {
     return 0;
   }
@@ -1218,6 +1232,26 @@ const ProductItem: React.FC<{
     [prod, prodInfo]
   );
 
+   const isSushiSpecjal = useMemo(
+    () => isSushiSpecjalProduct(prod, prodInfo),
+    [prod, prodInfo]
+  );
+
+  function isSushiSpecjalProduct(
+  prod: any,
+  prodInfo?: ProductDb | null
+): boolean {
+  const text = normalizePlain(
+    `${prod?.name || ""} ${prodInfo?.name || ""} ${
+      prodInfo?.description || ""
+    }`
+  );
+  if (!text) return false;
+
+  // złapiemy m.in. "Zestaw SUSHI SPECJAŁ (100 szt)"
+  return text.includes("sushi specjal");
+}
+
   const currentGyozaVariant = useMemo<GyozaVariant | null>(() => {
     if (!isGyoza) return null;
     const addonsArr = Array.isArray(prod.addons)
@@ -1355,6 +1389,31 @@ const ProductItem: React.FC<{
       if (prod.addons?.includes(v)) removeAddon(prod.name, v);
     });
     if (variant) addAddon(prod.name, variant);
+  };
+
+   const currentSushiSpecjalVariant = useMemo<SushiSpecjalVariant | null>(
+    () => {
+      if (!isSushiSpecjal) return null;
+      const addonsArr = Array.isArray(prod.addons)
+        ? (prod.addons as string[])
+        : [];
+      const found = addonsArr.find((a) =>
+        typeof a === "string" &&
+        SUSHI_SPECJAL_VARIANTS.includes(a as SushiSpecjalVariant)
+      ) as SushiSpecjalVariant | undefined;
+      return found ?? null;
+    },
+    [isSushiSpecjal, prod.addons]
+  );
+
+  const setSushiSpecjalVariant = (variant: SushiSpecjalVariant | null) => {
+    // zdejmujemy poprzedni wybór, żeby zawsze był max 1 wariant
+    SUSHI_SPECJAL_VARIANTS.forEach((v) => {
+      if (prod.addons?.includes(v)) removeAddon(prod.name, v);
+    });
+    if (variant) {
+      addAddon(prod.name, variant);
+    }
   };
 
   const toggleAddon = (a: string) => {
@@ -1934,6 +1993,45 @@ const ProductItem: React.FC<{
                     onClick={() =>
                       setColaVariant(
                         isActive ? null : (variant as ColaVariant)
+                      )
+                    }
+                    className={clsx(
+                      "px-2 py-1 rounded text-xs border",
+                      isActive
+                        ? "bg-black text-white border-black"
+                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                    )}
+                  >
+                    {isActive ? `✓ ${label}` : label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {isSushiSpecjal && (
+          <div>
+            <div className="font-semibold mb-1">
+              Proporcje pieczone / surowe w zestawie
+            </div>
+            <p className="text-[11px] text-black/60 mb-1">
+              Wybierz, jaką część zestawu chcesz w wersji pieczonej. Informacja trafia bezpośrednio do kuchni – bez dopłaty.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {SUSHI_SPECJAL_VARIANTS.map((variant) => {
+                const isActive = currentSushiSpecjalVariant === variant;
+                const label = variant.replace(
+                  SUSHI_SPECJAL_ADDON_PREFIX,
+                  ""
+                );
+                return (
+                  <button
+                    key={variant}
+                    type="button"
+                    onClick={() =>
+                      setSushiSpecjalVariant(
+                        isActive ? null : (variant as SushiSpecjalVariant)
                       )
                     }
                     className={clsx(
@@ -3254,7 +3352,7 @@ return (
                             />
                             <textarea
                               className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
-                              placeholder="Notatka do produktu"
+                              placeholder="Notatka do produktu (np. alergie, zamiany składników)"
                               value={notes[idx] || ""}
                               onChange={(e) =>
                                 setNotes({ ...notes, [idx]: e.target.value })
@@ -3778,7 +3876,7 @@ return (
                               />
                               <textarea
                                 className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
-                                placeholder="Notatka do produktu"
+                                placeholder="Notatka do produktu (np. alergie, zamiany składników)"
                                 value={notes[idx] || ""}
                                 onChange={(e) =>
                                   setNotes({
