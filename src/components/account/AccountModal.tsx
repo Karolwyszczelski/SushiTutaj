@@ -9,6 +9,7 @@ import {
   Package,
   Settings,
   RefreshCcw,
+  LogOut,
 } from "lucide-react";
 import clsx from "clsx";
 import { useSession } from "@supabase/auth-helpers-react";
@@ -207,6 +208,18 @@ export default function AccountModal({
     }
   };
 
+  const handleLogout = async () => {
+    setErr(null);
+    setMsg(null);
+    try {
+      await supabase.auth.signOut();
+      setMsg("Wylogowano z konta.");
+      setTab("auth");
+    } catch (e: any) {
+      setErr(e?.message || "Nie udało się wylogować.");
+    }
+  };
+
   // pobierz stan programu lojalnościowego
   useEffect(() => {
     const fetchLoyalty = async () => {
@@ -347,6 +360,17 @@ export default function AccountModal({
               >
                 <Settings className="w-4 h-4" /> Profil i adres
               </button>
+
+              <div className="mt-4 border-t border-black/10 pt-3">
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-700 hover:bg-red-50"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Wyloguj się
+                </button>
+              </div>
             </>
           )}
         </aside>
@@ -573,6 +597,19 @@ export default function AccountModal({
           )}
 
           {/* ------ PANEL PO ZALOGOWANIU ------ */}
+          {user && (
+            <div className="mb-3 flex justify-end lg:hidden">
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="inline-flex items-center gap-2 rounded-full border border-black/10 px-3 py-1.5 text-xs text-red-700 hover:bg-red-50"
+              >
+                <LogOut className="w-3 h-3" />
+                Wyloguj się
+              </button>
+            </div>
+          )}
+
           {user && tab === "orders" && (
             <div>
               <h3 className="text-xl font-semibold mb-3">
@@ -593,9 +630,7 @@ export default function AccountModal({
                         <div className="font-semibold">#{o.id}</div>
                         <div className="text-black/70">
                           {o.created_at
-                            ? new Date(
-                                o.created_at
-                              ).toLocaleString()
+                            ? new Date(o.created_at).toLocaleString()
                             : ""}{" "}
                           • {(o.total_price ?? 0).toFixed(2)} zł •{" "}
                           {o.status || "przyjęte"}
