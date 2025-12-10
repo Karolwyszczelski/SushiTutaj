@@ -149,7 +149,7 @@ export default function ClientOrderTrackPage() {
 
   if (!data) {
     return (
-      <section className="min-h-[70vh] flex items-center justify-center px-4 py-16 text-white">
+      <section className="min-h-[70vh] flex items-center justify-center px-4 py-20 text-white">
         <div className="w-full max-w-md rounded-3xl border border-white/10 bg-gradient-to-br from-zinc-900/80 via-black/90 to-black/95 px-6 py-7 text-center shadow-[0_18px_40px_rgba(0,0,0,0.85)]">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/10">
             <Clock className="h-6 w-6" />

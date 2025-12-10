@@ -197,7 +197,7 @@ export default function AccountModal({
       typeof window !== "undefined" ? window.location.origin : "";
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: origin ? `${origin}/auth/callback` : undefined,
+      redirectTo: origin ? `${origin}/auth/reset-password` : undefined,
     });
 
     if (error) setErr(error.message);
