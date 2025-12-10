@@ -1,3 +1,4 @@
+// src/app/api/orders/status/[id]/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -53,9 +54,10 @@ function resolveClientRequestedTime(row: any): string | null {
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const id = params.id;
+  // W NEXT 15 params jest Promise – trzeba je odczekać:
+  const { id } = await params;
 
   if (!id) {
     return NextResponse.json(
@@ -97,7 +99,6 @@ export async function GET(
       );
     }
 
-    // data traktujemy jako "any", żeby uniknąć konfliktów typów przy Row
     const row: any = data;
 
     const option = normalizeOption(row.selected_option);
