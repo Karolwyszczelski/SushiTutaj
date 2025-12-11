@@ -41,7 +41,7 @@ async function sendPushToRestaurant(
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
 
   const { data: subs, error } = await supabaseAdmin
-    .from("push_subscriptions")
+    .from("admin_push_subscriptions") // <-- ta tabela ze screena
     .select("id, endpoint, p256dh, auth")
     .eq("restaurant_id", restaurant_id);
 

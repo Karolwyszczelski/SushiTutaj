@@ -1,59 +1,71 @@
-// app/api/admin/push/subscribe/route.ts
+// src/app/api/push/subscribe/route.ts
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false } }
 );
+
+type RawSubscription = {
+  endpoint: string;
+  keys?: {
+    p256dh?: string;
+    auth?: string;
+  };
+};
 
 export async function POST(req: Request) {
   try {
-    const { subscription, restaurant_slug } = await req.json();
+    const body = (await req.json()) as RawSubscription | null;
 
-    if (!subscription || !subscription.endpoint) {
-      return NextResponse.json({ error: "Brak subskrypcji" }, { status: 400 });
-    }
-
-    // pobierz restaurant_id z sluga
-    const { data, error } = await supabaseAdmin
-      .from("restaurants")
-      .select("id")
-      .eq("slug", restaurant_slug)
-      .maybeSingle();
-
-    if (error || !data) {
+    if (!body || !body.endpoint || !body.keys?.p256dh || !body.keys?.auth) {
       return NextResponse.json(
-        { error: "Nie znaleziono restauracji" },
+        { error: "INVALID_SUBSCRIPTION" },
         { status: 400 }
       );
     }
 
-    const { id: restaurant_id } = data;
+    const ck = await cookies();
+    const restaurantId = ck.get("restaurant_id")?.value ?? null;
+    const restaurantSlug = ck.get("restaurant_slug")?.value ?? null;
 
-    const { error: upsertErr } = await supabaseAdmin
-      .from("admin_push_subscriptions")
-      .upsert(
-        {
-          restaurant_id,
-          restaurant_slug,
-          endpoint: subscription.endpoint,
-          subscription,
-        },
-        { onConflict: "endpoint" }
-      );
-
-    if (upsertErr) {
-      console.error(upsertErr);
+    if (!restaurantId) {
       return NextResponse.json(
-        { error: "Błąd zapisu subskrypcji" },
-        { status: 500 }
+        { error: "NO_RESTAURANT" },
+        { status: 400 }
       );
     }
 
-    return NextResponse.json({ ok: true });
-  } catch (e) {
-    console.error(e);
-    return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
+    const { error } = await supabaseAdmin
+      .from("admin_push_subscriptions")
+      .upsert(
+        {
+          restaurant_id: restaurantId,
+          restaurant_slug: restaurantSlug ?? null,
+          endpoint: body.endpoint,
+          p256dh: body.keys!.p256dh!,
+          auth: body.keys!.auth!,
+        },
+        { onConflict: "endpoint" } // nie duplikujemy tego samego endpointu
+      );
+
+    if (error) {
+      console.error("[push.subscribe] upsert error:", error.message);
+      return NextResponse.json({ error: "DB_ERROR" }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true }, { status: 200 });
+  } catch (e: any) {
+    console.error("[push.subscribe] unexpected", e?.message || e);
+    return NextResponse.json(
+      { error: "INTERNAL_ERROR" },
+      { status: 500 }
+    );
   }
 }
