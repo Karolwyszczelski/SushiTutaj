@@ -262,6 +262,17 @@ export default function Footer() {
                 Ustawienia cookies
               </button>
             </li>
+
+            {/* NOWE: przycisk Panel administratora */}
+            <li className="flex items-center justify-center md:justify-start pt-2">
+              <Link
+                href="/admin"
+                className="inline-flex items-center px-3 py-1.5 rounded-full border border-white/30 text-xs uppercase tracking-wide hover:bg-white/10 transition"
+                aria-label="Panel administratora"
+              >
+                Panel administratora
+              </Link>
+            </li>
           </ul>
 
           <p className="text-xs text-gray-400 mt-4">

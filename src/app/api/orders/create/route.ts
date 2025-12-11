@@ -749,54 +749,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2.6) Przerwy dzienne z restaurant_closures (per restauracja, dzisiaj)
-    try {
-      const todayStr = `${now.getFullYear()}-${pad(
-        now.getMonth() + 1
-      )}-${pad(now.getDate())}`;
-      const { data: cls, error: clsErr } = await supabaseAdmin
-        .from("restaurant_closures")
-        .select("start_time,end_time,reason")
-        .eq("restaurant_id", restaurant_id)
-        .eq("date", todayStr)
-        .order("start_time", { ascending: true });
-
-      if (clsErr) {
-        console.error(
-          "[orders.create] restaurant_closures error:",
-          (clsErr as any)?.message || clsErr
-        );
-      } else if (cls && cls.length > 0) {
-        const nowMinutes = now.getHours() * 60 + now.getMinutes();
-
-        const activeClosure = (cls as any[]).find((c) => {
-          if (!c.start_time || !c.end_time) return false;
-          const [sh, sm = "0"] = String(c.start_time).split(":");
-          const [eh, em = "0"] = String(c.end_time).split(":");
-          const startM = Number(sh) * 60 + Number(sm);
-          const endM = Number(eh) * 60 + Number(em);
-          if (!Number.isFinite(startM) || !Number.isFinite(endM)) return false;
-          return nowMinutes >= startM && nowMinutes <= endM;
-        });
-
-        if (activeClosure) {
-          const label = `${String(activeClosure.start_time).slice(
-            0,
-            5
-          )}–${String(activeClosure.end_time).slice(0, 5)}`;
-          return NextResponse.json(
-            {
-              error: `Aktualnie trwa przerwa w przyjmowaniu zamówień (${label}). Spróbuj ponownie później.`,
-            },
-            { status: 400 }
-          );
-        }
-      }
-    } catch (e) {
-      console.error("[orders.create] restaurant_closures check error:", e);
-    }
-
-     // 2.7) Blokady adres / telefon / e-mail per restauracja
+     // 2.6) Blokady adres / telefon / e-mail per restauracja
     try {
       const { data: blocks, error: blocksErr } = await supabaseAdmin
         .from("blocked_addresses")
