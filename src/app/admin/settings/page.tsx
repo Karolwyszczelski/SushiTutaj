@@ -8,6 +8,7 @@ import DeliveryZonesForm from "@/components/admin/settings/DeliveryZonesForm";
 import BlockedAddressesForm from "@/components/admin/settings/BlockedAddressesForm";
 import DiscountCodesForm from "@/components/admin/settings/DiscountCodesForm";
 import BlockedTimesForm from "@/components/admin/settings/BlockedTimesForm";
+import AddonOptionsForm from "@/components/admin/settings/AddonOptionsForm";
 
 function classNames(...classes: string[]) {
   return classes.filter(Boolean).join(" ");
@@ -197,6 +198,12 @@ export default function SettingsPage() {
           <Tab.Panel className="focus:outline-none">
             <div className="rounded-2xl border bg-white p-4 sm:p-5 shadow-sm">
               <BlockedTimesForm restaurantSlug={restaurantSlug} />
+            </div>
+          </Tab.Panel>
+
+          <Tab.Panel className="focus:outline-none">
+            <div className="rounded-2xl border bg-white p-4 sm:p-5 shadow-sm">
+              <AddonOptionsForm restaurantSlug={restaurantSlug} />
             </div>
           </Tab.Panel>
         </Tab.Panels>

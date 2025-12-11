@@ -87,6 +87,13 @@ type ProductDb = {
   restaurant_id?: string | null;
 };
 
+type RestaurantAddonOption = {
+  id: string;
+  restaurant_id: string | null;
+  name: string;
+  active: boolean | null;
+};
+
 /* —— RABATY —— */
 type ApplyScope =
   | "all"
@@ -1020,9 +1027,30 @@ const ProductItem: React.FC<{
   optionsByCat,
   restaurantSlug,
   helpers,
+  addonOptionNames,
 }) => {
   const { addAddon, removeAddon, swapIngredient, removeItem, removeWholeItem } =
     helpers;
+
+    const removeByPrefix = (prefix: string) => {
+  const arr = Array.isArray(prod.addons) ? (prod.addons as string[]) : [];
+  arr.forEach((a) => {
+    if (typeof a === "string" && a.startsWith(prefix)) {
+      removeAddon(prod.name, a);
+    }
+  });
+};
+
+const currentByPrefix = (prefix: string): string | null => {
+  const arr = Array.isArray(prod.addons) ? (prod.addons as string[]) : [];
+  const found = arr.find((a) => typeof a === "string" && a.startsWith(prefix));
+  return found || null;
+};
+
+const listByPrefix = (prefix: string, fallback: string[]) => {
+  const fromDb = (addonOptionNames || []).filter((n) => n.startsWith(prefix));
+  return fromDb.length ? fromDb : fallback;
+};
 
   const byName = useMemo(() => {
     const map = new Map<string, ProductDb>();
@@ -2365,6 +2393,7 @@ export default function CheckoutModal() {
 
   const [productsDb, setProductsDb] = useState<ProductDb[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
+  const [addonOptionsDb, setAddonOptionsDb] = useState<RestaurantAddonOption[]>([]);
   const [restLoc, setRestLoc] = useState<{ lat: number; lng: number } | null>(null);
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [deliveryInfo, setDeliveryInfo] = useState<{ cost: number; eta: string } | null>(null);
@@ -2785,6 +2814,13 @@ useEffect(() => {
 
     return out;
   }, [productsDb]);
+
+  const addonOptionNames = useMemo(() => {
+  return (addonOptionsDb || [])
+    .filter((o) => o && o.active !== false && typeof o.name === "string")
+    .map((o) => o.name.trim())
+    .filter(Boolean);
+}, [addonOptionsDb]);
 
   const baseTotal = useMemo<number>(() => {
     return items.reduce((acc: number, it: any) => {
@@ -3515,6 +3551,7 @@ return (
                               optionsByCat={optionsByCat}
                               restaurantSlug={restaurantSlug}
                               helpers={productHelpers}
+                              addonOptionNames={addonOptionNames}
                             />
                             <textarea
                               className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
@@ -4052,6 +4089,7 @@ return (
                                 optionsByCat={optionsByCat}
                                 restaurantSlug={restaurantSlug}
                                 helpers={productHelpers}
+                                addonOptionNames={addonOptionNames}
                               />
                               <textarea
                                 className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
