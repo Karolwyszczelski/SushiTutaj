@@ -85,9 +85,10 @@ const formatTimeLabel = (value?: string | null): string => {
   if (!value) return "-";
 
   const v = value.trim();
-  if (v === "asap") return "Jak najszybciej";
+  const vLower = v.toLowerCase();
+  if (vLower === "asap") return "Jak najszybciej";
 
-  // 1) goła godzina z bazy, np. "18:00" lub "8:05"
+  // 1) goła godzina "HH:MM" albo "H:MM"
   const m = v.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
   if (m) {
     const h = parseInt(m[1], 10);
@@ -868,11 +869,13 @@ export default function PickupOrdersPage() {
     delivery_cost: o.delivery_cost ?? null,
     created_at: o.created_at,
     status: o.status,
-    clientDelivery:
-      o.client_delivery_time ??
-      o.delivery_time ??
-      o.clientDelivery,
-    deliveryTime: o.deliveryTime ?? o.delivery_time ?? null,
+   clientDelivery:
+      (o.scheduled_delivery_at as string | undefined) ??
+      (o.client_delivery_time as string | undefined) ??
+      (o.clientDelivery as string | undefined),
+
+    // czas ustawiony przez lokal (ETA)
+    deliveryTime: (o.deliveryTime as string | undefined) ?? (o.delivery_time as string | undefined) ?? null,
 
     // adres – normalnie tylko dla dostawy
     address:

@@ -1135,50 +1135,72 @@ export async function POST(req: Request) {
       return buildItemFromDbAndOptions(db, it);
     });
 
-    // 5) Przygotowanie client_delivery_time (varchar(10))
-// + sprawdzenie blokad czasowych restaurant_blocked_times
-let clientDeliveryForDb: any = n.client_delivery_time;
-let requestedDateStr: string | null = null;
-let requestedMinutes: number | null = null;
+    // 5) Czas klienta:
+    // - client_delivery_time: "asap" albo "HH:MM"
+    // - scheduled_delivery_at: pełna data/godzina (ISO) – tylko gdy klient wybrał konkretną godzinę
+    let clientDeliveryRaw: any = n.client_delivery_time;
+    let clientDeliveryForDb: string | null = null;
+    let scheduledDeliveryAt: string | null = null;
 
-if (typeof clientDeliveryForDb === "string" && clientDeliveryForDb) {
-  if (clientDeliveryForDb !== "asap") {
-    let d = new Date(clientDeliveryForDb);
+    let requestedDateStr: string | null = null;
+    let requestedMinutes: number | null = null;
 
-    // fallback, gdy frontend przekaże tylko "HH:MM"
-    if (isNaN(d.getTime()) && /^\d{1,2}:\d{2}/.test(clientDeliveryForDb)) {
-      const [hhRaw, mmRaw] = clientDeliveryForDb.split(":");
-      const hhNum = Number(hhRaw) || 0;
-      const mmNum = Number(mmRaw) || 0;
-      d = new Date(now);
-      d.setHours(hhNum, mmNum, 0, 0);
+    if (typeof clientDeliveryRaw === "string" && clientDeliveryRaw.trim()) {
+      const raw = clientDeliveryRaw.trim();
+
+      // ASAP – tylko flaga tekstowa, bez daty
+      if (raw.toLowerCase() === "asap") {
+        clientDeliveryForDb = "asap";
+      } else {
+        // może być pełne ISO, może być "HH:MM"
+        let d = new Date(raw);
+
+        // fallback, gdy front przekaże tylko "HH:MM"
+        if (Number.isNaN(d.getTime()) && /^\d{1,2}:\d{2}/.test(raw)) {
+          const [hhRaw, mmRaw] = raw.split(":");
+          const hhNum = Number(hhRaw) || 0;
+          const mmNum = Number(mmRaw) || 0;
+          d = new Date(now);
+          d.setHours(hhNum, mmNum, 0, 0);
+        }
+
+        if (!Number.isNaN(d.getTime())) {
+          requestedDateStr = `${d.getFullYear()}-${pad(
+            d.getMonth() + 1
+          )}-${pad(d.getDate())}`;
+          requestedMinutes = d.getHours() * 60 + d.getMinutes();
+
+          const hh = pad(d.getHours());
+          const mm = pad(d.getMinutes());
+
+          // w bazie w prostym polu trzymamy tylko "HH:MM"
+          clientDeliveryForDb = `${hh}:${mm}`;
+          // pełna data/godzina ląduje w scheduled_delivery_at
+          scheduledDeliveryAt = d.toISOString();
+        }
+      }
     }
 
-    if (!isNaN(d.getTime())) {
+    // jeśli klient nie podał godziny albo nie udało się sparsować – traktujemy jak ASAP
+    if (!requestedDateStr || requestedMinutes == null) {
+      const d = now;
       requestedDateStr = `${d.getFullYear()}-${pad(
         d.getMonth() + 1
       )}-${pad(d.getDate())}`;
       requestedMinutes = d.getHours() * 60 + d.getMinutes();
 
-      const hh = pad(d.getHours());
-      const mm = pad(d.getMinutes());
-      clientDeliveryForDb = `${hh}:${mm}`;
+      if (!clientDeliveryForDb) {
+        clientDeliveryForDb = "asap";
+      }
     }
-  }
-}
 
-// jeśli klient wybrał ASAP lub nie dało się sparsować daty – bierzemy „teraz”
-if (!requestedDateStr || requestedMinutes == null) {
-  const d = now;
-  requestedDateStr = `${d.getFullYear()}-${pad(
-    d.getMonth() + 1
-  )}-${pad(d.getDate())}`;
-  requestedMinutes = d.getHours() * 60 + d.getMinutes();
-}
-
-if (typeof clientDeliveryForDb === "string" && clientDeliveryForDb.length > 10) {
-  clientDeliveryForDb = clientDeliveryForDb.slice(0, 10);
-}
+    // bezpieczeństwo – kolumna varchar(10)
+    if (
+      typeof clientDeliveryForDb === "string" &&
+      clientDeliveryForDb.length > 10
+    ) {
+      clientDeliveryForDb = clientDeliveryForDb.slice(0, 10);
+    }
 
 // 5.0) Sprawdzenie blokad czasowych (restaurant_blocked_times)
 try {
