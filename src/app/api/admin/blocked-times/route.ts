@@ -24,7 +24,7 @@ async function getRestaurantIdOrThrow(
     .from("restaurants")
     .select("id, slug")
     .eq("slug", slug)
-    .maybeSingle();
+    .maybeSingle<{ id: string; slug: string }>(); // <<< TUTAJ TYP
 
   if (error || !data) {
     throw new Error("Nie znaleziono restauracji o podanym slugu.");
