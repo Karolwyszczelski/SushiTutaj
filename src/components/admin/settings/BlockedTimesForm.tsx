@@ -106,6 +106,7 @@ export default function BlockedTimesForm({
     }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     void fetchSlots();
   }, [restaurantSlug]);

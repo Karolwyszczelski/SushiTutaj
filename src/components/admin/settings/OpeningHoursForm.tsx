@@ -22,6 +22,7 @@ export default function OpeningHoursForm({ supabase }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     (async () => {
       const res = await fetch("/api/settings");

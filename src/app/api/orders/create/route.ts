@@ -1138,9 +1138,9 @@ export async function POST(req: Request) {
     // 5) Czas klienta:
     // - client_delivery_time: "asap" albo "HH:MM"
     // - scheduled_delivery_at: pełna data/godzina (ISO) – tylko gdy klient wybrał konkretną godzinę
-    let clientDeliveryRaw: any = n.client_delivery_time;
-    let clientDeliveryForDb: string | null = null;
-    let scheduledDeliveryAt: string | null = null;
+    const clientDeliveryRaw: any = n.client_delivery_time;
+let clientDeliveryForDb: string | null = null;
+let scheduledDeliveryAt: string | null = null;
 
     let requestedDateStr: string | null = null;
     let requestedMinutes: number | null = null;
