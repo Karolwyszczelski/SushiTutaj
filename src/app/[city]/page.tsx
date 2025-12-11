@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import Hero from "@/components/Hero";
 import ZestawMiesiaca from "@/components/ZestawMiesiaca";
-import MenuSection from "@/components/menu/MenuSection"; // „preview”, bez zamawiania
+import MenuSection from "@/components/menu/MenuSection";
 import OnasSection from "@/components/OnasSection";
-import ContactSection from "@/components/ContactSection"; // ogólne info marki
+import ContactSection from "@/components/ContactSection";
 import { getRestaurantBySlug } from "@/lib/tenant";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_URL || "https://www.sushitutaj.pl";
@@ -12,9 +12,14 @@ export const dynamic = "force-dynamic";
 
 type CityParams = { city: string };
 
+// WSPÓLNY typ propsów dla strony i generateMetadata
+type CityPageProps = {
+  params: Promise<CityParams>;
+};
+
 // SEO per miasto
 export async function generateMetadata(
-  { params }: { params: Promise<CityParams> }
+  { params }: CityPageProps
 ): Promise<Metadata> {
   const { city } = await params;
   const r = await getRestaurantBySlug(city);
@@ -26,7 +31,7 @@ export async function generateMetadata(
   const description =
     `Zamów świeże sushi w restauracji SUSHI Tutaj ${cityName}. Dostawa i odbiór osobisty, aktualne menu online.`;
 
-  const ogImage = "/og/sushi-og.jpg"; // globalny obrazek OG (bez ryzyka 404)
+  const ogImage = "/og/sushi-og.jpg";
 
   return {
     title,
@@ -58,10 +63,11 @@ export async function generateMetadata(
 }
 
 // Strona + JSON-LD LocalBusiness / Restaurant
-export default async function Home({ params }: { params: CityParams }) {
-  const r = await getRestaurantBySlug(params.city);
+export default async function Home({ params }: CityPageProps) {
+  const { city } = await params;
+  const r = await getRestaurantBySlug(city);
 
-  const slug = String(r?.slug || params.city).toLowerCase();
+  const slug = String(r?.slug || city).toLowerCase();
   const cityName = r?.city || r?.name || slug;
 
   const jsonLd = {
@@ -89,18 +95,16 @@ export default async function Home({ params }: { params: CityParams }) {
 
   return (
     <main>
-      {/* JSON-LD LocalBusiness / Restaurant dla danej restauracji */}
       <script
         type="application/ld+json"
-        // JSON.stringify usunie pola z undefined, więc nie wyciekną puste klucze
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
       <Hero />
       <ZestawMiesiaca />
-      <MenuSection />   {/* bez koszyka */}
+      <MenuSection />
       <OnasSection />
-      <ContactSection /> {/* ogólne, nieper-miasto */}
+      <ContactSection />
     </main>
   );
 }
