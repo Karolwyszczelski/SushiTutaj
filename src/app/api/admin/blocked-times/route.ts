@@ -2,12 +2,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@/lib/database.types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Supa = ReturnType<typeof createRouteHandlerClient<Database>>;
+// typ klienta Supabase bez własnego Database
+type Supa = ReturnType<typeof createRouteHandlerClient>;
 
 async function getRestaurantIdOrThrow(
   supabase: Supa,
@@ -34,7 +34,7 @@ async function getRestaurantIdOrThrow(
 }
 
 export async function GET(req: NextRequest) {
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+  const supabase = createRouteHandlerClient({ cookies });
   const url = new URL(req.url);
   const searchParams = url.searchParams;
 
@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+  const supabase = createRouteHandlerClient({ cookies });
   const url = new URL(req.url);
   const searchParams = url.searchParams;
 
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+  const supabase = createRouteHandlerClient({ cookies });
   const url = new URL(req.url);
   const searchParams = url.searchParams;
 
