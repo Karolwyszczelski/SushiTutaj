@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Pencil, Trash, ToggleRight, ChevronDown, Power } from "lucide-react";
 import debounce from "lodash.debounce";
+import AddonOptionsForm from "@/components/admin/settings/AddonOptionsForm";
 
 /* ========= Typy ========= */
 interface Product {
@@ -227,6 +228,8 @@ export default function AdminMenuPage() {
   const [error, setError] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Product | null>(null);
+
+  const [showDrinkFlavors, setShowDrinkFlavors] = useState(false);
 
   // Przyjmowanie zamówień globalnie – per restauracja (restaurants.active)
   const [orderingOpen, setOrderingOpen] = useState<boolean | null>(null);
@@ -551,6 +554,33 @@ export default function AdminMenuPage() {
           </button>
         </div>
       </div>
+
+      {/* Smaki napojów (przeniesione z Ustawień) */}
+<div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <div className="text-lg font-semibold text-slate-900">Smaki / warianty napojów</div>
+      <div className="mt-0.5 text-xs text-slate-600">
+        To steruje listą wyboru w koszyku (Checkout) dla tego lokalu.
+      </div>
+    </div>
+
+    <button
+      type="button"
+      onClick={() => setShowDrinkFlavors((v) => !v)}
+      className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+    >
+      {showDrinkFlavors ? "Zwiń" : "Edytuj"}
+    </button>
+  </div>
+
+  {showDrinkFlavors && (
+    <div className="mt-4">
+      {/* slug masz już z ensure-cookie: setSlug(j.restaurant_slug) */}
+      <AddonOptionsForm restaurantSlug={slug} />
+    </div>
+  )}
+</div>
 
       {/* Tabela desktop */}
       <div className="hidden md:block">
