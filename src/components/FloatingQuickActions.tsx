@@ -7,19 +7,26 @@ import {
   ShoppingCart,
   User,
   MoreHorizontal,
-  ChevronUp, // ⟵ NOWE
+  ChevronUp,
 } from "lucide-react";
 import clsx from "clsx";
+import { usePathname } from "next/navigation";
 import useCartStore from "@/store/cartStore";
 import ReservationModal from "@/components/ReservationModal";
 import AccountModal from "@/components/account/AccountModal";
 
 export default function FloatingQuickActions() {
+  const pathname = usePathname();
+
   // cart store
   const toggleCart = useCartStore((s) => (s as any).toggleCart);
   const openCheckoutModal = useCartStore((s) => (s as any).openCheckoutModal);
+  const isCheckoutOpen = useCartStore((s) => (s as any).isCheckoutOpen);
   const items = useCartStore((s) => s.items);
-  const itemCount = items.reduce((n: number, i: any) => n + (i.quantity || 1), 0);
+  const itemCount = items.reduce(
+    (n: number, i: any) => n + (i.quantity || 1),
+    0
+  );
 
   // ui
   const [open, setOpen] = useState(false);
@@ -50,7 +57,6 @@ export default function FloatingQuickActions() {
     const y = e.touches[0]?.clientY;
     if (typeof y !== "number") return;
     const delta = y - touchStartY;
-    // interesuje nas tylko ściąganie w dół
     if (delta > 0) {
       setTouchDeltaY(delta);
     }
@@ -62,7 +68,6 @@ export default function FloatingQuickActions() {
       setTouchDeltaY(0);
       return;
     }
-    // jeśli ściągnął w dół > 60px – zamykamy panel
     if (touchDeltaY > 60) {
       setMobileExpanded(false);
     }
@@ -76,6 +81,15 @@ export default function FloatingQuickActions() {
 
   const mobilePanelTransition =
     touchStartY !== null ? "none" : "transform 0.25s ease-out";
+
+  /** 
+   * WARUNKI UKRYCIA:
+   * - strona główna ("/") – nie pokazujemy przycisku,
+   * - otwarty CheckoutModal – chowamy quick actions pod modale z zamówieniem.
+   */
+  if (pathname === "/" || isCheckoutOpen) {
+    return null;
+  }
 
   return (
     <>
@@ -211,7 +225,6 @@ export default function FloatingQuickActions() {
             bottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
           }}
         >
-          {/* Cienka strzałeczka / uchwyt do wysunięcia panela */}
           <button
             type="button"
             aria-label="Wysuń panel szybkich akcji"
@@ -221,7 +234,6 @@ export default function FloatingQuickActions() {
             <ChevronUp className="w-4 h-4 text-black/60" />
           </button>
 
-          {/* Sam koszyk – główna akcja przy schowanym panelu */}
           <button
             className="rounded-full w-14 h-14 grid place-items-center shadow-2xl
                        bg-gradient-to-br from-[var(--accent-red-dark,#7a0d0d)] via-[var(--accent-red,#a61b1b)] to-[var(--accent-red-dark-2,#b11212)]
