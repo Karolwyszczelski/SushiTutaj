@@ -796,13 +796,12 @@ export async function POST(req: Request) {
       console.error("[orders.create] restaurant_closures check error:", e);
     }
 
-    // 2.7) Blokady adres / telefon / e-mail per restauracja
+     // 2.7) Blokady adres / telefon / e-mail per restauracja
     try {
       const { data: blocks, error: blocksErr } = await supabaseAdmin
-        .from("blocked_addresses") // <- TU: poprawiona nazwa tabeli
-        .select("pattern, note, active") // tylko istniejące kolumny
-        .eq("restaurant_id", restaurant_id)
-        .eq("active", true); // <- TU: aktywność po kolumnie `active`
+        .from("blocked_addresses")
+        .select("pattern, note, active, type")
+        .eq("restaurant_id", restaurant_id);
 
       if (blocksErr) {
         console.error(
@@ -810,40 +809,48 @@ export async function POST(req: Request) {
           (blocksErr as any)?.message || blocksErr
         );
       } else if (blocks && blocks.length > 0) {
-        const addrStr = [
+        const activeBlocks = (blocks as any[]).filter(
+          (b) => b.active !== false && b.active !== "false"
+        );
+
+        const norm = (s: string) =>
+          s
+            .toLowerCase()
+            .replace(/[\s\.,\-\/]+/g, " ")
+            .trim();
+
+        const addrStrRaw = [
           n.street || n.address || "",
           n.flat_number || "",
           n.city || "",
         ]
-          .filter((x: any) => String(x).trim().length > 0)
-          .join(" ")
-          .toLowerCase();
+          .filter((x: any) => String(x ?? "").trim().length > 0)
+          .join(" ");
 
+        const addrNorm = norm(addrStrRaw);
         const phoneDigits = (n.phone || "").replace(/\D/g, "");
         const emailLower = (n.contact_email || "").toString().toLowerCase();
 
-        const matched = (blocks as any[]).find((b) => {
-          const rawPattern = String(b.pattern || "");
-          if (!rawPattern.trim()) return false;
+        const matched = activeBlocks.find((b) => {
+          const rawPattern = String(b.pattern || "").trim();
+          if (!rawPattern) return false;
 
-          // w obecnym schemacie nie ma kolumny `type`, więc wszystko traktujemy jako adres
           const type = (b.type as string) || "address";
+          const patNorm = norm(rawPattern);
+          const patDigits = rawPattern.replace(/\D/g, "");
+          const patLower = rawPattern.toLowerCase();
 
           if (type === "phone") {
-            const patDigits = rawPattern.replace(/\D/g, "");
             if (!patDigits) return false;
-            return phoneDigits && phoneDigits.includes(patDigits);
+            return !!phoneDigits && phoneDigits.includes(patDigits);
           }
 
           if (type === "email") {
-            return (
-              !!emailLower &&
-              emailLower.includes(rawPattern.toLowerCase())
-            );
+            return !!emailLower && emailLower.includes(patLower);
           }
 
-          // domyślnie: blokada po adresie
-          return !!addrStr && addrStr.includes(rawPattern.toLowerCase());
+          // domyślnie: adres
+          return !!addrNorm && addrNorm.includes(patNorm);
         });
 
         if (matched) {
@@ -859,7 +866,7 @@ export async function POST(req: Request) {
     } catch (e) {
       console.error("[orders.create] blocked_addresses check error:", e);
     }
-
+    
     // 2.8) Strefa dostawy – per restauracja
     if (n.selected_option === "delivery") {
       if (n.delivery_lat == null || n.delivery_lng == null) {

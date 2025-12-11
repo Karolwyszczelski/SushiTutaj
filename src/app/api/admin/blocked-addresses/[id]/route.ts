@@ -19,6 +19,7 @@ const blockedPatchSchema = z
     pattern: z.string().min(1).max(500).optional(),
     note: z.string().max(500).nullable().optional(),
     active: z.boolean().optional(),
+    type: z.enum(["address", "phone", "email"]).optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, {
     message: "Brak pól do aktualizacji.",
@@ -110,6 +111,10 @@ export async function PATCH(
           ? null
           : String(body.note),
       active: typeof body.active === "boolean" ? body.active : undefined,
+      type:
+        body.type === undefined
+          ? undefined
+          : String(body.type).trim().toLowerCase(),
     });
   } catch (e) {
     console.error("[blocked_addresses] invalid body (PATCH)", e);

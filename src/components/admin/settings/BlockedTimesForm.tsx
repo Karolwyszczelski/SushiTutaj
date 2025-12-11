@@ -204,16 +204,16 @@ export default function BlockedTimesForm({
         </h2>
         <p className="mt-1 text-sm text-slate-600">
           Ustaw przedziały godzin lub całe dni, w których ten lokal nie
-          przyjmuje rezerwacji / zamówień online. System później
-          wykorzysta te dane w koszyku i przy rezerwacjach.
+          przyjmuje rezerwacji / zamówień online. System później wykorzysta te
+          dane w koszyku i przy rezerwacjach.
         </p>
       </div>
 
       {!canUse && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          Brakuje parametru <code>?restaurant=slug</code> w adresie URL
-          panelu. Blokady godzin są powiązane z konkretnym lokalem, więc
-          najpierw wybierz restaurację.
+          Brakuje parametru <code>?restaurant=slug</code> w adresie URL panelu.
+          Blokady godzin są powiązane z konkretnym lokalem, więc najpierw
+          wybierz restaurację.
         </div>
       )}
 
@@ -226,15 +226,15 @@ export default function BlockedTimesForm({
       {/* Formularz dodawania blokady */}
       <form
         onSubmit={handleAdd}
-        className="grid gap-3 rounded-2xl border bg-slate-50 p-4 sm:grid-cols-2"
+        className="grid gap-3 rounded-md border bg-white p-4 sm:grid-cols-2"
       >
         <div className="space-y-2">
-          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 bg-white">
+          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">
             Dzień
           </label>
           <input
             type="date"
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm bg-white"
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
             value={date}
             onChange={(e) => setDate(e.target.value)}
             disabled={saving || !canUse}
@@ -242,11 +242,11 @@ export default function BlockedTimesForm({
         </div>
 
         <div className="space-y-2">
-          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 bg-white">
+          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">
             Co blokujemy
           </label>
           <select
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm bg-white"
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
             value={kind}
             onChange={(e) => setKind(e.target.value as BlockKind)}
             disabled={saving || !canUse}
@@ -258,32 +258,32 @@ export default function BlockedTimesForm({
         </div>
 
         <div className="space-y-2">
-          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 bg-white">
+          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">
             Godziny (czas polski)
           </label>
-          <div className="flex items-center gap-2 bg-white">
+          <div className="flex items-center gap-2">
             <input
               type="time"
               step={300}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm bg-white"
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
               value={fromTime}
               onChange={(e) => setFromTime(e.target.value)}
               disabled={saving || fullDay || !canUse}
             />
-            <span className="text-xs text-slate-500 bg-white">–</span>
+            <span className="text-xs text-slate-500">–</span>
             <input
               type="time"
               step={300}
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm bg-white"
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
               value={toTime}
               onChange={(e) => setToTime(e.target.value)}
               disabled={saving || fullDay || !canUse}
             />
           </div>
-          <label className="mt-1 inline-flex items-center gap-2 text-xs text-slate-700 bg-white">
+          <label className="mt-1 inline-flex items-center gap-2 text-xs text-slate-700">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 bg-white"
+              className="h-4 w-4 rounded border-slate-300"
               checked={fullDay}
               onChange={(e) => setFullDay(e.target.checked)}
               disabled={saving || !canUse}
@@ -293,12 +293,12 @@ export default function BlockedTimesForm({
         </div>
 
         <div className="space-y-2">
-          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 bg-white">
+          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">
             Notatka (opcjonalnie)
           </label>
           <input
             type="text"
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm bg-white"
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
             placeholder="np. Święta, awaria kuchni, impreza zamknięta…"
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -306,11 +306,11 @@ export default function BlockedTimesForm({
           />
         </div>
 
-        <div className="sm:col-span-2 mt-2 flex justify-end bg-white">
+        <div className="mt-2 flex justify-end sm:col-span-2">
           <button
             type="submit"
             disabled={saving || !canUse}
-            className="inline-flex items-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-500 disabled:opacity-60 bg-white"
+            className="inline-flex items-center rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-500 disabled:opacity-60"
           >
             {saving ? "Zapisywanie…" : "Dodaj blokadę"}
           </button>
@@ -320,16 +320,16 @@ export default function BlockedTimesForm({
       {/* Lista istniejących blokad */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-800 bg-white">
+          <h3 className="text-sm font-semibold text-slate-800">
             Ustawione blokady
           </h3>
           {loading && (
-            <span className="text-xs text-slate-500 bg-white">Ładowanie…</span>
+            <span className="text-xs text-slate-500">Ładowanie…</span>
           )}
         </div>
 
         {sortedSlots.length === 0 && !loading ? (
-          <div className="rounded-xl border border-dashed border-slate-200 bg-white p-3 text-sm text-slate-500">
+          <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
             Brak blokad – lokal przyjmuje rezerwacje i zamówienia w
             standardowych godzinach.
           </div>
@@ -338,7 +338,7 @@ export default function BlockedTimesForm({
             {sortedSlots.map((slot) => (
               <li
                 key={slot.id}
-                className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm"
+                className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm"
               >
                 <div className="space-y-0.5">
                   <div className="font-medium text-slate-900">

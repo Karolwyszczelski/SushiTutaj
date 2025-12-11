@@ -1,5 +1,4 @@
 // src/app/api/admin/blocked-addresses/route.ts
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -19,6 +18,7 @@ const blockedSchema = z.object({
   pattern: z.string().min(1).max(500),
   note: z.string().max(500).nullable().optional(),
   active: z.boolean().optional().default(true),
+  type: z.enum(["address", "phone", "email"]).default("address"),
 });
 
 type BlockedInput = z.infer<typeof blockedSchema>;
@@ -85,7 +85,7 @@ export async function GET() {
 
   const { data, error } = await supabaseAdmin
     .from("blocked_addresses")
-    .select("id, pattern, note, active")
+    .select("id, pattern, note, active, type")
     .eq("restaurant_id", restaurantId)
     .order("pattern", { ascending: true });
 
@@ -108,6 +108,7 @@ export async function POST(req: Request) {
   let payload: BlockedInput;
   try {
     const body = await req.json();
+
     payload = blockedSchema.parse({
       pattern: String(body.pattern || "").trim().toLowerCase(),
       note:
@@ -116,6 +117,10 @@ export async function POST(req: Request) {
           : String(body.note),
       active:
         typeof body.active === "boolean" ? body.active : body.active !== false,
+      type:
+        String(body.type || "")
+          .trim()
+          .toLowerCase() || "address",
     });
   } catch (e) {
     console.error("[blocked_addresses] invalid body", e);
