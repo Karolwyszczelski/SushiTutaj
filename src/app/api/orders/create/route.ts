@@ -9,77 +9,12 @@ import { sendEmail } from "@/lib/e-mail";
 import { sendSms } from "@/lib/sms";
 import { computeAddonPriceBackend } from "@/lib/addons";
 import { buildKitchenNote } from "@/lib/kitchenNote";
-import * as webpush from "web-push";
+import { sendPushForRestaurant } from "@/lib/push";
 
-
-// --- WEB PUSH / VAPID ---
-
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
-const VAPID_SUBJECT =
-  process.env.VAPID_SUBJECT || "mailto:owner@sisitutaj.pl";
-
-if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-}
-
-type PushSubscriptionRow = {
-  id: string;
-  endpoint: string;
-  subscription: any;
-};
-
-/**
- * Wysyła web-push do wszystkich subskrypcji dla danej restauracji.
- * Błędy logujemy, ale nie blokują tworzenia zamówienia.
- */
-async function sendPushToRestaurant(
-  restaurant_id: string,
-  payload: { title: string; body: string; url?: string; type?: string }
-) {
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
-
-  const { data: subs, error } = await supabaseAdmin
-    .from("admin_push_subscriptions")
-    .select("id, endpoint, subscription")
-    .eq("restaurant_id", restaurant_id);
-
-  if (error || !subs || subs.length === 0) return;
-
-  const json = JSON.stringify(payload);
-
-  await Promise.all(
-    subs.map(async (s: PushSubscriptionRow) => {
-      const sub: any = s.subscription || null;
-      if (!sub || !sub.endpoint) {
-        // jeśli mamy śmieci w bazie – czyścimy
-        await supabaseAdmin
-          .from("admin_push_subscriptions")
-          .delete()
-          .eq("id", s.id);
-        return;
-      }
-
-      try {
-        await webpush.sendNotification(sub as any, json);
-      } catch (err: any) {
-        // 404 / 410 – subskrypcja martwa, czyścimy
-        if (err?.statusCode === 404 || err?.statusCode === 410) {
-          await supabaseAdmin
-            .from("admin_push_subscriptions")
-            .delete()
-            .eq("id", s.id);
-        } else {
-          console.error("[push] sendNotification error", err);
-        }
-      }
-    })
-  );
-}
-
-type NotificationType = "order" | "error" | "system";
 
 type LoyaltyChoice = "keep" | "use_4" | "use_8";
+
+type NotificationType = "order" | "error" | "system";
 
 async function pushAdminNotification(
   restaurant_id: string,
@@ -89,7 +24,7 @@ async function pushAdminNotification(
   opts?: { url?: string }
 ) {
   try {
-    // 1) zapis do admin_notifications jak wcześniej
+    // 1) zapis do admin_notifications (tak jak było)
     await supabaseAdmin.from("admin_notifications").insert({
       restaurant_id,
       type,
@@ -97,9 +32,9 @@ async function pushAdminNotification(
       message: message ?? null,
     });
 
-    // 2) web-push (best effort – błąd nie blokuje zamówienia)
+    // 2) web-push przez wspólny helper z lib/push.ts
     const url = opts?.url || "/admin/pickup-order";
-    await sendPushToRestaurant(restaurant_id, {
+    await sendPushForRestaurant(restaurant_id, {
       type,
       title,
       body: message || title,
