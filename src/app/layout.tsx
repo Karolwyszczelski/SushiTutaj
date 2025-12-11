@@ -9,8 +9,6 @@ import AuthCookieSync from "@/components/AuthCookieSync";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_URL || "https://www.sushitutaj.pl";
 
-
-
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -22,23 +20,57 @@ export const metadata: Metadata = {
   metadataBase: new URL(BASE),
   title: { default: "SUSHI Tutaj", template: "%s | SUSHI Tutaj" },
   description: "Wybierz restaurację i zamów sushi. Dostawa i odbiór osobisty.",
-  alternates: { languages: { "pl-PL": "/" } },
-  icons: { icon: "/favicon.ico", apple: "/sushi.png" },
+  alternates: {
+    canonical: "/",
+    languages: { "pl-PL": "/" },
+  },
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png", // ikona iOS / PWA
+  },
+  themeColor: "#b31217", // kolor brandu (spójny z manifestem)
   openGraph: {
     type: "website",
-    url: BASE,
+    url: "/", // dzięki metadataBase zrobi się pełny adres
     siteName: "SUSHI Tutaj",
-    title: "SUSHI Tutaj",
-    description: "Wybierz restaurację i zamów sushi. Dostawa i odbiór osobisty.",
-    images: [{ url: "/og/sushi-og.jpg", width: 1200, height: 630, alt: "SUSHI Tutaj" }],
+    title: "SUSHI Tutaj – zamów sushi online",
+    description:
+      "Wybierz restaurację SUSHI Tutaj w swoim mieście i zamów świeże sushi online.",
+    images: [
+      {
+        url: "/og/sushi-og.jpg",
+        width: 1200,
+        height: 630,
+        alt: "SUSHI Tutaj – zestaw sushi",
+      },
+    ],
     locale: "pl_PL",
   },
-  twitter: { card: "summary_large_image", title: "SUSHI Tutaj", description: "Wybierz restaurację i zamów sushi.", images: ["/og-cover.jpg"] },
-  robots: { index: true, follow: true, googleBot: { index: true, follow: true, notranslate: true } },
+  twitter: {
+    card: "summary_large_image",
+    title: "SUSHI Tutaj – zamów sushi online",
+    description:
+      "Wybierz restaurację SUSHI Tutaj w swoim mieście i zamów świeże sushi online.",
+    images: ["/og/sushi-og.jpg"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, notranslate: true },
+  },
 };
 
-const sans = Manrope({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
-const display = Kaisei_Tokumin({ subsets: ["latin"], weight: "400", variable: "--font-display", display: "swap" });
+const sans = Manrope({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  display: "swap",
+});
+const display = Kaisei_Tokumin({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-display",
+  display: "swap",
+});
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
