@@ -898,34 +898,49 @@ export default function PickupOrdersPage() {
     setBooted(true);
   }, [urlSlug]);
 
-  /* AUDIO – dźwięk nowego zamówienia */
-  const newOrderAudio = useRef<HTMLAudioElement | null>(null);
-  useEffect(() => {
-    const a = new Audio("/new-order.mp3");
-    a.preload = "auto";
-    a.volume = 1;
-    newOrderAudio.current = a;
+ /* AUDIO – dźwięk nowego zamówienia */
+const newOrderAudio = useRef<HTMLAudioElement | null>(null);
 
-    // „odblokowanie” audio po pierwszym kliknięciu
-    const unlock = async () => {
-      try {
-        a.currentTime = 0;
-        await a.play();
-        a.pause();
-      } catch {}
-    };
-    window.addEventListener("pointerdown", unlock, { once: true });
-    return () => window.removeEventListener("pointerdown", unlock);
-  }, []);
+useEffect(() => {
+  if (typeof window === "undefined") return;
 
-  const playDing = useCallback(async () => {
+  const src = "/new-order.mp3"; // upewnij się, że plik jest w public/
+  const a = new Audio(src);
+  a.preload = "auto";
+  a.volume = 1;
+  newOrderAudio.current = a;
+
+  // „odblokowanie” audio po pierwszym kliknięciu
+  const unlock = async () => {
     try {
-      if (newOrderAudio.current) {
-        newOrderAudio.current.currentTime = 0;
-        await newOrderAudio.current.play();
-      }
-    } catch {}
-  }, []);
+      a.currentTime = 0;
+      await a.play();
+      a.pause();
+      console.log("[audio] odblokowane");
+    } catch (err) {
+      console.warn("[audio] nie udało się odblokować", err);
+    }
+  };
+
+  window.addEventListener("pointerdown", unlock, { once: true });
+  console.log("[audio] zainicjalizowano", src);
+
+  return () => window.removeEventListener("pointerdown", unlock);
+}, []);
+
+const playDing = useCallback(async () => {
+  try {
+    if (!newOrderAudio.current) {
+      console.warn("[audio] brak instancji Audio");
+      return;
+    }
+    newOrderAudio.current.currentTime = 0;
+    await newOrderAudio.current.play();
+    console.log("[audio] ding");
+  } catch (err) {
+    console.warn("[audio] błąd odtwarzania", err);
+  }
+}, []);
 
   const prevIdsRef = useRef<Set<string>>(new Set());
   const initializedRef = useRef(false);

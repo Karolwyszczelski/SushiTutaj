@@ -9,7 +9,7 @@ import { sendEmail } from "@/lib/e-mail";
 import { sendSms } from "@/lib/sms";
 import { computeAddonPriceBackend } from "@/lib/addons";
 import { buildKitchenNote } from "@/lib/kitchenNote";
-import webpush from "web-push";
+import * as webpush from "web-push";
 
 
 // --- WEB PUSH / VAPID ---

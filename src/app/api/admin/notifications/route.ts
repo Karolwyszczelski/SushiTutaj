@@ -15,7 +15,7 @@ const supabaseAdmin = createClient(
 export async function GET(req: Request) {
   try {
     // Bierzemy aktualny lokal z cookie ustawianego przez ensure-cookie
-    const ck = await cookies(); // <-- tu ważne: await
+    const ck = await cookies(); // możesz spokojnie usunąć "await" – cookies() jest synchroniczne
     const restaurantId = ck.get("restaurant_id")?.value ?? null;
 
     if (!restaurantId) {
@@ -24,7 +24,7 @@ export async function GET(req: Request) {
     }
 
     const { data, error } = await supabaseAdmin
-      .from("admin_notifications") // <-- może być, bo klient nie jest typowany Database
+      .from("admin_notifications")
       .select("id, type, title, message, created_at, read")
       .eq("restaurant_id", restaurantId)
       .order("created_at", { ascending: false })

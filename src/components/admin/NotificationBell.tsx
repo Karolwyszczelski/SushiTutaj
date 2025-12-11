@@ -49,9 +49,23 @@ export default function NotificationBell() {
     return () => clearInterval(id);
   }, []);
 
-  const markAllRead = () => {
-    setItems((prev) => prev.map((n) => ({ ...n, read: true })));
-    // TODO: tu możesz dodać POST do API, żeby utrwalić jako przeczytane
+  const markAllRead = async () => {
+    try {
+      const res = await fetch("/api/admin/notifications/read-all", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+
+      if (!res.ok) {
+        console.error("Nie udało się oznaczyć powiadomień jako przeczytane");
+        return;
+      }
+
+      // aktualizacja lokalnego stanu – od razu znika badge / podświetlenie
+      setItems((prev) => prev.map((n) => ({ ...n, read: true })));
+    } catch (e) {
+      console.error("Błąd markAllRead:", e);
+    }
   };
 
   const iconForType = (type: NotificationType) => {
