@@ -26,7 +26,6 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 sm:p-6 text-slate-900">
-      {/* nagłówek */}
       <div className="mb-5 sm:mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">
           Ustawienia panelu
@@ -37,136 +36,85 @@ export default function SettingsPage() {
       </div>
 
       <Tab.Group>
-        {/* MOBILE: przewijane zakładki */}
-        <Tab.List className="sm:hidden -mx-4 px-4">
-          <div className="flex gap-2 rounded-xl bg-slate-100 p-1 text-sm overflow-x-auto whitespace-nowrap">
-            <Tab
-              className={({ selected }) =>
-                classNames(
-                  tabBase,
-                  "shrink-0 px-4",
-                  selected ? tabSelected : tabUnselected
-                )
-              }
-            >
-              <span className="sm:hidden">Stoły</span>
-              <span className="hidden sm:inline">Rezerwacje &amp; Stoły</span>
-            </Tab>
-
-            <Tab
-              className={({ selected }) =>
-                classNames(
-                  tabBase,
-                  "shrink-0 px-4",
-                  selected ? tabSelected : tabUnselected
-                )
-              }
-            >
-              <span className="sm:hidden">Strefy</span>
-              <span className="hidden sm:inline">Strefy dostawy</span>
-            </Tab>
-
-            <Tab
-              className={({ selected }) =>
-                classNames(
-                  tabBase,
-                  "shrink-0 px-4",
-                  selected ? tabSelected : tabUnselected
-                )
-              }
-            >
-              <span className="sm:hidden">Adresy</span>
-              <span className="hidden sm:inline">Blokowane adresy</span>
-            </Tab>
-
-            <Tab
-              className={({ selected }) =>
-                classNames(
-                  tabBase,
-                  "shrink-0 px-4",
-                  selected ? tabSelected : tabUnselected
-                )
-              }
-            >
-              <span className="sm:hidden">Promki</span>
-              <span className="hidden sm:inline">Promocje &amp; rabaty</span>
-            </Tab>
-
-            <Tab
-              className={({ selected }) =>
-                classNames(
-                  tabBase,
-                  "shrink-0 px-4",
-                  selected ? tabSelected : tabUnselected
-                )
-              }
-            >
-              <span className="sm:hidden">Godziny</span>
-              <span className="hidden sm:inline">Blokady godzin</span>
-            </Tab>
-          </div>
-        </Tab.List>
-
-        {/* DESKTOP: równe zakładki jak było */}
-        <Tab.List className="hidden sm:flex gap-2 rounded-xl bg-slate-100 p-1 text-sm">
+        {/* JEDNA lista zakładek (mobile: scroll, desktop: równe) */}
+        <Tab.List className="flex gap-2 rounded-xl bg-slate-100 p-1 text-sm overflow-x-auto whitespace-nowrap sm:overflow-visible">
           <Tab
             className={({ selected }) =>
               classNames(
                 tabBase,
-                "flex-1",
+                "shrink-0 px-4 sm:flex-1 sm:px-3",
                 selected ? tabSelected : tabUnselected
               )
             }
           >
-            Rezerwacje &amp; Stoły
+            <span className="sm:hidden">Stoły</span>
+            <span className="hidden sm:inline">Rezerwacje &amp; Stoły</span>
           </Tab>
 
           <Tab
             className={({ selected }) =>
               classNames(
                 tabBase,
-                "flex-1",
+                "shrink-0 px-4 sm:flex-1 sm:px-3",
                 selected ? tabSelected : tabUnselected
               )
             }
           >
-            Strefy dostawy
+            <span className="sm:hidden">Strefy</span>
+            <span className="hidden sm:inline">Strefy dostawy</span>
           </Tab>
 
           <Tab
             className={({ selected }) =>
               classNames(
                 tabBase,
-                "flex-1",
+                "shrink-0 px-4 sm:flex-1 sm:px-3",
                 selected ? tabSelected : tabUnselected
               )
             }
           >
-            Blokowane adresy
+            <span className="sm:hidden">Adresy</span>
+            <span className="hidden sm:inline">Blokowane adresy</span>
           </Tab>
 
           <Tab
             className={({ selected }) =>
               classNames(
                 tabBase,
-                "flex-1",
+                "shrink-0 px-4 sm:flex-1 sm:px-3",
                 selected ? tabSelected : tabUnselected
               )
             }
           >
-            Promocje &amp; rabaty
+            <span className="sm:hidden">Promki</span>
+            <span className="hidden sm:inline">Promocje &amp; rabaty</span>
           </Tab>
 
           <Tab
             className={({ selected }) =>
               classNames(
                 tabBase,
-                "flex-1",
+                "shrink-0 px-4 sm:flex-1 sm:px-3",
                 selected ? tabSelected : tabUnselected
               )
             }
           >
-            Blokady godzin
+            <span className="sm:hidden">Godziny</span>
+            <span className="hidden sm:inline">Blokady godzin</span>
+          </Tab>
+
+          {/* NOWE: tab dla AddonOptionsForm (żeby zgadzała się liczba paneli) */}
+          <Tab
+            className={({ selected }) =>
+              classNames(
+                tabBase,
+                "shrink-0 px-4 sm:flex-1 sm:px-3",
+                selected ? tabSelected : tabUnselected
+              )
+            }
+          >
+            <span className="sm:hidden">Napoje</span>
+            <span className="hidden sm:inline">Smaki napojów</span>
           </Tab>
         </Tab.List>
 
