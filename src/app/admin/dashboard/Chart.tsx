@@ -26,7 +26,13 @@ interface ChartProps {
   colorScheme?: string[];
 }
 
-const COLORS = ["#00D8FF", "#FF5C8D", "#FFD500", "#82ca9d", "#8884d8"];
+const COLORS = ["#22d3ee", "#f97373", "#facc15", "#4ade80", "#a855f7"];
+
+const GRID_COLOR = "#1f2937";    // slate-800
+const AXIS_COLOR = "#9ca3af";    // slate-400
+const LABEL_COLOR = "#e5e7eb";   // slate-200
+const TOOLTIP_BG = "#020617";    // slate-950
+const TOOLTIP_BORDER = "#334155"; // slate-700
 
 export default function Chart({
   type,
@@ -36,27 +42,70 @@ export default function Chart({
   valueKey = "value",
   colorScheme = COLORS,
 }: ChartProps) {
+  const axisTick = {
+    fontSize: 11,
+    fill: AXIS_COLOR,
+  };
+
+  const tooltipStyle = {
+    backgroundColor: TOOLTIP_BG,
+    borderColor: TOOLTIP_BORDER,
+    color: LABEL_COLOR,
+    borderRadius: 12,
+    padding: 12,
+    boxShadow: "0 18px 45px rgba(15,23,42,0.7)",
+  };
+
+  const legendStyle = {
+    color: LABEL_COLOR,
+    fontSize: 11,
+  } as const;
+
   const renderChart = (): ReactElement => {
+    if (!data || data.length === 0) {
+      // brak danych ogarnia komponent-rodzic
+      return <></>;
+    }
+
     if (type === "line") {
       return (
-        <LineChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-          <XAxis dataKey={nameKey} stroke="#ccc" />
-          <YAxis stroke="#ccc" />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "#111",
-              borderColor: "#333",
-              color: "#fff",
-            }}
+        <LineChart
+          data={data}
+          margin={{ top: 8, right: 12, bottom: 4, left: 0 }}
+        >
+          <CartesianGrid
+            strokeDasharray="4 4"
+            stroke={GRID_COLOR}
+            vertical={false}
           />
-          <Legend />
+          <XAxis
+            dataKey={nameKey}
+            tick={axisTick}
+            axisLine={{ stroke: GRID_COLOR }}
+            tickLine={{ stroke: GRID_COLOR }}
+          />
+          <YAxis
+            tick={axisTick}
+            axisLine={{ stroke: GRID_COLOR }}
+            tickLine={{ stroke: GRID_COLOR }}
+          />
+          <Tooltip
+            contentStyle={tooltipStyle}
+            labelStyle={{ color: LABEL_COLOR, fontSize: 12 }}
+          />
+          <Legend wrapperStyle={legendStyle} />
           <Line
             type="monotone"
             dataKey={dataKey}
-            stroke="#00D8FF"
-            strokeWidth={2}
-            dot={{ r: 3 }}
+            stroke={COLORS[0]}
+            strokeWidth={3}
+            dot={{
+              r: 4,
+              strokeWidth: 2,
+              stroke: "#020617",
+              fill: COLORS[0],
+            }}
+            activeDot={{ r: 6 }}
           />
         </LineChart>
       );
@@ -64,23 +113,39 @@ export default function Chart({
 
     if (type === "bar") {
       return (
-        <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-          <XAxis dataKey={nameKey} stroke="#ccc" />
-          <YAxis stroke="#ccc" />
+        <BarChart
+          data={data}
+          margin={{ top: 8, right: 12, bottom: 4, left: 0 }}
+        >
+          <CartesianGrid
+            strokeDasharray="4 4"
+            stroke={GRID_COLOR}
+            vertical={false}
+          />
+          <XAxis
+            dataKey={nameKey}
+            tick={axisTick}
+            axisLine={{ stroke: GRID_COLOR }}
+            tickLine={{ stroke: GRID_COLOR }}
+          />
+          <YAxis
+            tick={axisTick}
+            axisLine={{ stroke: GRID_COLOR }}
+            tickLine={{ stroke: GRID_COLOR }}
+          />
           <Tooltip
-            contentStyle={{
-              backgroundColor: "#111",
-              borderColor: "#333",
-              color: "#fff",
-            }}
+            contentStyle={tooltipStyle}
+            labelStyle={{ color: LABEL_COLOR, fontSize: 12 }}
           />
-          <Legend />
-          <Bar
-            dataKey={dataKey}
-            fill="#FF5C8D"
-            radius={[4, 4, 0, 0]}
-          />
+          <Legend wrapperStyle={legendStyle} />
+          <Bar dataKey={dataKey} radius={[8, 8, 0, 0]}>
+            {data.map((_, index) => (
+              <Cell
+                key={`bar-${index}`}
+                fill={colorScheme[index % colorScheme.length]}
+              />
+            ))}
+          </Bar>
         </BarChart>
       );
     }
@@ -89,20 +154,18 @@ export default function Chart({
     return (
       <PieChart>
         <Tooltip
-          contentStyle={{
-            backgroundColor: "#111",
-            borderColor: "#333",
-            color: "#fff",
-          }}
+          contentStyle={tooltipStyle}
+          labelStyle={{ color: LABEL_COLOR, fontSize: 12 }}
         />
-        <Legend />
+        <Legend wrapperStyle={legendStyle} />
         <Pie
           data={data}
           dataKey={valueKey}
           nameKey={nameKey}
-          outerRadius={100}
+          outerRadius={90}
           innerRadius={40}
           label
+          paddingAngle={2}
         >
           {data.map((_, index) => (
             <Cell
@@ -116,7 +179,7 @@ export default function Chart({
   };
 
   return (
-    <div className="w-full h-[300px]">
+    <div className="h-[260px] w-full">
       <ResponsiveContainer width="100%" height="100%">
         {renderChart()}
       </ResponsiveContainer>

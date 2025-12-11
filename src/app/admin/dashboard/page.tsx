@@ -12,7 +12,7 @@ const Chart = dynamic(() => import("./Chart"), { ssr: false });
 
 type StatsResponse = {
   ordersPerDay?: Record<string, number>;
-  avgFulfillmentTime?: Record<string, number>; // minuty per dzień (YYYY-MM-DD)
+  avgFulfillmentTime?: Record<string, number>;
   popularProducts?: Record<string, number>;
   kpis?: {
     todayOrders?: number;
@@ -35,7 +35,7 @@ const PLN = new Intl.NumberFormat("pl-PL", {
 
 function toPln(v: number | undefined | null): string {
   if (v == null || Number.isNaN(v)) return "—";
-  const val = v > 100000 ? v / 100 : v; // fallback jeśli backend zwraca grosze
+  const val = v > 100000 ? v / 100 : v;
   return PLN.format(Math.round(val));
 }
 
@@ -43,8 +43,11 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // „Live” liczniki jako fallback, gdy /stats nie poda KPIs
-  const [live, setLive] = useState({ newOrders: 0, currentOrders: 0, reservations: 0 });
+  const [live, setLive] = useState({
+    newOrders: 0,
+    currentOrders: 0,
+    reservations: 0,
+  });
 
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -56,7 +59,9 @@ export default function DashboardPage() {
 
     const loadStats = async () => {
       try {
-        const res = await fetch(`/api/orders/stats?t=${Date.now()}`, { cache: "no-store" });
+        const res = await fetch(`/api/orders/stats?t=${Date.now()}`, {
+          cache: "no-store",
+        });
         const d = (await res.json()) as StatsResponse;
         if (!stop) setStats(d ?? {});
       } catch {
@@ -66,14 +71,20 @@ export default function DashboardPage() {
       }
     };
 
-    // Dociągamy bieżące zamówienia i liczymy statusy lokalnie
     const loadLiveCounts = async () => {
       try {
-        const r = await fetch(`/api/orders/current?limit=200&offset=0&t=${Date.now()}`, { cache: "no-store" });
+        const r = await fetch(
+          `/api/orders/current?limit=200&offset=0&t=${Date.now()}`,
+          { cache: "no-store" }
+        );
         const j = await r.json();
         const arr: any[] = Array.isArray(j?.orders) ? j.orders : [];
-        const newOrders = arr.filter(o => o.status === "new" || o.status === "placed").length;
-        const currentOrders = arr.filter(o => o.status === "accepted").length;
+        const newOrders = arr.filter(
+          (o) => o.status === "new" || o.status === "placed"
+        ).length;
+        const currentOrders = arr.filter(
+          (o) => o.status === "accepted"
+        ).length;
         if (!stop) setLive({ newOrders, currentOrders, reservations: 0 });
       } catch {
         /* ignore */
@@ -89,19 +100,29 @@ export default function DashboardPage() {
       if (document.visibilityState === "visible") tick();
     }, 10000);
 
-    return () => { stop = true; clearInterval(iv); };
+    return () => {
+      stop = true;
+      clearInterval(iv);
+    };
   }, []);
 
   const safeEntries = (o?: Record<string, number>) => Object.entries(o ?? {});
 
-  // Dane do wykresów
   const dailyOrdersData = useMemo(
-    () => safeEntries(stats?.ordersPerDay).map(([name, value]) => ({ name, value })),
+    () =>
+      safeEntries(stats?.ordersPerDay).map(([name, value]) => ({
+        name,
+        value,
+      })),
     [stats]
   );
 
   const fulfillmentTimeData = useMemo(
-    () => safeEntries(stats?.avgFulfillmentTime).map(([name, value]) => ({ name, value })),
+    () =>
+      safeEntries(stats?.avgFulfillmentTime).map(([name, value]) => ({
+        name,
+        value,
+      })),
     [stats]
   );
 
@@ -113,9 +134,8 @@ export default function DashboardPage() {
     [stats]
   );
 
-  // Dzisiejsza/miesięczna data
   const todayKey = new Date().toISOString().slice(0, 10);
-  const ym = todayKey.slice(0, 7); // YYYY-MM
+  const ym = todayKey.slice(0, 7);
   const k = stats?.kpis ?? {};
 
   const todayOrders =
@@ -125,14 +145,19 @@ export default function DashboardPage() {
   const monthOrders =
     k.monthOrders ??
     (stats?.ordersPerDay
-      ? Object.entries(stats.ordersPerDay).reduce((acc, [d, v]) => (d.startsWith(ym) ? acc + (v || 0) : acc), 0)
+      ? Object.entries(stats.ordersPerDay).reduce(
+          (acc, [d, v]) => (d.startsWith(ym) ? acc + (v || 0) : acc),
+          0
+        )
       : 0);
 
   const monthAvgFulfillment =
     k.monthAvgFulfillment ??
     (stats?.avgFulfillmentTime
       ? (() => {
-          const arr = Object.entries(stats.avgFulfillmentTime).filter(([d]) => d.startsWith(ym));
+          const arr = Object.entries(stats.avgFulfillmentTime).filter(([d]) =>
+            d.startsWith(ym)
+          );
           if (!arr.length) return undefined;
           const sum = arr.reduce((s, [, v]) => s + (v || 0), 0);
           return Math.round(sum / arr.length);
@@ -143,7 +168,6 @@ export default function DashboardPage() {
   const monthRevenue = k.monthRevenue;
   const todayReservations = k.todayReservations;
 
-  // Fallbacki z „live”
   const newOrders = k.newOrders ?? live.newOrders;
   const currentOrders = k.currentOrders ?? live.currentOrders;
   const reservations = k.reservations ?? live.reservations;
@@ -153,190 +177,318 @@ export default function DashboardPage() {
 
   const topCards = [
     {
-      label: "Nowe Zamówienia",
+      label: "Nowe zamówienia",
       value: newOrders,
       radialValue: pct(newOrders),
-      color: "bg-lime-100",
-      textColor: "text-lime-800",
-      description: `Dzisiaj: ${todayOrders}`,
-      onClick: () => router.push("/admin/current-orders"),
+      badge: "Na ekranie „Odbierz zamówienie”",
+      accent: "from-emerald-500/40 via-emerald-500/10 to-slate-900",
+      onClick: () => router.push("/admin/pickup-order"),
     },
     {
-      label: "Bieżące Zamówienia",
+      label: "W realizacji",
       value: currentOrders,
       radialValue: pct(currentOrders),
-      color: "bg-sky-100",
-      textColor: "text-sky-800",
-      description: `W tym miesiącu: ${monthOrders}`,
-      onClick: () => router.push("/admin/current-orders"),
+      badge: "Zamówienia zaakceptowane",
+      accent: "from-sky-500/40 via-sky-500/10 to-slate-900",
+      onClick: () => router.push("/admin/pickup-order"),
     },
     {
-      label: "Historia",
+      label: "Zamówienia w miesiącu",
       value: monthOrders,
       radialValue: pct(monthOrders),
-      color: "bg-yellow-100",
-      textColor: "text-yellow-800",
-      description: "Archiwalne zamówienia",
+      badge: "Suma od początku miesiąca",
+      accent: "from-yellow-500/40 via-yellow-500/10 to-slate-900",
       onClick: () => router.push("/admin/history"),
     },
     {
       label: "Rezerwacje",
       value: reservations,
       radialValue: pct(reservations),
-      color: "bg-pink-100",
-      textColor: "text-pink-800",
-      description: `Dzisiaj: ${todayReservations ?? "—"}`,
+      badge: `Dziś: ${todayReservations ?? "—"}`,
+      accent: "from-rose-500/40 via-rose-500/10 to-slate-900",
       onClick: () => setShowCalendar(true),
     },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <h1 className="mb-8 text-3xl font-bold text-gray-800">Dashboard</h1>
+    <div className="min-h-screen bg-[#050509] px-4 py-6 text-slate-100 sm:px-6 lg:px-10">
+      {/* Nagłówek */}
+      <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-50 md:text-3xl">
+            Panel statystyk
+          </h1>
+          <p className="mt-1 text-sm text-slate-400">
+            Podsumowanie zamówień i czasu realizacji dla Twojej restauracji.
+          </p>
+        </div>
+        <div className="rounded-full border border-red-500/40 bg-red-500/10 px-4 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-red-300">
+          Sushi Tutaj · Dashboard
+        </div>
+      </header>
 
-      {/* GÓRNE KARTY */}
-      <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Górne karty KPI */}
+      <section className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {topCards.map((card, idx) => (
           <button
             key={idx}
+            type="button"
             onClick={card.onClick}
-            className={`flex cursor-pointer items-center gap-3 rounded-lg border bg-white/70 p-4 shadow-sm transition hover:shadow-md ${card.color}`}
+            className={`group flex items-center gap-4 rounded-2xl border border-slate-700/70 bg-gradient-to-br ${card.accent} p-4 text-left shadow-xl shadow-black/40 transition hover:-translate-y-0.5 hover:border-red-500/70 hover:shadow-2xl`}
           >
-            <RadialIcon percentage={card.radialValue} size={40} />
-            <div className="text-left">
-              <h2 className={`text-lg font-semibold ${card.textColor}`}>{card.label}</h2>
-              <p className={`mt-0.5 text-sm ${card.textColor}`}>
-                {card.description} • <span className="font-bold">{card.value}</span>
+            <div className="shrink-0 rounded-full bg-slate-950/80 p-1.5">
+              <RadialIcon percentage={card.radialValue} size={46} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                {card.badge}
+              </p>
+              <p className="mt-1 truncate text-sm font-medium text-slate-100">
+                {card.label}
+              </p>
+              <p className="mt-1 text-2xl font-semibold text-slate-50">
+                {card.value}
               </p>
             </div>
+            <span className="hidden text-xs text-red-300/80 group-hover:inline">
+              Pokaż →
+            </span>
           </button>
         ))}
-      </div>
+      </section>
 
-      {/* WYKRESY */}
-      <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="rounded-lg border bg-white p-5 shadow">
-          <h2 className="mb-4 text-xl font-semibold text-gray-700">Statystyki dzienne</h2>
-
-          <div className="mb-4 flex flex-col gap-1.5 text-sm text-gray-600">
-            <p>
-              Dzisiejsze zamówienia: <span className="font-bold">{todayOrders}</span>
-            </p>
-            <p>
-              Dzisiejszy obrót: <span className="font-bold">{toPln(todayRevenue)}</span>
-            </p>
-            <p>
-              Dzisiejsze rezerwacje:{" "}
-              <span className="font-bold">{todayReservations ?? "—"}</span>
-            </p>
+      {/* Wykresy: zamówienia dzienne + czas realizacji */}
+      <section className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Zamówienia dzienne */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl shadow-black/40">
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">
+                Zamówienia dzienne
+              </h2>
+              <p className="mt-1 text-xs text-slate-400">
+                Ostatnie 30 dni · dzienny wolumen zamówień
+              </p>
+            </div>
+            <div className="rounded-full bg-slate-900 px-3 py-1 text-xs text-slate-300">
+              Dziś:{" "}
+              <span className="font-semibold text-slate-50">
+                {todayOrders}
+              </span>
+            </div>
           </div>
 
-          <div className="rounded border border-gray-100 p-2">
+          <div className="mb-4 grid grid-cols-3 gap-3 text-xs text-slate-300">
+            <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                Dzisiejsze zamówienia
+              </p>
+              <p className="mt-1 text-xl font-semibold text-slate-50">
+                {todayOrders}
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                Dzisiejszy obrót
+              </p>
+              <p className="mt-1 text-sm font-semibold text-emerald-300">
+                {toPln(todayRevenue)}
+              </p>
+            </div>
+            <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                Rezerwacje
+              </p>
+              <p className="mt-1 text-xl font-semibold text-slate-50">
+                {todayReservations ?? "—"}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-3">
             {loading ? (
-              <p className="py-10 text-center text-sm text-gray-400">Ładowanie wykresu…</p>
+              <p className="py-10 text-center text-xs text-slate-500">
+                Ładowanie wykresu…
+              </p>
             ) : dailyOrdersData.length === 0 ? (
-              <p className="py-10 text-center text-sm text-gray-400">Brak danych do wyświetlenia</p>
+              <p className="py-10 text-center text-xs text-slate-500">
+                Brak danych do wyświetlenia
+              </p>
             ) : (
               <Chart type="line" data={dailyOrdersData} />
             )}
           </div>
         </div>
 
-        <div className="rounded-lg border bg-white p-5 shadow">
-          <h2 className="mb-4 text-xl font-semibold text-gray-700">Statystyki miesięczne</h2>
-
-          <div className="mb-4 flex flex-col gap-1.5 text-sm text-gray-600">
-            <p>
-              Zamówienia w tym miesiącu: <span className="font-bold">{monthOrders}</span>
-            </p>
-            <p>
-              Obrót w tym miesiącu: <span className="font-bold">{toPln(monthRevenue)}</span>
-            </p>
-            <p>
-              Średni czas realizacji:{" "}
-              <span className="font-bold">
-                {monthAvgFulfillment != null ? `${monthAvgFulfillment} min` : "—"}
+        {/* Czas realizacji / statystyki miesiąca */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl shadow-black/40">
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">
+                Czas realizacji
+              </h2>
+              <p className="mt-1 text-xs text-slate-400">
+                Średni czas realizacji zamówień (minuty / dzień)
+              </p>
+            </div>
+            <div className="rounded-full bg-slate-900 px-3 py-1 text-xs text-slate-300">
+              Śr. w miesiącu:{" "}
+              <span className="font-semibold text-emerald-300">
+                {monthAvgFulfillment != null
+                  ? `${monthAvgFulfillment} min`
+                  : "—"}
               </span>
-            </p>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="rounded border border-gray-100 p-2">
-              {loading ? (
-                <p className="py-10 text-center text-sm text-gray-400">Ładowanie…</p>
-              ) : fulfillmentTimeData.length === 0 ? (
-                <p className="py-10 text-center text-sm text-gray-400">Brak danych</p>
-              ) : (
-                <Chart type="bar" data={fulfillmentTimeData} />
-              )}
+          <div className="mb-4 grid grid-cols-3 gap-3 text-xs text-slate-300">
+            <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                Zamówienia w miesiącu
+              </p>
+              <p className="mt-1 text-xl font-semibold text-slate-50">
+                {monthOrders}
+              </p>
             </div>
-
-            <div className="flex flex-col items-center justify-center">
-              <RadialIcon percentage={Math.min(100, Math.max(0, Math.round((monthOrders / Math.max(1, monthOrders)) * 100)))} size={40} />
-              <p className="mt-1 text-center text-xs text-gray-500">
+            <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                Obrót w miesiącu
+              </p>
+              <p className="mt-1 text-sm font-semibold text-emerald-300">
+                {toPln(monthRevenue)}
+              </p>
+            </div>
+            <div className="flex flex-col items-center justify-center rounded-xl border border-slate-800 bg-slate-900/80 p-3">
+              <RadialIcon
+                percentage={Math.min(
+                  100,
+                  Math.max(
+                    0,
+                    Math.round(
+                      (monthOrders / Math.max(1, monthOrders)) * 100
+                    )
+                  )
+                )}
+                size={40}
+              />
+              <p className="mt-1 text-[10px] text-slate-500">
                 Wypełnienie miesiąca (relatywne)
               </p>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* TOP DISHES + USTAWIENIA */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
-        <div className="lg:col-span-3 rounded-lg border bg-white p-5 shadow">
-          <h2 className="text-xl font-semibold text-gray-700">Top Dishes</h2>
-          <p className="mb-4 text-sm text-gray-500">Najbardziej zamawiane dania</p>
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-3">
+            {loading ? (
+              <p className="py-10 text-center text-xs text-slate-500">
+                Ładowanie wykresu…
+              </p>
+            ) : fulfillmentTimeData.length === 0 ? (
+              <p className="py-10 text-center text-xs text-slate-500">
+                Brak danych do wyświetlenia
+              </p>
+            ) : (
+              <Chart type="bar" data={fulfillmentTimeData} />
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* Top dania + Ustawienia */}
+      <section className="grid grid-cols-1 gap-6 lg:grid-cols-4">
+        {/* Top dishes */}
+        <div className="lg:col-span-3 rounded-2xl border border-slate-800 bg-slate-950/80 p-5 shadow-xl shadow-black/40">
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">
+                Najczęściej zamawiane dania
+              </h2>
+              <p className="mt-1 text-xs text-slate-400">
+                TOP pozycji z ostatniego okresu
+              </p>
+            </div>
+          </div>
 
           {loading ? (
-            <p className="text-sm text-gray-400">Ładowanie listy…</p>
+            <p className="text-xs text-slate-500">Ładowanie listy…</p>
           ) : topDishesData.length === 0 ? (
-            <p className="text-sm text-gray-400">Brak danych do wyświetlenia</p>
+            <p className="text-xs text-slate-500">
+              Brak danych do wyświetlenia.
+            </p>
           ) : (
-            <ul className="space-y-2 text-sm text-gray-600">
+            <ul className="divide-y divide-slate-800 text-sm text-slate-200">
               {topDishesData.map((d, i) => (
-                <li key={i} className="flex justify-between border-b border-gray-200 pb-1">
-                  <span>{d.dish}</span>
-                  <span className="font-medium text-gray-700">{d.orders} zamówień</span>
+                <li
+                  key={i}
+                  className="flex items-center justify-between py-2"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-[11px] text-slate-300">
+                      {i + 1}
+                    </span>
+                    <span>{d.dish}</span>
+                  </div>
+                  <span className="text-sm font-semibold text-slate-50">
+                    {d.orders} zam.
+                  </span>
                 </li>
               ))}
             </ul>
           )}
         </div>
 
-        <div className="relative flex flex-col rounded-lg border bg-red-100 p-5 shadow">
-          <h2 className="mb-4 text-xl font-semibold text-red-800">Ustawienia</h2>
-          <div className="absolute right-3 top-3">
-            <Image src="/settings2.png" alt="Settings" width={32} height={32} />
+        {/* Ustawienia */}
+        <div className="relative flex flex-col overflow-hidden rounded-2xl border border-red-600/60 bg-gradient-to-br from-red-600 via-red-500 to-rose-600 p-5 shadow-2xl shadow-red-900/40">
+          <div className="absolute -right-6 -top-10 opacity-30">
+            <Image
+              src="/settings2.png"
+              alt="Ustawienia"
+              width={120}
+              height={120}
+            />
           </div>
-          <p className="mb-4 text-sm text-red-700">Panel konfiguracyjny systemu</p>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-rose-50">
+            Ustawienia systemu
+          </h2>
+          <p className="mb-4 text-sm text-rose-50/90">
+            Skonfiguruj godziny otwarcia, strefy dostaw, program
+            lojalnościowy oraz powiadomienia.
+          </p>
           <button
+            type="button"
             onClick={() => router.push("/admin/settings")}
-            className="mt-auto rounded bg-red-200 px-4 py-2 text-sm text-red-800 hover:bg-red-300"
+            className="mt-auto inline-flex items-center justify-center rounded-full bg-slate-950/90 px-4 py-2 text-sm font-semibold text-rose-50 shadow-lg shadow-black/50 transition hover:bg-slate-900"
           >
             Przejdź do ustawień
           </button>
         </div>
-      </div>
+      </section>
 
-      {/* Kalendarz */}
+      {/* Kalendarz rezerwacji */}
       {showCalendar && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded bg-white p-6 text-black shadow-lg">
-            <h3 className="mb-4 text-xl font-bold">Wybierz datę rezerwacji</h3>
-            <Calendar onChange={(date) => setSelectedDate(date as Date)} value={selectedDate} />
-            <div className="mt-4 flex justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-950 p-6 text-slate-100 shadow-2xl shadow-black/60">
+            <h3 className="mb-4 text-lg font-semibold text-slate-50">
+              Wybierz datę rezerwacji
+            </h3>
+            <Calendar
+              onChange={(date) => setSelectedDate(date as Date)}
+              value={selectedDate}
+            />
+            <div className="mt-4 flex justify-between gap-2">
               <button
+                type="button"
                 onClick={() => setShowCalendar(false)}
-                className="rounded bg-red-500 px-4 py-2 text-white hover:bg-red-400"
+                className="rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800"
               >
                 Zamknij
               </button>
               <button
+                type="button"
                 onClick={() => {
                   router.push("/admin/reservations");
                   setShowCalendar(false);
                 }}
-                className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-500"
+                className="rounded-full bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-red-900/40 hover:bg-red-500"
               >
                 Przejdź do rezerwacji
               </button>

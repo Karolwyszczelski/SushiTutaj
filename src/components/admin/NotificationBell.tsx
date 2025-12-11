@@ -129,8 +129,9 @@ export default function NotificationBell() {
       {open && (
         <div
           className={clsx(
-            "absolute right-0 mt-2 w-80 rounded-2xl border border-white/10 bg-[#050509] text-white shadow-xl",
-            "z-[9999]" // TU też bardzo wysoki z-index
+            // fixed do całego viewportu, nie do headera
+            "fixed right-4 top-16 w-80 rounded-2xl border border-white/10 bg-[#050509] text-white shadow-xl",
+            "z-[99999]"
           )}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
@@ -207,4 +208,4 @@ export default function NotificationBell() {
       )}
     </div>
   );
-}
+} 
