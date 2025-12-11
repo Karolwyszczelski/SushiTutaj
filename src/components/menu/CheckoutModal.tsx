@@ -483,19 +483,31 @@ function isColaProduct(prod: any, prodInfo?: ProductDb | null): boolean {
   );
 }
 
-function isSushiSpecjalProduct(prod: any, prodInfo?: ProductDb | null): boolean {
+function isSushiSpecjalProduct(
+  prod: any,
+  prodInfo?: ProductDb | null
+): boolean {
+  // normalizujemy: małe litery, bez ogonków
   const text = normalizePlain(
     `${prod?.name || ""} ${prodInfo?.name || ""} ${prodInfo?.description || ""}`
   );
-  if (!text) return false;
-
-  // złapiemy m.in. "Zestaw SUSHI SPECJAŁ 100 szt"
-  // oraz ewentualne warianty bez słowa „SUSHI”
-  return (
-    text.includes("sushi specjal") ||
-    text.includes("zestaw specjal 100") ||
-    text.includes("specjal 100 szt")
+  const sub = normalizePlain(
+    (prodInfo?.subcategory as string | undefined) ||
+      ((prod as any)?.subcategory as string | undefined) ||
+      ""
   );
+
+  if (!text && !sub) return false;
+
+  // W praktyce wystarczy, że gdziekolwiek pojawi się "specjal"/"specjał"
+  // + najlepiej "sushi" albo kategoria specjały/zestawy
+  const hasSpecjalWord =
+    text.includes("sushi specjal") ||
+    text.includes("sushi specjal") || // po normalizacji "specjał" → "specjal"
+    text.includes("specjal") ||
+    sub.includes("specjal");
+
+  return hasSpecjalWord;
 }
 
 function computeAddonPrice(addon: string, product?: ProductDb | null): number {
