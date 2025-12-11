@@ -1,13 +1,13 @@
-// src/app/api/reservations/update/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
+
 import type { Database } from "@/types/supabase";
 import { sendSms } from "@/lib/sms";
-import { getAdminContext } from "@/lib/adminContext";
-import { cookies } from "next/headers"; // <- NOWY IMPORT
 
 const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -45,7 +45,6 @@ async function sendEmail(to: string, subject: string, html: string) {
 
   const url = process.env.SMTP_URL;
   if (url) {
-    // brak oficjalnych typów dla "nodemailer" w projekcie – świadomie wyciszamy TS
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     const nodemailerModule = await import("nodemailer");
@@ -64,52 +63,51 @@ async function sendEmail(to: string, subject: string, html: string) {
 export async function POST(req: Request) {
   try {
     const { id, action, admin_note } = await req.json(); // action: 'accept' | 'cancel'
+
     if (!id || !["accept", "cancel"].includes(action)) {
       return NextResponse.json({ error: "Bad request" }, { status: 400 });
     }
 
-    /* 🔐 1) normalny kontekst admina */
-    let restaurantId: string | null = null;
-    try {
-      const ctx = await getAdminContext();
-      restaurantId = ctx.restaurantId;
-    } catch (err) {
-      console.error("reservations/update: brak kontekstu admina:", err);
-    }
+    // 1) Supabase auth – użytkownik musi być zalogowany
+    const supabaseServer = createRouteHandlerClient<Database>({ cookies });
 
-    /* 🔐 2) fallback – restaurant_id z cookie ustawianego przez /api/restaurants/ensure-cookie */
-    if (!restaurantId) {
-      try {
-        const store = await cookies(); // <- TU MUSI BYĆ await
-        const ckRestaurantId = store.get("restaurant_id")?.value ?? null;
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseServer.auth.getUser();
 
-        if (ckRestaurantId) {
-          restaurantId = ckRestaurantId;
-          console.log(
-            "reservations/update: używam restaurant_id z cookie:",
-            restaurantId
-          );
-        }
-      } catch (err) {
-        console.error("reservations/update: błąd przy czytaniu cookie:", err);
-      }
-    }
-
-    if (!restaurantId) {
+    if (userError || !user) {
       return NextResponse.json(
-        { error: "Brak uprawnień lub brak przypisanej restauracji" },
+        { error: "Nie jesteś zalogowany" },
+        { status: 401 }
+      );
+    }
+
+    // 2) restaurant_id z cookie ustawianego przez /api/restaurants/ensure-cookie
+    const cookieStore = await cookies(); // tak samo jak w Twojej wcześniejszej wersji
+    const cookieRestaurantId =
+      cookieStore.get("restaurant_id")?.value ?? null;
+
+    if (!cookieRestaurantId) {
+      return NextResponse.json(
+        {
+          error:
+            "Brak przypisanej restauracji (cookie restaurant_id). Otwórz panel z poziomu wybranego lokalu.",
+        },
         { status: 403 }
       );
     }
 
-    // pobierz rezerwację tylko z restauracji admina
+    const restaurantId = cookieRestaurantId;
+
+    // 3) pobierz rezerwację tylko z tej restauracji
     const { data: r, error: e1 } = await supabaseAdmin
       .from("reservations")
       .select(
         "id, name, email, phone, guests, note, reservation_date, reservation_time, restaurant_id, status"
       )
       .eq("id", id)
-      .eq("restaurant_id", restaurantId) // 🔐 scope do restauracji
+      .eq("restaurant_id", restaurantId)
       .maybeSingle();
 
     if (e1) throw e1;
@@ -127,12 +125,12 @@ export async function POST(req: Request) {
     const update =
       action === "accept"
         ? {
-            status: "accepted",
+            status: "accepted" as const,
             confirmed_at: new Date().toISOString(),
             admin_note: admin_note ?? null,
           }
         : {
-            status: "cancelled",
+            status: "cancelled" as const,
             admin_note: admin_note ?? null,
           };
 
@@ -140,7 +138,7 @@ export async function POST(req: Request) {
       .from("reservations")
       .update(update)
       .eq("id", id)
-      .eq("restaurant_id", restaurantId) // 🔐 znowu pilnujemy restauracji
+      .eq("restaurant_id", restaurantId)
       .select("*")
       .maybeSingle();
 
@@ -156,7 +154,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // e-mail do klienta
+    // 4) e-mail do klienta
     const subject =
       action === "accept"
         ? "Potwierdzenie rezerwacji"
@@ -182,11 +180,11 @@ export async function POST(req: Request) {
       try {
         await sendEmail(r.email, subject, html);
       } catch {
-        // cicho ignorujemy błąd maila, żeby nie blokować panelu
+        // nie blokujemy panelu błędem maila
       }
     }
 
-    // SMS po akceptacji
+    // 5) SMS po akceptacji
     if (action === "accept" && r.phone) {
       const smsText = `Sushi Tutaj: potwierdzamy rezerwację ${when} dla ${
         r.guests || 1
@@ -194,7 +192,7 @@ export async function POST(req: Request) {
       try {
         await sendSms(r.phone, smsText);
       } catch {
-        // też nie blokujemy response
+        // też cicho
       }
     }
 

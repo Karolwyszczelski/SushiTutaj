@@ -2,15 +2,7 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import {
-  Pencil,
-  Trash,
-  ToggleRight,
-  ChevronDown,
-  Power,
-  Plus,
-  X as XIcon,
-} from "lucide-react";
+import { Pencil, Trash, ToggleRight, ChevronDown, Power } from "lucide-react";
 import debounce from "lodash.debounce";
 
 /* ========= Typy ========= */
@@ -27,23 +19,10 @@ interface Product {
   is_active: boolean;
   price_cents: number | null;
 }
-type Closure = {
-  id: string;
-  date: string;
-  start_time: string;
-  end_time: string;
-  reason: string | null;
-};
 
 /* ========= Utils ========= */
 const fmtPrice = (cents?: number | null) =>
   ((cents ?? 0) / 100).toFixed(2) + " zł";
-const ymd = (d: Date) => {
-  const y = d.getFullYear();
-  const m = `${d.getMonth() + 1}`.padStart(2, "0");
-  const day = `${d.getDate()}`.padStart(2, "0");
-  return `${y}-${m}-${day}`;
-};
 
 /* ========= Modal edycji ========= */
 function EditProductModal({
@@ -59,9 +38,7 @@ function EditProductModal({
   const [form, setForm] = useState({
     name: product.name ?? "",
     priceZl:
-      product.price_cents != null
-        ? (product.price_cents / 100).toFixed(2)
-        : "",
+      product.price_cents != null ? (product.price_cents / 100).toFixed(2) : "",
     description: product.description ?? "",
     subcategory: product.subcategory ?? "",
     image_url: product.image_url ?? "",
@@ -87,12 +64,14 @@ function EditProductModal({
           : 0,
         price_cents: Number.isFinite(cents) ? cents : 0,
       };
+
       const { data, error } = await supabase
         .from("products")
         .update(payload)
         .eq("id", product.id)
         .select("*")
         .single();
+
       if (error) throw error;
       onSaved(data as Product);
       onClose();
@@ -139,6 +118,7 @@ function EditProductModal({
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
               />
             </div>
+
             <div>
               <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
                 Cena (PLN)
@@ -252,13 +232,6 @@ export default function AdminMenuPage() {
   const [orderingOpen, setOrderingOpen] = useState<boolean | null>(null);
   const [toggleOrderingBusy, setToggleOrderingBusy] = useState(false);
 
-  // Przerwy godzinowe (ustabilizowana data „dziś”)
-  const todayStr = useMemo(() => ymd(new Date()), []);
-  const [closures, setClosures] = useState<Closure[]>([]);
-  const [cStart, setCStart] = useState("14:00");
-  const [cEnd, setCEnd] = useState("16:00");
-  const [cReason, setCReason] = useState("");
-
   /* 1) Pobierz lokal z ensure-cookie */
   useEffect(() => {
     let stop = false;
@@ -284,7 +257,7 @@ export default function AdminMenuPage() {
     };
   }, []);
 
-  /* 2) Załaduj produkty + status przyjmowania + przerwy dzisiaj */
+  /* 2) Załaduj produkty + status przyjmowania */
   const fetchAll = useCallback(async () => {
     if (!restaurantId) {
       setLoading(false);
@@ -292,7 +265,7 @@ export default function AdminMenuPage() {
     }
     setLoading(true);
     try {
-      const [{ data, error: err }, ri, cls] = await Promise.all([
+      const [{ data, error: err }, ri] = await Promise.all([
         supabase
           .from("products")
           .select(
@@ -307,25 +280,19 @@ export default function AdminMenuPage() {
           .select("active")
           .eq("id", restaurantId)
           .maybeSingle(),
-        supabase
-          .from("restaurant_closures")
-          .select("*")
-          .eq("restaurant_id", restaurantId)
-          .eq("date", todayStr)
-          .order("start_time", { ascending: true }),
       ]);
 
       if (err) throw err;
       setProducts((data as Product[]) ?? []);
-      if (!ri.error && ri.data) setOrderingOpen(Boolean((ri.data as any).active));
-      setClosures((cls.data as Closure[]) ?? []);
+      if (!ri.error && ri.data)
+        setOrderingOpen(Boolean((ri.data as any).active));
       setError(null);
     } catch (e: any) {
       setError(e.message || "Błąd ładowania danych");
     } finally {
       setLoading(false);
     }
-  }, [restaurantId, todayStr, supabase]);
+  }, [restaurantId, supabase]);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -363,24 +330,9 @@ export default function AdminMenuPage() {
       )
       .subscribe();
 
-    const chClos = supabase
-      .channel("public:restaurant_closures:" + restaurantId)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "restaurant_closures",
-          filter: `restaurant_id=eq.${restaurantId}`,
-        },
-        () => void fetchAll()
-      )
-      .subscribe();
-
     return () => {
       void supabase.removeChannel(chProducts);
       void supabase.removeChannel(chRestaurants);
-      void supabase.removeChannel(chClos);
     };
   }, [restaurantId, supabase, fetchAll]);
 
@@ -393,7 +345,6 @@ export default function AdminMenuPage() {
     const lcName = name.toLowerCase();
     const lcCat = cat.toLowerCase();
 
-    // jeśli nazwa już zaczyna się od kategorii – nie duplikujemy
     if (
       lcName.startsWith(lcCat + " ") ||
       lcName.startsWith(lcCat + "-") ||
@@ -407,39 +358,35 @@ export default function AdminMenuPage() {
 
   /* 4) Akcje */
   const toggleAvailability = async (id: string, current: boolean) => {
-  setTogglingId(id);
+    setTogglingId(id);
 
-  // optymistycznie zmieniamy oba pola w stanie
-  setProducts((prev) =>
-    prev.map((p) =>
-      p.id === id
-        ? { ...p, available: !current, is_active: !current }
-        : p
-    )
-  );
-
-  try {
-    const { error } = await supabase
-      .from("products")
-      .update({ available: !current, is_active: !current })
-      .eq("id", id);
-
-    if (error) throw error;
-  } catch (e: any) {
-    alert(`Nie udało się zmienić dostępności: ${e.message || e}`);
-
-    // rollback lokalnego stanu jeśli błąd
+    // optymistycznie zmieniamy oba pola w stanie
     setProducts((prev) =>
       prev.map((p) =>
-        p.id === id
-          ? { ...p, available: current, is_active: current }
-          : p
+        p.id === id ? { ...p, available: !current, is_active: !current } : p
       )
     );
-  } finally {
-    setTogglingId(null);
-  }
-};
+
+    try {
+      const { error } = await supabase
+        .from("products")
+        .update({ available: !current, is_active: !current })
+        .eq("id", id);
+
+      if (error) throw error;
+    } catch (e: any) {
+      alert(`Nie udało się zmienić dostępności: ${e.message || e}`);
+
+      // rollback lokalnego stanu jeśli błąd
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id === id ? { ...p, available: current, is_active: current } : p
+        )
+      );
+    } finally {
+      setTogglingId(null);
+    }
+  };
 
   const flipOrdering = async () => {
     if (orderingOpen == null || !restaurantId) return;
@@ -454,45 +401,9 @@ export default function AdminMenuPage() {
       if (error) throw error;
     } catch (e: any) {
       setOrderingOpen(!orderingOpen);
-      alert(
-        "Nie udało się zmienić statusu zamawiania: " + (e.message || e)
-      );
+      alert("Nie udało się zmienić statusu zamawiania: " + (e.message || e));
     } finally {
       setToggleOrderingBusy(false);
-    }
-  };
-
-  const addClosure = async () => {
-    if (!restaurantId) return;
-    if (!cStart || !cEnd) return alert("Podaj godziny.");
-    try {
-      const { error } = await supabase.from("restaurant_closures").insert([
-        {
-          restaurant_id: restaurantId,
-          date: todayStr,
-          start_time: cStart,
-          end_time: cEnd,
-          reason: cReason || null,
-        },
-      ]);
-      if (error) throw error;
-      setCReason("");
-      await fetchAll();
-    } catch (e: any) {
-      alert("Nie udało się dodać przerwy: " + (e.message || e));
-    }
-  };
-
-  const delClosure = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from("restaurant_closures")
-        .delete()
-        .eq("id", id);
-      if (error) throw error;
-      await fetchAll();
-    } catch (e: any) {
-      alert("Nie udało się usunąć przerwy: " + (e.message || e));
     }
   };
 
@@ -515,6 +426,7 @@ export default function AdminMenuPage() {
           (p.subcategory || "Bez kategorii") !== filterCat
         )
           return false;
+
         if (search.trim()) {
           const term = search.toLowerCase();
           return (
@@ -545,6 +457,7 @@ export default function AdminMenuPage() {
     debounce((v: string) => setSearch(v), 300),
     []
   );
+
   const handleSaved = (u: Product) =>
     setProducts((prev) => prev.map((p) => (p.id === u.id ? u : p)));
 
@@ -562,21 +475,15 @@ export default function AdminMenuPage() {
           <h1 className="text-3xl font-bold">
             Zarządzanie menu {slug ? `— ${slug}` : ""}
           </h1>
-          {error && (
-            <p className="mt-1 text-sm text-rose-600">{error}</p>
-          )}
+          {error && <p className="mt-1 text-sm text-rose-600">{error}</p>}
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
           <button
             onClick={flipOrdering}
-            disabled={
-              orderingOpen == null || toggleOrderingBusy || !restaurantId
-            }
+            disabled={orderingOpen == null || toggleOrderingBusy || !restaurantId}
             className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold shadow-sm ${
-              orderingOpen
-                ? "bg-emerald-600 text-white"
-                : "bg-white text-slate-800"
+              orderingOpen ? "bg-emerald-600 text-white" : "bg-white text-slate-800"
             }`}
             title="Włącz/wyłącz przyjmowanie zamówień"
           >
@@ -645,83 +552,6 @@ export default function AdminMenuPage() {
         </div>
       </div>
 
-      {/* Pasek przerw „dziś” */}
-      <div className="mb-6 rounded-2xl border bg-white p-5 shadow-sm">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">
-            Przerwy dzisiaj ({todayStr})
-          </h2>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
-              Od
-            </label>
-            <input
-              value={cStart}
-              onChange={(e) => setCStart(e.target.value)}
-              type="time"
-              className="rounded-lg border border-slate-200 bg-white text-slate-900 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
-              Do
-            </label>
-            <input
-              value={cEnd}
-              onChange={(e) => setCEnd(e.target.value)}
-              type="time"
-              className="rounded-lg border border-slate-200 bg-white text-slate-900 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-            />
-          </div>
-          <div className="flex-1">
-            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
-              Powód (opcjonalnie)
-            </label>
-            <input
-              value={cReason}
-              onChange={(e) => setCReason(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white text-slate-900 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-            />
-          </div>
-          <button
-            onClick={addClosure}
-            className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-rose-700"
-          >
-            <Plus size={16} /> Dodaj przerwę
-          </button>
-        </div>
-
-        {closures.length > 0 ? (
-          <ul className="mt-4 divide-y divide-slate-100 text-sm">
-            {closures.map((c) => (
-              <li
-                key={c.id}
-                className="flex items-center justify-between py-2"
-              >
-                <div>
-                  {c.start_time}–{c.end_time}
-                  {c.reason ? (
-                    <span className="text-slate-500"> • {c.reason}</span>
-                  ) : null}
-                </div>
-                <button
-                  onClick={() => delClosure(c.id)}
-                  className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs hover:bg-slate-50"
-                >
-                  <XIcon size={14} /> Usuń
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-3 text-sm text-slate-500">
-            Brak przerw na dziś.
-          </p>
-        )}
-      </div>
-
       {/* Tabela desktop */}
       <div className="hidden md:block">
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -748,6 +578,7 @@ export default function AdminMenuPage() {
                 </th>
               </tr>
             </thead>
+
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
@@ -774,19 +605,13 @@ export default function AdminMenuPage() {
                 ))
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={6}
-                    className="px-6 py-12 text-center text-slate-500"
-                  >
+                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
                     Brak produktów do wyświetlenia.
                   </td>
                 </tr>
               ) : (
                 filtered.map((it, i) => (
-                  <tr
-                    key={it.id}
-                    className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}
-                  >
+                  <tr key={it.id} className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}>
                     <td className="px-6 py-4 text-sm font-medium text-slate-900">
                       {i + 1}
                     </td>
@@ -796,14 +621,10 @@ export default function AdminMenuPage() {
                     <td className="px-6 py-4 text-sm text-slate-700">
                       {fmtPrice(it.price_cents)}
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-700">
-                      {it.subcategory}
-                    </td>
+                    <td className="px-6 py-4 text-sm text-slate-700">{it.subcategory}</td>
                     <td className="px-6 py-4 text-center">
                       <button
-                        onClick={() =>
-                          toggleAvailability(it.id, it.available)
-                        }
+                        onClick={() => toggleAvailability(it.id, it.available)}
                         disabled={togglingId === it.id}
                         className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition ${
                           it.available
@@ -834,13 +655,8 @@ export default function AdminMenuPage() {
                             .delete()
                             .eq("id", it.id)
                             .then(({ error }) => {
-                              if (error)
-                                return alert(
-                                  "Nie udało się usunąć produktu"
-                                );
-                              setProducts((p) =>
-                                p.filter((x) => x.id !== it.id)
-                              );
+                              if (error) return alert("Nie udało się usunąć produktu");
+                              setProducts((p) => p.filter((x) => x.id !== it.id));
                             });
                         }}
                         className="inline-flex items-center gap-1 text-rose-600 hover:text-rose-800"
@@ -860,10 +676,7 @@ export default function AdminMenuPage() {
       <div className="mt-6 space-y-4 md:hidden">
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => (
-            <div
-              key={i}
-              className="flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm"
-            >
+            <div key={i} className="flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm">
               <div className="h-4 w-3/4 rounded bg-slate-200" />
               <div className="flex justify-between">
                 <div className="h-4 w-1/4 rounded bg-slate-200" />
@@ -882,10 +695,7 @@ export default function AdminMenuPage() {
           </div>
         ) : (
           filtered.map((it) => (
-            <div
-              key={it.id}
-              className="relative flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm"
-            >
+            <div key={it.id} className="relative flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between">
                 <div className="text-lg font-semibold text-slate-900">
                   {displayNameWithCategory(it)}
@@ -894,14 +704,13 @@ export default function AdminMenuPage() {
                   {fmtPrice(it.price_cents)}
                 </div>
               </div>
-              <div className="text-xs text-slate-600">
-                {it.subcategory}
-              </div>
+
+              <div className="text-xs text-slate-600">{it.subcategory}</div>
+
               {it.description && (
-                <div className="text-sm text-slate-800">
-                  {it.description}
-                </div>
+                <div className="text-sm text-slate-800">{it.description}</div>
               )}
+
               <div className="mt-2 flex items-center justify-between gap-2">
                 <button
                   onClick={() => toggleAvailability(it.id, it.available)}
@@ -910,20 +719,14 @@ export default function AdminMenuPage() {
                     it.available
                       ? "bg-emerald-100 text-emerald-800"
                       : "bg-rose-100 text-rose-800"
-                  } ${
-                    togglingId === it.id
-                      ? "cursor-not-allowed opacity-70"
-                      : ""
-                  }`}
+                  } ${togglingId === it.id ? "cursor-not-allowed opacity-70" : ""}`}
                 >
                   {it.available ? "Dostępny" : "Wyłączony"}{" "}
                   <ToggleRight className="h-4 w-4" />
                 </button>
+
                 <div className="flex gap-3">
-                  <button
-                    onClick={() => setEditing(it)}
-                    className="text-sky-700"
-                  >
+                  <button onClick={() => setEditing(it)} className="text-sky-700">
                     <Pencil size={16} />
                   </button>
                   <button
@@ -934,13 +737,8 @@ export default function AdminMenuPage() {
                         .delete()
                         .eq("id", it.id)
                         .then(({ error }) => {
-                          if (error)
-                            return alert(
-                              "Nie udało się usunąć produktu"
-                            );
-                          setProducts((p) =>
-                            p.filter((x) => x.id !== it.id)
-                          );
+                          if (error) return alert("Nie udało się usunąć produktu");
+                          setProducts((p) => p.filter((x) => x.id !== it.id));
                         });
                     }}
                     className="text-rose-600"

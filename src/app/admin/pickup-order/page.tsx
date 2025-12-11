@@ -2173,7 +2173,7 @@ const playDing = useCallback(async () => {
       </div>
 
       {/* Pasek filtrów */}
-      <div className="sticky top-0 z-20 -mx-4 mb-5 bg-white/90 p-4 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:border-slate-200">
+      <div className="sticky top-0 z-20 -mx-4 mb-5 bg-white/90 p-4 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:border-slate-200 z-1">
         <div className="flex flex-wrap items-center gap-2">
           <select
             className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm"
