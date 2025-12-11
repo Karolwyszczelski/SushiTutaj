@@ -259,18 +259,18 @@ export default function SushiOfMonthForm() {
         </div>
       </div>
 
-      <div className="flex items-center justify-end gap-2 pt-2">
+      <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:items-center sm:justify-end">
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm text-slate-800 hover:bg-slate-50"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm text-slate-800 hover:bg-slate-50 sm:w-auto"
         >
           <RotateCcw className="h-4 w-4" /> Odrzuć zmiany
         </button>
         <button
           type="submit"
           disabled={saving}
-          className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50 sm:w-auto"
         >
           <Save className="h-4 w-4" /> Zapisz i zastosuj wszędzie
         </button>
