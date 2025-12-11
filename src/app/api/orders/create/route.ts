@@ -1283,6 +1283,7 @@ const kitchen_note = buildKitchenNote(normalizedItems as any);
         delivery_cost: n.delivery_cost,
         status: n.status,
         client_delivery_time: clientDeliveryForDb,
+        scheduled_delivery_at: scheduledDeliveryAt, // <--- DODANE
         deliveryTime: n.deliveryTime,
         eta: n.eta,
         user: n.user_id ?? null,
