@@ -584,7 +584,11 @@ function normalizeBody(raw: any, req: Request): any {
   };
 }
 
+
+
 /* ===================== Handler ===================== */
+
+
 export async function POST(req: Request) {
   try {
     // 1) Body + Turnstile
@@ -1125,23 +1129,103 @@ export async function POST(req: Request) {
     });
 
     // 5) Przygotowanie client_delivery_time (varchar(10))
-    let clientDeliveryForDb: any = n.client_delivery_time;
-    if (typeof clientDeliveryForDb === "string") {
-      if (clientDeliveryForDb !== "asap") {
-        const d = new Date(clientDeliveryForDb);
-        if (!isNaN(d.getTime())) {
-          const hh = pad(d.getHours());
-          const mm = pad(d.getMinutes());
-          clientDeliveryForDb = `${hh}:${mm}`;
-        }
-      }
-      if (clientDeliveryForDb.length > 10) {
-        clientDeliveryForDb = clientDeliveryForDb.slice(0, 10);
-      }
+// + sprawdzenie blokad czasowych restaurant_blocked_times
+let clientDeliveryForDb: any = n.client_delivery_time;
+let requestedDateStr: string | null = null;
+let requestedMinutes: number | null = null;
+
+if (typeof clientDeliveryForDb === "string" && clientDeliveryForDb) {
+  if (clientDeliveryForDb !== "asap") {
+    let d = new Date(clientDeliveryForDb);
+
+    // fallback, gdy frontend przekaże tylko "HH:MM"
+    if (isNaN(d.getTime()) && /^\d{1,2}:\d{2}/.test(clientDeliveryForDb)) {
+      const [hhRaw, mmRaw] = clientDeliveryForDb.split(":");
+      const hhNum = Number(hhRaw) || 0;
+      const mmNum = Number(mmRaw) || 0;
+      d = new Date(now);
+      d.setHours(hhNum, mmNum, 0, 0);
     }
 
-    // 5.1) Notatka dla kuchni
-    const kitchen_note = buildKitchenNote(normalizedItems as any);
+    if (!isNaN(d.getTime())) {
+      requestedDateStr = `${d.getFullYear()}-${pad(
+        d.getMonth() + 1
+      )}-${pad(d.getDate())}`;
+      requestedMinutes = d.getHours() * 60 + d.getMinutes();
+
+      const hh = pad(d.getHours());
+      const mm = pad(d.getMinutes());
+      clientDeliveryForDb = `${hh}:${mm}`;
+    }
+  }
+}
+
+// jeśli klient wybrał ASAP lub nie dało się sparsować daty – bierzemy „teraz”
+if (!requestedDateStr || requestedMinutes == null) {
+  const d = now;
+  requestedDateStr = `${d.getFullYear()}-${pad(
+    d.getMonth() + 1
+  )}-${pad(d.getDate())}`;
+  requestedMinutes = d.getHours() * 60 + d.getMinutes();
+}
+
+if (typeof clientDeliveryForDb === "string" && clientDeliveryForDb.length > 10) {
+  clientDeliveryForDb = clientDeliveryForDb.slice(0, 10);
+}
+
+// 5.0) Sprawdzenie blokad czasowych (restaurant_blocked_times)
+try {
+  if (requestedDateStr && requestedMinutes != null) {
+    const { data: blockedSlots, error: blockedErr } = await supabaseAdmin
+      .from("restaurant_blocked_times")
+      .select("full_day, from_time, to_time, kind")
+      .eq("restaurant_id", restaurant_id)
+      .eq("block_date", requestedDateStr);
+
+    if (blockedErr) {
+      console.error(
+        "[orders.create] restaurant_blocked_times error:",
+        (blockedErr as any)?.message || blockedErr
+      );
+    } else if (blockedSlots && blockedSlots.length > 0) {
+      const isBlocked = (blockedSlots as any[]).some((slot) => {
+        const type = (slot.kind as string) || "both";
+
+        // blokujemy tylko zamówienia (order/both)
+        if (type === "reservation") return false;
+
+        // blokada całego dnia
+        if (slot.full_day) return true;
+
+        // blokada zakresu godzin
+        if (!slot.from_time || !slot.to_time) return false;
+
+        const [fh, fm = "0"] = String(slot.from_time).split(":");
+        const [th, tm = "0"] = String(slot.to_time).split(":");
+        const fromM = Number(fh) * 60 + Number(fm);
+        const toM = Number(th) * 60 + Number(tm);
+
+        if (!Number.isFinite(fromM) || !Number.isFinite(toM)) return false;
+
+        return (
+          requestedMinutes! >= fromM && requestedMinutes! <= toM
+        );
+      });
+
+      if (isBlocked) {
+        return NextResponse.json(
+          { error: "Wybrany czas jest niedostępny." },
+          { status: 400 }
+        );
+      }
+    }
+  }
+} catch (e) {
+  console.error("[orders.create] restaurant_blocked_times check error:", e);
+}
+
+// 5.1) Notatka dla kuchni
+const kitchen_note = buildKitchenNote(normalizedItems as any);
 
     // 6) Insert orders
     const itemsForOrdersColumn = JSON.stringify(normalizedItems);

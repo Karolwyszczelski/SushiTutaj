@@ -2,16 +2,22 @@
 "use client";
 
 import { Tab } from "@headlessui/react";
+import { useSearchParams } from "next/navigation";
 import TableLayoutForm from "@/components/admin/settings/TableLayoutForm";
 import DeliveryZonesForm from "@/components/admin/settings/DeliveryZonesForm";
 import BlockedAddressesForm from "@/components/admin/settings/BlockedAddressesForm";
 import DiscountCodesForm from "@/components/admin/settings/DiscountCodesForm";
+import BlockedTimesForm from "@/components/admin/settings/BlockedTimesForm";
 
 function classNames(...classes: string[]) {
   return classes.filter(Boolean).join(" ");
 }
 
 export default function SettingsPage() {
+  const searchParams = useSearchParams();
+  const restaurantSlug =
+    (searchParams.get("restaurant") || "").toLowerCase() || null;
+
   return (
     <div className="min-h-screen bg-slate-50 p-6 text-slate-900">
       {/* nagłówek */}
@@ -75,6 +81,18 @@ export default function SettingsPage() {
           >
             Promocje &amp; rabaty
           </Tab>
+          <Tab
+            className={({ selected }) =>
+              classNames(
+                "flex-1 rounded-lg px-3 py-2 text-center font-medium outline-none transition",
+                selected
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-600 hover:text-slate-900"
+              )
+            }
+          >
+            Blokady godzin
+          </Tab>
         </Tab.List>
 
         <Tab.Panels className="mt-4">
@@ -99,6 +117,13 @@ export default function SettingsPage() {
           <Tab.Panel className="focus:outline-none">
             <div className="rounded-2xl border bg-white p-5 shadow-sm">
               <DiscountCodesForm />
+            </div>
+          </Tab.Panel>
+
+          {/* NOWY PANEL: blokady godzin */}
+          <Tab.Panel className="focus:outline-none">
+            <div className="rounded-2xl border bg-white p-5 shadow-sm">
+              <BlockedTimesForm restaurantSlug={restaurantSlug} />
             </div>
           </Tab.Panel>
         </Tab.Panels>

@@ -560,6 +560,19 @@ const accentBtn =
 type Day = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = niedziela
 type Range = [h: number, m: number, H: number, M: number];
 
+/** Pojedyncza blokada godzin (z API /api/admin/blocked-times) */
+type BlockedTime = {
+  id: string;
+  /** Data w formacie YYYY-MM-DD (w strefie Europe/Warsaw) */
+  date: string;
+  /** Czy cały dzień jest zablokowany */
+  full_day: boolean;
+  /** Początek blokady HH:mm (lub null przy full_day) */
+  from_time: string | null;
+  /** Koniec blokady HH:mm (lub null przy full_day) */
+  to_time: string | null;
+};
+
 const CITY_SCHEDULE: Record<
   string,
   Partial<Record<Day, Range>> & { default?: Range }
@@ -595,6 +608,48 @@ function isOpenFor(slug: string, d = toZonedTime(new Date(), tz)) {
   const o = r[0] * 60 + r[1];
   const c = r[2] * 60 + r[3];
   return { open: mins >= o && mins <= c, label: fmt(r), range: r };
+}
+
+/* ===== helper do sprawdzania blokad godzin ===== */
+
+const dateKey = (d: Date) => {
+  const y = d.getFullYear();
+  const m = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  return `${y}-${m}-${day}`;
+};
+
+const hmToMinutes = (s: string | null | undefined): number | null => {
+  if (!s) return null;
+  const [h, m] = s.split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+};
+
+/**
+ * Sprawdza, czy dana data/godzina wpada w dowolną blokadę
+ * (pełny dzień albo zakres godzinowy).
+ */
+function isDateTimeBlocked(dt: Date, blocks: BlockedTime[]): boolean {
+  if (!blocks || !blocks.length) return false;
+
+  const key = dateKey(dt);
+  const minutes = dt.getHours() * 60 + dt.getMinutes();
+
+  return blocks.some((b) => {
+    if (!b || !b.date) return false;
+    if (b.date !== key) return false;
+
+    // cały dzień zablokowany
+    if (b.full_day) return true;
+
+    const from = hmToMinutes(b.from_time);
+    const to = hmToMinutes(b.to_time);
+    if (from == null || to == null) return false;
+
+    // blokujemy [from, to) – od początku włącznie, do końca bez ostatniej minuty
+    return minutes >= from && minutes < to;
+  });
 }
 /* ================================================================= */
 
@@ -2307,6 +2362,8 @@ export default function CheckoutModal() {
   const timeMin = openInfo.range ? `${pad(openInfo.range[0])}:${pad(openInfo.range[1])}` : "12:00";
   const timeMax = openInfo.range ? `${pad(openInfo.range[2])}:${pad(openInfo.range[3])}` : "23:59";
   const [scheduledTime, setScheduledTime] = useState<string>(timeMin);
+  /** Blokady godzin dla aktualnej restauracji */
+const [blockedTimes, setBlockedTimes] = useState<BlockedTime[]>([]);
 
 const [loyaltyStickers, setLoyaltyStickers] = useState<number | null>(null);
 const [loyaltyChoice, setLoyaltyChoice] = useState<LoyaltyChoice>("keep");
@@ -2394,6 +2451,64 @@ const [loyaltyLoading, setLoyaltyLoading] = useState(false);
       cancelled = true;
     };
   }, [restaurantSlug]);
+
+  // Pobranie blokad godzin dla aktualnej restauracji (tylko gdy modal otwarty)
+useEffect(() => {
+  if (!restaurantSlug || !isCheckoutOpen) {
+    setBlockedTimes([]);
+    return;
+  }
+
+  let cancelled = false;
+
+  const loadBlocked = async () => {
+    try {
+      const res = await fetch(
+        `/api/admin/blocked-times?restaurant=${encodeURIComponent(
+          restaurantSlug
+        )}`,
+        { cache: "no-store" }
+      );
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const json = await res.json();
+
+      // API może zwrócić [row] albo { items:[row] } – bierzemy bezpiecznie tablicę
+      const raw: any[] = Array.isArray(json)
+        ? json
+        : Array.isArray((json as any)?.items)
+        ? (json as any).items
+        : [];
+
+      if (cancelled) return;
+
+      const mapped: BlockedTime[] = raw.map((row: any) => ({
+        id: String(row.id),
+        date: row.date, // 'YYYY-MM-DD'
+        full_day: !!row.full_day,
+        // obsłużymy też nazwy time_from / time_to, jeśli tak jest w API
+        from_time: row.from_time ?? row.time_from ?? null,
+        to_time: row.to_time ?? row.time_to ?? null,
+      }));
+
+      setBlockedTimes(mapped);
+    } catch (e) {
+      console.error("Nie udało się pobrać blokad godzin", e);
+      if (!cancelled) {
+        setBlockedTimes([]);
+      }
+    }
+  };
+
+  loadBlocked();
+
+  return () => {
+    cancelled = true;
+  };
+}, [restaurantSlug, isCheckoutOpen]);
 
      useEffect(() => {
     // jeśli modal zamknięty, user niezalogowany albo brak restauracji – czyścimy stan
@@ -3048,7 +3163,7 @@ const [loyaltyLoading, setLoyaltyLoading] = useState(false);
       return;
     }
 
-    if (deliveryTimeOption === "schedule" && selectedOption) {
+   if (deliveryTimeOption === "schedule" && selectedOption) {
   const [h, m] = scheduledTime.split(":").map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(m)) {
     setErrorMessage(
@@ -3062,6 +3177,8 @@ const [loyaltyLoading, setLoyaltyLoading] = useState(false);
   const nowZoned = toZonedTime(new Date(), tz);
   const dt = new Date(nowZoned);
   dt.setHours(h, m, 0, 0);
+
+  // jeśli klient wybierze godzinę z przeszłości – traktujemy jako jutro
   if (dt.getTime() < nowZoned.getTime()) {
     dt.setDate(dt.getDate() + 1);
   }
@@ -3070,6 +3187,14 @@ const [loyaltyLoading, setLoyaltyLoading] = useState(false);
   if (diffMinutes < MIN_SCHEDULE_MINUTES) {
     setErrorMessage(
       `Przy wyborze realizacji „na godzinę” minimalny czas to ${MIN_SCHEDULE_MINUTES} minut od teraz.`
+    );
+    return;
+  }
+
+  // NOWE: sprawdzenie blokad godzin z panelu admina
+  if (isDateTimeBlocked(dt, blockedTimes)) {
+    setErrorMessage(
+      "Wybrana godzina jest niedostępna (zablokowana w systemie). Wybierz inną godzinę."
     );
     return;
   }

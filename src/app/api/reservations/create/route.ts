@@ -14,7 +14,7 @@ const supabaseAdmin = createClient(
 const SLOT_DURATION_MIN = 90;
 const START_HOUR = 12;
 const START_MIN = 30;
-const END_HOUR = 20;       // do 20:00
+const END_HOUR = 20; // do 20:00
 const MAX_PER_SLOT = 5;
 
 /** Minimalny czas wyprzedzenia rezerwacji (w minutach) */
@@ -88,10 +88,7 @@ export async function POST(req: Request) {
 
     const day: string = (body.date || "").trim(); // "YYYY-MM-DD"
     const timeRaw: string = (body.time || "").trim(); // "HH:mm" | "HH:mm:ss"
-    const guests: number = Math.max(
-      1,
-      Math.min(20, Number(body.guests || 1))
-    );
+    const guests: number = Math.max(1, Math.min(20, Number(body.guests || 1)));
 
     const name: string = String(body.name || "").trim();
     const phone: string = String(body.phone || "").trim();
@@ -152,6 +149,62 @@ export async function POST(req: Request) {
       );
     }
 
+    /* ===== BLOKADY CZASOWE z restaurant_blocked_times (rezerwacje) ===== */
+    try {
+      // zamieniamy godzinę rezerwacji na minuty od północy
+      const [rh, rm = "0"] = timeHHMMSS.slice(0, 5).split(":");
+      const requestedMinutes = Number(rh) * 60 + Number(rm);
+
+      if (Number.isFinite(requestedMinutes)) {
+        const { data: blockedSlots, error: blockedErr } = await supabaseAdmin
+          .from("restaurant_blocked_times")
+          .select("full_day, from_time, to_time, kind")
+          .eq("restaurant_id", rid)
+          .eq("block_date", day);
+
+        if (blockedErr) {
+          console.error(
+            "[reservations.create] restaurant_blocked_times error:",
+            (blockedErr as any)?.message || blockedErr
+          );
+        } else if (blockedSlots && blockedSlots.length > 0) {
+          const isBlocked = (blockedSlots as any[]).some((slot) => {
+            const type = (slot.kind as string) || "both";
+
+            // Interesują nas blokady dla rezerwacji lub wspólne
+            if (type !== "reservation" && type !== "both") return false;
+
+            // blokada całego dnia
+            if (slot.full_day) return true;
+
+            // blokada zakresu godzin
+            if (!slot.from_time || !slot.to_time) return false;
+
+            const [fh, fm = "0"] = String(slot.from_time).split(":");
+            const [th, tm = "0"] = String(slot.to_time).split(":");
+            const fromM = Number(fh) * 60 + Number(fm);
+            const toM = Number(th) * 60 + Number(tm);
+
+            if (!Number.isFinite(fromM) || !Number.isFinite(toM)) return false;
+
+            return requestedMinutes >= fromM && requestedMinutes <= toM;
+          });
+
+          if (isBlocked) {
+            return NextResponse.json(
+              { error: "Wybrany czas jest niedostępny." },
+              { status: 400 }
+            );
+          }
+        }
+      }
+    } catch (e) {
+      console.error(
+        "[reservations.create] restaurant_blocked_times check error:",
+        e
+      );
+    }
+
     // Lista dozwolonych slotów dla dnia
     const allowed = generateSlots(day);
     const timeHHMM = timeHHMMSS.slice(0, 5);
@@ -169,14 +222,6 @@ export async function POST(req: Request) {
           error:
             "Rezerwację można złożyć najpóźniej 60 minut przed wybraną godziną.",
         },
-        { status: 400 }
-      );
-    }
-
-    // Opcjonalne okno przyjmowania rezerwacji (np. 12:30–21:45)
-    if (!isWithinAcceptWindow()) {
-      return NextResponse.json(
-        { error: "Rezerwacje przyjmujemy 12:30–21:45." },
         { status: 400 }
       );
     }
