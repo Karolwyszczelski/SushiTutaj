@@ -1,5 +1,5 @@
 // src/components/admin/settings/BusinessInfoForm.tsx
-/* eslint-disable @next/next/no-img-element */
+
 "use client";
 
 import { useEffect, useState } from "react";

@@ -26,8 +26,7 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
 type PushSubscriptionRow = {
   id: string;
   endpoint: string;
-  p256dh: string;
-  auth: string;
+  subscription: any;
 };
 
 /**
@@ -41,8 +40,8 @@ async function sendPushToRestaurant(
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
 
   const { data: subs, error } = await supabaseAdmin
-    .from("admin_push_subscriptions") // <-- ta tabela ze screena
-    .select("id, endpoint, p256dh, auth")
+    .from("admin_push_subscriptions")
+    .select("id, endpoint, subscription")
     .eq("restaurant_id", restaurant_id);
 
   if (error || !subs || subs.length === 0) return;
@@ -51,22 +50,23 @@ async function sendPushToRestaurant(
 
   await Promise.all(
     subs.map(async (s: PushSubscriptionRow) => {
+      const sub: any = s.subscription || null;
+      if (!sub || !sub.endpoint) {
+        // jeśli mamy śmieci w bazie – czyścimy
+        await supabaseAdmin
+          .from("admin_push_subscriptions")
+          .delete()
+          .eq("id", s.id);
+        return;
+      }
+
       try {
-        await webpush.sendNotification(
-          {
-            endpoint: s.endpoint,
-            keys: {
-              p256dh: s.p256dh,
-              auth: s.auth,
-            },
-          } as any,
-          json
-        );
+        await webpush.sendNotification(sub as any, json);
       } catch (err: any) {
         // 404 / 410 – subskrypcja martwa, czyścimy
         if (err?.statusCode === 404 || err?.statusCode === 410) {
           await supabaseAdmin
-            .from("push_subscriptions")
+            .from("admin_push_subscriptions")
             .delete()
             .eq("id", s.id);
         } else {

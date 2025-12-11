@@ -809,63 +809,75 @@ export default function PickupOrdersPage() {
     })();
   }, []);
 
-  // Włączenie powiadomień push „na żądanie”
-  const enablePush = useCallback(async () => {
-    try {
-      setPushError(null);
-      setPushStatus("checking");
+ // Włączenie powiadomień push „na żądanie”
+const enablePush = useCallback(async () => {
+  try {
+    setPushError(null);
+    setPushStatus("checking");
 
-      if (typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
 
-      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-        setPushStatus("unsupported");
-        return;
-      }
-
-      if (!VAPID_PUBLIC_KEY) {
-        setPushStatus("error");
-        setPushError(
-          "Brak klucza VAPID (NEXT_PUBLIC_VAPID_PUBLIC_KEY). Skonfiguruj go w env."
-        );
-        return;
-      }
-
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") {
-        setPushStatus("not-allowed");
-        return;
-      }
-
-      // jeśli SW jeszcze nie ma, zarejestruj (w praktyce robi to ClientWrapper)
-      const reg =
-        (await navigator.serviceWorker.getRegistration()) ||
-        (await navigator.serviceWorker.register("/sw.js"));
-
-      // jeśli już jest subskrypcja – nie dubluj
-      const existing = await reg.pushManager.getSubscription();
-      if (existing) {
-        setPushStatus("subscribed");
-        return;
-      }
-
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-      });
-
-      await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sub),
-      });
-
-      setPushStatus("subscribed");
-    } catch (e) {
-      console.error(e);
-      setPushStatus("error");
-      setPushError("Nie udało się włączyć powiadomień.");
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPushStatus("unsupported");
+      return;
     }
-  }, []);
+
+    if (!VAPID_PUBLIC_KEY) {
+      setPushStatus("error");
+      setPushError(
+        "Brak klucza VAPID (NEXT_PUBLIC_VAPID_PUBLIC_KEY). Skonfiguruj go w env."
+      );
+      return;
+    }
+
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") {
+      setPushStatus("not-allowed");
+      return;
+    }
+
+    // jeśli SW jeszcze nie ma, zarejestruj (w praktyce robi to ClientWrapper)
+    const reg =
+      (await navigator.serviceWorker.getRegistration()) ||
+      (await navigator.serviceWorker.register("/sw.js"));
+
+    // jeśli już jest subskrypcja – nie dubluj
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) {
+      console.log("[push] istniejąca subskrypcja", existing.endpoint);
+      setPushStatus("subscribed");
+      return;
+    }
+
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+    });
+
+    console.log("[push] nowa subskrypcja", sub.endpoint);
+
+    const res = await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(sub),
+    });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      console.error("[push] subscribe FAIL", res.status, txt);
+      setPushStatus("error");
+      setPushError("Nie udało się zapisać subskrypcji w bazie.");
+      return;
+    }
+
+    console.log("[push] subscribe OK");
+    setPushStatus("subscribed");
+  } catch (e) {
+    console.error("[push] enablePush error", e);
+    setPushStatus("error");
+    setPushError("Nie udało się włączyć powiadomień.");
+  }
+}, []);
 
 
   const [page, setPage] = useState(1);

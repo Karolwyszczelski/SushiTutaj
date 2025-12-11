@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     icon: "/favicon.ico",
     apple: "/apple-touch-icon.png", // ikona iOS / PWA
   },
-  themeColor: "#b31217", // kolor brandu (spójny z manifestem)
+  themeColor: "#000000", // kolor brandu (spójny z manifestem)
   openGraph: {
     type: "website",
     url: "/", // dzięki metadataBase zrobi się pełny adres
