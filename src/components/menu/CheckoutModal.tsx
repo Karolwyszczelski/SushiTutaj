@@ -483,6 +483,21 @@ function isColaProduct(prod: any, prodInfo?: ProductDb | null): boolean {
   );
 }
 
+function isSushiSpecjalProduct(prod: any, prodInfo?: ProductDb | null): boolean {
+  const text = normalizePlain(
+    `${prod?.name || ""} ${prodInfo?.name || ""} ${prodInfo?.description || ""}`
+  );
+  if (!text) return false;
+
+  // złapiemy m.in. "Zestaw SUSHI SPECJAŁ 100 szt"
+  // oraz ewentualne warianty bez słowa „SUSHI”
+  return (
+    text.includes("sushi specjal") ||
+    text.includes("zestaw specjal 100") ||
+    text.includes("specjal 100 szt")
+  );
+}
+
 function computeAddonPrice(addon: string, product?: ProductDb | null): number {
   if (ALL_SAUCES.includes(addon)) return 2;
   if (addon === SWAP_FEE_NAME) return 5;
@@ -1257,7 +1272,7 @@ const ProductItem: React.FC<{
     [prod, prodInfo]
   );
 
-   // Bubble tea – wybór smaku
+  // Bubble tea – wybór smaku
   const isBubbleTea = useMemo(
     () => isBubbleTeaProduct(prod, prodInfo),
     [prod, prodInfo]
@@ -1287,25 +1302,11 @@ const ProductItem: React.FC<{
     [prod, prodInfo]
   );
 
-   const isSushiSpecjal = useMemo(
+  // Zestaw SUSHI SPECJAŁ 100 szt – wybór proporcji pieczone/surowe
+  const isSushiSpecjal = useMemo(
     () => isSushiSpecjalProduct(prod, prodInfo),
     [prod, prodInfo]
   );
-
-  function isSushiSpecjalProduct(
-  prod: any,
-  prodInfo?: ProductDb | null
-): boolean {
-  const text = normalizePlain(
-    `${prod?.name || ""} ${prodInfo?.name || ""} ${
-      prodInfo?.description || ""
-    }`
-  );
-  if (!text) return false;
-
-  // złapiemy m.in. "Zestaw SUSHI SPECJAŁ (100 szt)"
-  return text.includes("sushi specjal");
-}
 
   const currentGyozaVariant = useMemo<GyozaVariant | null>(() => {
     if (!isGyoza) return null;
@@ -2066,43 +2067,47 @@ const ProductItem: React.FC<{
         )}
 
         {isSushiSpecjal && (
-          <div>
-            <div className="font-semibold mb-1">
-              Proporcje pieczone / surowe w zestawie
-            </div>
-            <p className="text-[11px] text-black/60 mb-1">
-              Wybierz, jaką część zestawu chcesz w wersji pieczonej. Informacja trafia bezpośrednio do kuchni – bez dopłaty.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {SUSHI_SPECJAL_VARIANTS.map((variant) => {
-                const isActive = currentSushiSpecjalVariant === variant;
-                const label = variant.replace(
-                  SUSHI_SPECJAL_ADDON_PREFIX,
-                  ""
-                );
-                return (
-                  <button
-                    key={variant}
-                    type="button"
-                    onClick={() =>
-                      setSushiSpecjalVariant(
-                        isActive ? null : (variant as SushiSpecjalVariant)
-                      )
-                    }
-                    className={clsx(
-                      "px-2 py-1 rounded text-xs border",
-                      isActive
-                        ? "bg-black text-white border-black"
-                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
-                    )}
-                  >
-                    {isActive ? `✓ ${label}` : label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+  <div>
+    <div className="font-semibold mb-1">
+      Proporcje pieczone / surowe w zestawie
+    </div>
+    <p className="text-[11px] text-black/60 mb-1">
+      Wybierz, jaką część zestawu chcesz w wersji pieczonej. Informacja trafia
+      bezpośrednio do kuchni – bez dopłaty.
+    </p>
+
+    <div className="flex flex-wrap gap-2">
+      {SUSHI_SPECJAL_VARIANTS.map((variant) => {
+        const isActive = currentSushiSpecjalVariant === variant;
+        const label = variant.replace(SUSHI_SPECJAL_ADDON_PREFIX, "");
+        return (
+          <button
+            key={variant}
+            type="button"
+            onClick={() =>
+              setSushiSpecjalVariant(
+                isActive ? null : (variant as SushiSpecjalVariant)
+              )
+            }
+            className={clsx(
+              "px-2 py-1 rounded text-xs border",
+              isActive
+                ? "bg-black text-white border-black"
+                : "bg-white text-black hover:bg-gray-50 border-gray-200"
+            )}
+          >
+            {isActive ? `✓ ${label}` : label}
+          </button>
+        );
+      })}
+    </div>
+
+    <p className="text-[11px] text-black/60 mt-2">
+      Jeżeli masz uczulenie na któryś ze składników, napisz to proszę w notatce
+      do tego zestawu poniżej.
+    </p>
+  </div>
+)}
 
         {!isSet && (
           <div>
@@ -3416,7 +3421,12 @@ return (
         </div>
 
         <div className="overflow-y-auto overscroll-contain modal-scroll">
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 p-6">
+          <div
+    className={clsx(
+      "grid grid-cols-1 gap-6 p-6",
+      !orderSent && "lg:grid-cols-[1fr_380px]"
+    )}
+  >
             <div>
               {orderSent ? (
                 <div className="min-h-[320px] flex flex-col items-center justify-center text-center space-y-5 px-4">
@@ -3607,7 +3617,7 @@ return (
                     </div>
                   )}
 
-                  {/* KROK 2 DESKTOP / KROK 3 MOBILE: dane kontaktowe + podsumowanie mobile */}
+                   {/* KROK 2 DESKTOP / KROK 3 MOBILE: dane kontaktowe + podsumowanie mobile */}
                   {((!isMobile && checkoutStep === 2) ||
                     (isMobile && checkoutStep === 3)) && (
                     <div className="space-y-6">
@@ -3650,9 +3660,7 @@ return (
                               className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
                               value={street}
                               onChange={(e) => setStreet(e.target.value)}
-                              disabled={
-                                REQUIRE_AUTOCOMPLETE && !custCoords
-                              }
+                              disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
                             />
                             <div className="flex gap-2">
                               <input
@@ -3663,9 +3671,7 @@ return (
                                 onChange={(e) =>
                                   setFlatNumber(e.target.value)
                                 }
-                                disabled={
-                                  REQUIRE_AUTOCOMPLETE && !custCoords
-                                }
+                                disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
                               />
                               <input
                                 type="text"
@@ -3675,9 +3681,7 @@ return (
                                 onChange={(e) =>
                                   setPostalCode(e.target.value)
                                 }
-                                disabled={
-                                  REQUIRE_AUTOCOMPLETE && !custCoords
-                                }
+                                disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
                               />
                             </div>
                             <input
@@ -3686,9 +3690,7 @@ return (
                               className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
                               value={city}
                               onChange={(e) => setCity(e.target.value)}
-                              disabled={
-                                REQUIRE_AUTOCOMPLETE && !custCoords
-                              }
+                              disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
                             />
                             {REQUIRE_AUTOCOMPLETE && !custCoords && (
                               <p className="text-xs text-red-600">
@@ -3797,83 +3799,104 @@ return (
                               Podsumowanie
                             </h4>
                             <div className="space-y-1 text-sm">
-  <div className="flex justify-between">
-    <span>Produkty:</span>
-    <span>{baseTotal.toFixed(2)} zł</span>
-  </div>
-  {selectedOption && (
-    <div className="flex justify-between">
-      <span>Opakowanie:</span>
-      <span>3.00 zł</span>
-    </div>
-  )}
-  {deliveryInfo && (
-    <div className="flex justify-between">
-      <span>Dostawa:</span>
-      <span>{deliveryInfo.cost.toFixed(2)} zł</span>
-    </div>
-  )}
-</div>
+                              <div className="flex justify-between">
+                                <span>Produkty:</span>
+                                <span>{baseTotal.toFixed(2)} zł</span>
+                              </div>
+                              {selectedOption && (
+                                <div className="flex justify-between">
+                                  <span>Opakowanie:</span>
+                                  <span>3.00 zł</span>
+                                </div>
+                              )}
+                              {deliveryInfo && (
+                                <div className="flex justify-between">
+                                  <span>Dostawa:</span>
+                                  <span>
+                                    {deliveryInfo.cost.toFixed(2)} zł
+                                  </span>
+                                </div>
+                              )}
+                            </div>
 
-{/* LOYALTY – MOBILE */}
-{isLoggedIn && (
-  <div className="mt-2">
-    {loyaltyLoading ? (
-      <p className="text-[11px] text-black/60">
-        Sprawdzamy Twoje naklejki...
-      </p>
-    ) : (
-      typeof loyaltyStickers === "number" && (
-        <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs space-y-2">
-          <div>
-            Masz <b>{loyaltyStickers}</b> naklejek w programie lojalnościowym.
-          </div>
+                            {/* LOYALTY – MOBILE */}
+                            {isLoggedIn && (
+                              <div className="mt-2">
+                                {loyaltyLoading ? (
+                                  <p className="text-[11px] text-black/60">
+                                    Sprawdzamy Twoje naklejki...
+                                  </p>
+                                ) : (
+                                  typeof loyaltyStickers === "number" && (
+                                    <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs space-y-2">
+                                      <div>
+                                        Masz{" "}
+                                        <b>{loyaltyStickers}</b> naklejek w
+                                        programie lojalnościowym.
+                                      </div>
 
-          {canUseLoyalty4 && (
-            <div className="space-y-1">
-              <div className="font-semibold text-sm">
-                Czy chcesz wymienić 4 naklejki na darmową rolkę?
-              </div>
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="loyalty_choice_mobile"
-                  value="use_4"
-                  checked={loyaltyChoice === "use_4"}
-                  onChange={() => setLoyaltyChoice("use_4")}
-                />
-                <span>Tak, wykorzystaj 4 naklejki w tym zamówieniu.</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="loyalty_choice_mobile"
-                  value="keep"
-                  checked={loyaltyChoice === "keep"}
-                  onChange={() => setLoyaltyChoice("keep")}
-                />
-                <span>Nie teraz, zbieram dalej.</span>
-              </label>
-            </div>
-          )}
+                                      {canUseLoyalty4 && (
+                                        <div className="space-y-1">
+                                          <div className="font-semibold text-sm">
+                                            Czy chcesz wymienić 4 naklejki na
+                                            darmową rolkę?
+                                          </div>
+                                          <label className="flex items-center gap-2">
+                                            <input
+                                              type="radio"
+                                              name="loyalty_choice_mobile"
+                                              value="use_4"
+                                              checked={
+                                                loyaltyChoice === "use_4"
+                                              }
+                                              onChange={() =>
+                                                setLoyaltyChoice("use_4")
+                                              }
+                                            />
+                                            <span>
+                                              Tak, wykorzystaj 4 naklejki w tym
+                                              zamówieniu.
+                                            </span>
+                                          </label>
+                                          <label className="flex items-center gap-2">
+                                            <input
+                                              type="radio"
+                                              name="loyalty_choice_mobile"
+                                              value="keep"
+                                              checked={
+                                                loyaltyChoice === "keep"
+                                              }
+                                              onChange={() =>
+                                                setLoyaltyChoice("keep")
+                                              }
+                                            />
+                                            <span>
+                                              Nie teraz, zbieram dalej.
+                                            </span>
+                                          </label>
+                                        </div>
+                                      )}
 
-          {!canUseLoyalty4 && hasAutoLoyaltyDiscount && (
-            <div className="font-semibold text-sm">
-              Masz już co najmniej 8 naklejek – rabat lojalnościowy doliczymy przy realizacji zamówienia.
-            </div>
-          )}
-        </div>
-      )
-    )}
-  </div>
-)}
+                                      {!canUseLoyalty4 &&
+                                        hasAutoLoyaltyDiscount && (
+                                          <div className="font-semibold text-sm">
+                                            Masz już co najmniej 8 naklejek –
+                                            rabat lojalnościowy doliczymy przy
+                                            realizacji zamówienia.
+                                          </div>
+                                        )}
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            )}
 
-<PromoSection
-  promo={promo}
-  promoError={promoError}
-  onApply={applyPromo}
-  onClear={clearPromo}
-/>
+                            <PromoSection
+                              promo={promo}
+                              promoError={promoError}
+                              onApply={applyPromo}
+                              onClear={clearPromo}
+                            />
 
                             {discount > 0 && (
                               <div className="flex justify-between text-sm text-green-700">
@@ -3914,8 +3937,8 @@ return (
                                 />
                                 <span>
                                   Uwaga: składasz zamówienie do restauracji w{" "}
-                                  <b>{restaurantCityLabel}</b>. Potwierdzam,
-                                  że to prawidłowe miasto.
+                                  <b>{restaurantCityLabel}</b>. Potwierdzam, że
+                                  to prawidłowe miasto.
                                 </span>
                               </label>
 
@@ -4024,6 +4047,17 @@ return (
                         value={chopsticksQty}
                         onChange={setChopsticksQty}
                       />
+
+                      {/* NOWE: przycisk cofnięcia do kroku 2 (dane kontaktowe) */}
+                      <div className="flex justify-between mt-2">
+                        <button
+                          type="button"
+                          onClick={() => goToStep(2)}
+                          className="px-4 py-2 rounded-xl border border-black/15"
+                        >
+                          ← Cofnij
+                        </button>
+                      </div>
                     </div>
                   )}
                 </>
@@ -4076,72 +4110,84 @@ return (
                       <span>3.00 zł</span>
                     </div>
                   )}
-                 {deliveryInfo && (
-  <div className="flex justify-between">
-    <span>Dostawa:</span>
-    <span>{deliveryInfo.cost.toFixed(2)} zł</span>
-  </div>
-)}
+                  {deliveryInfo && (
+                    <div className="flex justify-between">
+                      <span>Dostawa:</span>
+                      <span>{deliveryInfo.cost.toFixed(2)} zł</span>
+                    </div>
+                  )}
 
-{/* LOYALTY – DESKTOP */}
-{isLoggedIn && (
-  <div className="mt-2">
-    {loyaltyLoading ? (
-      <p className="text-[11px] text-black/60 text-center">
-        Sprawdzamy Twoje naklejki...
-      </p>
-    ) : (
-      typeof loyaltyStickers === "number" && (
-        <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs space-y-2">
-          <div className="text-center">
-            Masz <b>{loyaltyStickers}</b> naklejek w programie lojalnościowym.
-          </div>
+                  {/* LOYALTY – DESKTOP */}
+                  {isLoggedIn && (
+                    <div className="mt-2">
+                      {loyaltyLoading ? (
+                        <p className="text-[11px] text-black/60 text-center">
+                          Sprawdzamy Twoje naklejki...
+                        </p>
+                      ) : (
+                        typeof loyaltyStickers === "number" && (
+                          <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs space-y-2">
+                            <div className="text-center">
+                              Masz <b>{loyaltyStickers}</b> naklejek w
+                              programie lojalnościowym.
+                            </div>
 
-          {canUseLoyalty4 && (
-            <div className="space-y-1">
-              <div className="font-semibold text-sm text-center">
-                Czy chcesz wymienić 4 naklejki na darmową rolkę?
-              </div>
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="loyalty_choice_desktop"
-                  value="use_4"
-                  checked={loyaltyChoice === "use_4"}
-                  onChange={() => setLoyaltyChoice("use_4")}
-                />
-                <span>Tak, wykorzystaj 4 naklejki w tym zamówieniu.</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="radio"
-                  name="loyalty_choice_desktop"
-                  value="keep"
-                  checked={loyaltyChoice === "keep"}
-                  onChange={() => setLoyaltyChoice("keep")}
-                />
-                <span>Nie teraz, zbieram dalej.</span>
-              </label>
-            </div>
-          )}
+                            {canUseLoyalty4 && (
+                              <div className="space-y-1">
+                                <div className="font-semibold text-sm text-center">
+                                  Czy chcesz wymienić 4 naklejki na darmową
+                                  rolkę?
+                                </div>
+                                <label className="flex items-center gap-2">
+                                  <input
+                                    type="radio"
+                                    name="loyalty_choice_desktop"
+                                    value="use_4"
+                                    checked={loyaltyChoice === "use_4"}
+                                    onChange={() =>
+                                      setLoyaltyChoice("use_4")
+                                    }
+                                  />
+                                  <span>
+                                    Tak, wykorzystaj 4 naklejki w tym
+                                    zamówieniu.
+                                  </span>
+                                </label>
+                                <label className="flex items-center gap-2">
+                                  <input
+                                    type="radio"
+                                    name="loyalty_choice_desktop"
+                                    value="keep"
+                                    checked={loyaltyChoice === "keep"}
+                                    onChange={() =>
+                                      setLoyaltyChoice("keep")
+                                    }
+                                  />
+                                  <span>Nie teraz, zbieram dalej.</span>
+                                </label>
+                              </div>
+                            )}
 
-          {!canUseLoyalty4 && hasAutoLoyaltyDiscount && (
-            <div className="font-semibold text-sm text-center">
-              Masz już co najmniej 8 naklejek – rabat lojalnościowy doliczymy przy realizacji zamówienia.
-            </div>
-          )}
-        </div>
-      )
-    )}
-  </div>
-)}
+                            {!canUseLoyalty4 && hasAutoLoyaltyDiscount && (
+                              <div className="font-semibold text-sm text-center">
+                                Masz już co najmniej 8 naklejek – rabat
+                                lojalnościowy doliczymy przy realizacji
+                                zamówienia.
+                              </div>
+                            )}
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
 
-<PromoSection
-  promo={promo}
-  promoError={promoError}
-  onApply={applyPromo}
-  onClear={clearPromo}
-/>
+                  <PromoSection
+                    promo={promo}
+                    promoError={promoError}
+                    onApply={applyPromo}
+                    onClear={clearPromo}
+                  />
+
                   {discount > 0 && (
                     <div className="flex justify-between text-green-700">
                       <span>Rabat:</span>
