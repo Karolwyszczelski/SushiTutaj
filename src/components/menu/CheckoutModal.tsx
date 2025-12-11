@@ -487,27 +487,33 @@ function isSushiSpecjalProduct(
   prod: any,
   prodInfo?: ProductDb | null
 ): boolean {
-  // normalizujemy: małe litery, bez ogonków
-  const text = normalizePlain(
-    `${prod?.name || ""} ${prodInfo?.name || ""} ${prodInfo?.description || ""}`
-  );
-  const sub = normalizePlain(
-    (prodInfo?.subcategory as string | undefined) ||
-      ((prod as any)?.subcategory as string | undefined) ||
-      ""
-  );
+  // Zbieramy wszystko, co może zawierać nazwę / kategorię tego zestawu
+  const pieces: string[] = [];
 
-  if (!text && !sub) return false;
+  if (prod?.name) pieces.push(String(prod.name));
+  if ((prod as any)?.baseName) pieces.push(String((prod as any).baseName));
+  if ((prod as any)?.subcategory) pieces.push(String((prod as any).subcategory));
 
-  // W praktyce wystarczy, że gdziekolwiek pojawi się "specjal"/"specjał"
-  // + najlepiej "sushi" albo kategoria specjały/zestawy
-  const hasSpecjalWord =
-    text.includes("sushi specjal") ||
-    text.includes("sushi specjal") || // po normalizacji "specjał" → "specjal"
-    text.includes("specjal") ||
-    sub.includes("specjal");
+  if (prodInfo?.name) pieces.push(prodInfo.name);
+  if (prodInfo?.subcategory) pieces.push(prodInfo.subcategory);
+  if (prodInfo?.description) pieces.push(prodInfo.description || "");
 
-  return hasSpecjalWord;
+  if (!pieces.length) return false;
+
+  const text = normalizePlain(pieces.join(" | ")); // bez ogonków, małe litery
+
+  const hasSushi = text.includes("sushi");
+  const hasSpecjal = text.includes("specjal"); // łapie też "specjał"
+
+  if (!hasSushi || !hasSpecjal) return false;
+
+  // Opcjonalne zawężenie do zestawów
+  const isSetLike =
+    text.includes("zestaw") ||
+    text.includes("zestawy") ||
+    text.includes("100 szt"); // Twój przypadek
+
+  return isSetLike || true; // na razie i tak zwracamy true, jeśli jest "sushi" + "specjal"
 }
 
 function computeAddonPrice(addon: string, product?: ProductDb | null): number {
@@ -1483,6 +1489,17 @@ const ProductItem: React.FC<{
       addAddon(prod.name, variant);
     }
   };
+
+  // Domyślny wariant SUSHI SPECJAŁ – np. 50% / 50%
+useEffect(() => {
+  if (!isSushiSpecjal) return;
+  if (currentSushiSpecjalVariant) return;
+
+  // indeks 3 = "50% pieczone / 50% surowe"
+  setSushiSpecjalVariant(
+    SUSHI_SPECJAL_VARIANTS[3] as SushiSpecjalVariant
+  );
+}, [isSushiSpecjal, currentSushiSpecjalVariant]);
 
   const toggleAddon = (a: string) => {
     const on = (prod.addons ?? []).includes(a);
