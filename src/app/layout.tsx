@@ -58,6 +58,7 @@ export const metadata: Metadata = {
     follow: true,
     googleBot: { index: true, follow: true, notranslate: true },
   },
+  manifest: "/manifest.webmanifest",
 };
 
 const sans = Manrope({

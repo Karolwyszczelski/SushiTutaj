@@ -6,10 +6,13 @@ import OnasSection from "@/components/OnasSection";
 import ContactSection from "@/components/ContactSection"; // ogólne info marki
 import { getRestaurantBySlug } from "@/lib/tenant";
 
+const BASE = process.env.NEXT_PUBLIC_BASE_URL || "https://www.sushitutaj.pl";
+
 export const dynamic = "force-dynamic";
 
 type CityParams = { city: string };
 
+// SEO per miasto
 export async function generateMetadata(
   { params }: { params: Promise<CityParams> }
 ): Promise<Metadata> {
@@ -54,9 +57,45 @@ export async function generateMetadata(
   };
 }
 
-export default async function Home() {
+// Strona + JSON-LD LocalBusiness / Restaurant
+export default async function Home({ params }: { params: CityParams }) {
+  const r = await getRestaurantBySlug(params.city);
+
+  const slug = String(r?.slug || params.city).toLowerCase();
+  const cityName = r?.city || r?.name || slug;
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Restaurant",
+    "@id": `${BASE}/${slug}#restaurant`,
+    name: r?.name || `SUSHI Tutaj ${cityName}`,
+    url: `${BASE}/${slug}`,
+    telephone: r?.phone || undefined,
+    address: r?.address
+      ? {
+          "@type": "PostalAddress",
+          streetAddress: r.address,
+          addressLocality: cityName,
+          addressCountry: "PL",
+        }
+      : undefined,
+    servesCuisine: ["Sushi", "Japanese"],
+    image: `${BASE}/og/sushi-og.jpg`,
+    brand: {
+      "@type": "Brand",
+      name: "SUSHI Tutaj",
+    },
+  };
+
   return (
     <main>
+      {/* JSON-LD LocalBusiness / Restaurant dla danej restauracji */}
+      <script
+        type="application/ld+json"
+        // JSON.stringify usunie pola z undefined, więc nie wyciekną puste klucze
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
       <Hero />
       <ZestawMiesiaca />
       <MenuSection />   {/* bez koszyka */}

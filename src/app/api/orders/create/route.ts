@@ -9,6 +9,73 @@ import { sendEmail } from "@/lib/e-mail";
 import { sendSms } from "@/lib/sms";
 import { computeAddonPriceBackend } from "@/lib/addons";
 import { buildKitchenNote } from "@/lib/kitchenNote";
+import webpush from "web-push";
+
+
+// --- WEB PUSH / VAPID ---
+
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
+const VAPID_SUBJECT =
+  process.env.VAPID_SUBJECT || "mailto:owner@sisitutaj.pl";
+
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+}
+
+type PushSubscriptionRow = {
+  id: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+};
+
+/**
+ * Wysyła web-push do wszystkich subskrypcji dla danej restauracji.
+ * Błędy logujemy, ale nie blokują tworzenia zamówienia.
+ */
+async function sendPushToRestaurant(
+  restaurant_id: string,
+  payload: { title: string; body: string; url?: string; type?: string }
+) {
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) return;
+
+  const { data: subs, error } = await supabaseAdmin
+    .from("push_subscriptions")
+    .select("id, endpoint, p256dh, auth")
+    .eq("restaurant_id", restaurant_id);
+
+  if (error || !subs || subs.length === 0) return;
+
+  const json = JSON.stringify(payload);
+
+  await Promise.all(
+    subs.map(async (s: PushSubscriptionRow) => {
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: s.endpoint,
+            keys: {
+              p256dh: s.p256dh,
+              auth: s.auth,
+            },
+          } as any,
+          json
+        );
+      } catch (err: any) {
+        // 404 / 410 – subskrypcja martwa, czyścimy
+        if (err?.statusCode === 404 || err?.statusCode === 410) {
+          await supabaseAdmin
+            .from("push_subscriptions")
+            .delete()
+            .eq("id", s.id);
+        } else {
+          console.error("[push] sendNotification error", err);
+        }
+      }
+    })
+  );
+}
 
 type NotificationType = "order" | "error" | "system";
 
@@ -18,19 +85,35 @@ async function pushAdminNotification(
   restaurant_id: string,
   type: NotificationType,
   title: string,
-  message?: string | null
+  message?: string | null,
+  opts?: { url?: string }
 ) {
   try {
+    // 1) zapis do admin_notifications jak wcześniej
     await supabaseAdmin.from("admin_notifications").insert({
       restaurant_id,
       type,
       title,
       message: message ?? null,
     });
+
+    // 2) web-push (best effort – błąd nie blokuje zamówienia)
+    const url = opts?.url || "/admin/pickup-order";
+    await sendPushToRestaurant(restaurant_id, {
+      type,
+      title,
+      body: message || title,
+      url,
+    });
   } catch (e: any) {
-    console.error("[admin_notifications.insert] error:", e?.message || e);
+    console.error(
+      "[admin_notifications.insert/push] error:",
+      e?.message || e
+    );
   }
 }
+
+
 
 function recomputeTotalFromItems(itemsPayload: any[]): number {
   return itemsPayload.reduce((acc, it) => {
@@ -1270,14 +1353,15 @@ const kitchen_note = buildKitchenNote(normalizedItems as any);
 
     const newOrderId = orderRow.id;
 
-    // NOWE: powiadomienie o nowym zamówieniu
+    // NOWE: powiadomienie o nowym zamówieniu (admin + web-push)
     await pushAdminNotification(
       restaurant_id,
       "order",
       `Nowe zamówienie #${newOrderId}`,
       `Kwota: ${n.total_price.toFixed(2)} zł, opcja: ${optLabel(
         n.selected_option
-      )}`
+      )}`,
+      { url: `/admin/pickup-order?restaurant=${restaurantSlug}` }
     );
 
     // 7) order_items

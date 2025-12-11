@@ -1,0 +1,15 @@
+{
+  "name": "SUSHI Tutaj – Panel zamówień",
+  "short_name": "SUSHI Panel",
+  "start_url": "/admin/pickup-order",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/sushi.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

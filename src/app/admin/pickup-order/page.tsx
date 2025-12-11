@@ -12,6 +12,32 @@ import { useSearchParams } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import EditOrderButton from "@/components/EditOrderButton";
 import CancelButton from "@/components/CancelButton";
+import clsx from "clsx";
+
+const VAPID_PUBLIC_KEY =
+  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
+
+  type PushStatus =
+  | "checking"
+  | "subscribed"
+  | "idle"
+  | "not-allowed"
+  | "unsupported"
+  | "error";
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding)
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+  const raw =
+    typeof window !== "undefined"
+      ? window.atob(base64)
+      : Buffer.from(base64, "base64").toString("binary");
+  const outputArray = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; ++i) outputArray[i] = raw.charCodeAt(i);
+  return outputArray;
+}
 
 type Any = Record<string, any>;
 type PaymentMethod = "Gotówka" | "Terminal" | "Online";
@@ -738,6 +764,109 @@ export default function PickupOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
+
+    // Powiadomienia push – status dla obsługi
+  const [pushStatus, setPushStatus] = useState<PushStatus>("checking");
+  const [pushError, setPushError] = useState<string | null>(null);
+
+  // Sprawdzenie, czy przeglądarka obsługuje push i czy jest już subskrypcja
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPushStatus("unsupported");
+      return;
+    }
+
+    if (!VAPID_PUBLIC_KEY) {
+      setPushStatus("error");
+      setPushError(
+        "Brak klucza VAPID (NEXT_PUBLIC_VAPID_PUBLIC_KEY). Skonfiguruj go w env."
+      );
+      return;
+    }
+
+    (async () => {
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        const perm = Notification.permission;
+
+        if (!reg) {
+          setPushStatus(perm === "denied" ? "not-allowed" : "idle");
+          return;
+        }
+
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          setPushStatus("subscribed");
+        } else {
+          setPushStatus(perm === "denied" ? "not-allowed" : "idle");
+        }
+      } catch {
+        setPushStatus("error");
+        setPushError("Nie udało się sprawdzić statusu powiadomień.");
+      }
+    })();
+  }, []);
+
+  // Włączenie powiadomień push „na żądanie”
+  const enablePush = useCallback(async () => {
+    try {
+      setPushError(null);
+      setPushStatus("checking");
+
+      if (typeof window === "undefined") return;
+
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        setPushStatus("unsupported");
+        return;
+      }
+
+      if (!VAPID_PUBLIC_KEY) {
+        setPushStatus("error");
+        setPushError(
+          "Brak klucza VAPID (NEXT_PUBLIC_VAPID_PUBLIC_KEY). Skonfiguruj go w env."
+        );
+        return;
+      }
+
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        setPushStatus("not-allowed");
+        return;
+      }
+
+      // jeśli SW jeszcze nie ma, zarejestruj (w praktyce robi to ClientWrapper)
+      const reg =
+        (await navigator.serviceWorker.getRegistration()) ||
+        (await navigator.serviceWorker.register("/sw.js"));
+
+      // jeśli już jest subskrypcja – nie dubluj
+      const existing = await reg.pushManager.getSubscription();
+      if (existing) {
+        setPushStatus("subscribed");
+        return;
+      }
+
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+
+      await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sub),
+      });
+
+      setPushStatus("subscribed");
+    } catch (e) {
+      console.error(e);
+      setPushStatus("error");
+      setPushError("Nie udało się włączyć powiadomień.");
+    }
+  }, []);
+
 
   const [page, setPage] = useState(1);
   const perPage = 10;
@@ -1924,6 +2053,63 @@ export default function PickupOrdersPage() {
           {errorMsg}
         </div>
       )}
+
+            {/* Status powiadomień push dla obsługi */}
+      <div className="mb-4 flex flex-col gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-800 sm:flex-row sm:items-center sm:justify-between sm:text-sm">
+        <div>
+          <p className="font-semibold">
+            Powiadomienia o nowych zamówieniach
+          </p>
+          <p className="mt-0.5 text-[11px] text-slate-600 sm:text-xs">
+            Włącz powiadomienia, żeby widzieć nowe zamówienia nawet gdy ta karta
+            jest w tle. Upewnij się, że dźwięk w komputerze jest włączony.
+          </p>
+          {pushError && (
+            <p className="mt-1 text-[11px] text-rose-600">
+              {pushError}
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span
+            className={clsx(
+              "inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold sm:text-xs",
+              pushStatus === "subscribed" &&
+                "bg-emerald-100 text-emerald-800",
+              pushStatus === "checking" && "bg-sky-100 text-sky-800",
+              pushStatus === "idle" && "bg-amber-100 text-amber-800",
+              pushStatus === "not-allowed" && "bg-rose-100 text-rose-800",
+              pushStatus === "unsupported" &&
+                "bg-slate-100 text-slate-700",
+              pushStatus === "error" && "bg-rose-100 text-rose-800"
+            )}
+          >
+            {pushStatus === "subscribed" && "Włączone"}
+            {pushStatus === "checking" && "Sprawdzanie…"}
+            {pushStatus === "idle" && "Wyłączone"}
+            {pushStatus === "not-allowed" && "Zablokowane w przeglądarce"}
+            {pushStatus === "unsupported" && "Brak wsparcia dla powiadomień"}
+            {pushStatus === "error" && "Błąd powiadomień"}
+          </span>
+
+          {(pushStatus === "idle" || pushStatus === "error") && (
+  <button
+    type="button"
+    onClick={enablePush}
+    className="h-9 rounded-md bg-emerald-600 px-3 text-xs font-semibold text-white shadow hover:bg-emerald-500"
+  >
+    Włącz powiadomienia
+  </button>
+)}
+
+          {pushStatus === "not-allowed" && (
+            <span className="text-[11px] text-slate-500 sm:text-xs">
+              Odblokuj powiadomienia dla tej strony w ustawieniach przeglądarki.
+            </span>
+          )}
+        </div>
+      </div>
 
       {/* Instrukcja dla obsługi */}
       <div className="mb-4 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-amber-100 p-3 text-xs sm:text-sm text-amber-900">
