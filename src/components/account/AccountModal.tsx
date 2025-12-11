@@ -16,6 +16,7 @@ import { useSession } from "@supabase/auth-helpers-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import useCartStore from "@/store/cartStore";
 
+
 /** Akcenty: korzystamy z var(--accent-red*). */
 const gradBtn =
   "bg-gradient-to-r from-[var(--accent-red-dark,#7a0d0d)] via-[var(--accent-red,#a61b1b)] to-[var(--accent-red-dark-2,#b11212)] text-white";

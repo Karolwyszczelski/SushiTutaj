@@ -357,9 +357,7 @@ const normalizeProduct = (raw: Any) => {
 
   // NOWE: ujednolicone źródło options (dla koszyka i panelu)
   const srcOptions: Any | undefined =
-    (source as any).options ||
-    (source as any)._src?.options ||
-    undefined;
+    (source as any).options || (source as any)._src?.options || undefined;
 
   const shallow = [
     source.name,
@@ -391,7 +389,7 @@ const normalizeProduct = (raw: Any) => {
   const quantity =
     toNumber(source.quantity ?? source.qty ?? source.amount ?? 1, 1) || 1;
 
-  // --- TU ZMIANA: czytamy swaps także z _src.options.swaps ---
+  // --- SWAPS (pojedyncze zamiany poza zestawami) ---
   const swapsRaw =
     (Array.isArray((source as any).swaps) && (source as any).swaps) ||
     (Array.isArray(srcOptions?.swaps) && srcOptions!.swaps) ||
@@ -399,27 +397,72 @@ const normalizeProduct = (raw: Any) => {
 
   type SwapDetail = { from?: string; to?: string; label: string };
 
-  const swapDetails: SwapDetail[] = (swapsRaw as any[]).map((s) => {
-    if (!s) return null;
-    const from = typeof s.from === "string" ? s.from.trim() : "";
-    const to = typeof s.to === "string" ? s.to.trim() : "";
-    if (!from && !to) return null;
+  const swapDetails: SwapDetail[] = (swapsRaw as any[])
+    .map((s) => {
+      if (!s) return null;
+      const from = typeof s.from === "string" ? s.from.trim() : "";
+      const to = typeof s.to === "string" ? s.to.trim() : "";
+      if (!from && !to) return null;
 
-    let label: string;
-    if (from && to) label = `Zamiana: ${from} → ${to}`;
-    else if (to) label = `Zamiana na: ${to}`;
-    else label = `Zamiana: ${from}`;
+      let label: string;
+      if (from && to) label = `Zamiana: ${from} → ${to}`;
+      else if (to) label = `Zamiana na: ${to}`;
+      else label = `Zamiana: ${from}`;
 
-    return {
-      from: from || undefined,
-      to: to || undefined,
-      label,
-    };
-  }).filter(Boolean) as SwapDetail[];
+      return {
+        from: from || undefined,
+        to: to || undefined,
+        label,
+      };
+    })
+    .filter(Boolean) as SwapDetail[];
 
   const swapLabels = swapDetails.map((s) => s.label);
 
-  // --- TU DODAJEMY srcOptions?.addons ---
+  // --- NOWE: set_swaps (zamiany w ZESTAWACH) ---
+  const rawSetSwaps =
+    (Array.isArray((source as any).set_swaps) && (source as any).set_swaps) ||
+    (Array.isArray(srcOptions?.set_swaps) && srcOptions!.set_swaps) ||
+    [];
+
+  type SetSwapDetail = { qty?: number; from?: string; to?: string; label: string };
+
+  const setSwaps: SetSwapDetail[] = (rawSetSwaps as any[])
+    .map((s) => {
+      if (!s) return null;
+      const from = typeof s.from === "string" ? s.from.trim() : "";
+      const to = typeof s.to === "string" ? s.to.trim() : "";
+      const rawQty = (s as any).qty;
+
+      const qtyNum =
+        typeof rawQty === "number"
+          ? rawQty
+          : typeof rawQty === "string"
+          ? parseInt(rawQty.replace(/[^\d]/g, ""), 10)
+          : undefined;
+
+      if (!from && !to) return null;
+
+      let core = "";
+      if (from && to) core = `${from} → ${to}`;
+      else if (to) core = `na: ${to}`;
+      else core = `z: ${from}`;
+
+      const label =
+        typeof qtyNum === "number" && !Number.isNaN(qtyNum) && qtyNum > 0
+          ? `${qtyNum}× ${core}`
+          : core;
+
+      return {
+        qty: qtyNum,
+        from: from || undefined,
+        to: to || undefined,
+        label,
+      };
+    })
+    .filter(Boolean) as SetSwapDetail[];
+
+  // --- DODATKI ---
   const rawAddons = [
     ...collectStrings(source.addons),
     ...collectStrings(source.extras),
@@ -430,12 +473,10 @@ const normalizeProduct = (raw: Any) => {
     .map((s) => (s || "").trim())
     .filter((s) => s && s !== "0");
 
-  // deduplikacja – żeby sos z addons + options.addons nie był dwa razy
   const uniqueAddons = Array.from(new Set(rawAddons));
 
-  const { plain, setMeta, tartarBases } = parseSetAddonsFromAddons(
-    uniqueAddons
-  );
+  const { plain, setMeta, tartarBases } =
+    parseSetAddonsFromAddons(uniqueAddons);
 
   const addons = [...plain, ...swapLabels];
 
@@ -457,7 +498,6 @@ const normalizeProduct = (raw: Any) => {
       source.product.description) ||
     undefined;
 
-  // --- TU TEŻ: note z srcOptions.note ---
   const note =
     (typeof source.note === "string" && source.note) ||
     (typeof source.comment === "string" && source.comment) ||
@@ -479,9 +519,10 @@ const normalizeProduct = (raw: Any) => {
     note,
     isSet,
     swaps: swapLabels,
-    swapDetails, // ważne: struktura z from/to dla „Rolki – szczegóły”
+    swapDetails,
     setMeta: isSet && setMeta ? setMeta : null,
     tartarBases,
+    setSwaps, // <--- NOWE: uporządkowane zamiany w zestawie
     _raw: source,
   };
 };
@@ -1227,81 +1268,104 @@ export default function PickupOrdersPage() {
   );
 
   const ProductItem: React.FC<{
-    raw: any;
-    onDetails?: (p: any) => void;
-  }> = ({ raw, onDetails }) => {
-    const p = normalizeProduct(raw);
-    const isSet = !!p.isSet && !!p.setMeta;
+  raw: any;
+  onDetails?: (p: any) => void;
+}> = ({ raw, onDetails }) => {
+  const p = normalizeProduct(raw);
+  const isSet = !!p.isSet && !!p.setMeta;
 
-    return (
-      <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm text-slate-900">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold">{p.name}</div>
-            <div className="mt-0.5 text-[12px] text-slate-700">
-              Ilość: <b>{p.quantity}</b>
-              {p.addons.length > 0 && (
+  // NOWE: uporządkowane zamiany w zestawie,
+  // które bierzemy z normalizeProduct (pole setSwaps)
+  const setSwaps =
+    ((p as any).setSwaps as { label: string }[] | undefined) || [];
+  const hasSetSwaps = isSet && setSwaps.length > 0;
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm text-slate-900">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold">{p.name}</div>
+
+          <div className="mt-0.5 text-[12px] text-slate-700">
+            Ilość: <b>{p.quantity}</b>
+            {p.addons.length > 0 && (
+              <>
+                {" "}
+                <span className="text-slate-400"> · </span> Dodatki:{" "}
+                {p.addons.join(", ")}
+              </>
+            )}
+          </div>
+
+          {isSet && p.setMeta && (
+            <div className="mt-0.5 text-[11px] text-slate-600">
+              Zestaw:
+              {p.setMeta.setUpgrade && " powiększony"}
+              {p.setMeta.bakedWholeSet &&
+                `${p.setMeta.setUpgrade ? ", " : " "}pieczony cały`}
+              {!p.setMeta.bakedWholeSet &&
+                p.setMeta.bakedRolls.length > 0 && (
+                  <>
+                    {" "}
+                    · Pieczone rolki: {p.setMeta.bakedRolls.join(", ")}
+                  </>
+                )}
+              {p.setMeta.rollExtras.length > 0 && (
                 <>
                   {" "}
-                  <span className="text-slate-400"> · </span> Dodatki:{" "}
-                  {p.addons.join(", ")}
+                  · Dodatki w rolkach: {p.setMeta.rollExtras.length}{" "}
+                  {p.setMeta.rollExtras.length === 1
+                    ? "pozycja"
+                    : "pozycje"}
                 </>
               )}
             </div>
+          )}
 
-            {isSet && p.setMeta && (
-              <div className="mt-0.5 text-[11px] text-slate-600">
-                Zestaw:
-                {p.setMeta.setUpgrade && " powiększony"}
-                {p.setMeta.bakedWholeSet &&
-                  `${p.setMeta.setUpgrade ? ", " : " "}pieczony cały`}
-                {!p.setMeta.bakedWholeSet &&
-                  p.setMeta.bakedRolls.length > 0 && (
-                    <>
-                      {" "}
-                      · Pieczone rolki:{" "}
-                      {p.setMeta.bakedRolls.join(", ")}
-                    </>
-                  )}
-                {p.setMeta.rollExtras.length > 0 && (
-                  <>
-                    {" "}
-                    · Dodatki w rolkach:{" "}
-                    {p.setMeta.rollExtras.length}{" "}
-                    {p.setMeta.rollExtras.length === 1
-                      ? "pozycja"
-                      : "pozycje"}
-                  </>
-                )}
+          {/* NOWE: czytelny blok tylko z faktycznymi zamianami w zestawie */}
+          {hasSetSwaps && (
+            <div className="mt-1 text-[11px] text-slate-800">
+              <div className="font-semibold text-slate-900">
+                Zamiany w tym zestawie:
               </div>
-            )}
+              <ul className="mt-0.5 ml-4 list-disc space-y-0.5">
+                {setSwaps.map((s, i) => (
+                  <li key={i}>{s.label}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-            {p.ingredients.length > 0 && (
-              <div className="mt-0.5 text-[12px] text-slate-700">
-                Skład: {p.ingredients.join(", ")}
-              </div>
-            )}
-            {p.note && (
-              <div className="mt-0.5 text-[12px] italic text-slate-800">
-                Notatka: {p.note}
-              </div>
-            )}
-            {onDetails && (
-              <button
-                onClick={() => onDetails(p)}
-                className="mt-2 text-xs font-medium text-sky-700 underline"
-              >
-                Szczegóły pozycji
-              </button>
-            )}
-          </div>
-          <div className="whitespace-nowrap text-sm font-semibold text-amber-700">
-            {p.price.toFixed(2)} zł
-          </div>
+          {p.ingredients.length > 0 && (
+            <div className="mt-0.5 text-[12px] text-slate-700">
+              Skład: {p.ingredients.join(", ")}
+            </div>
+          )}
+
+          {/* Notatkę pokazujemy tylko jeśli nie mamy już ładnych zamian */}
+          {p.note && (!isSet || !hasSetSwaps) && (
+            <div className="mt-0.5 text-[12px] italic text-slate-800">
+              Notatka: {p.note}
+            </div>
+          )}
+
+          {onDetails && (
+            <button
+              onClick={() => onDetails(p)}
+              className="mt-2 text-xs font-medium text-sky-700 underline"
+            >
+              Szczegóły pozycji
+            </button>
+          )}
+        </div>
+
+        <div className="whitespace-nowrap text-sm font-semibold text-amber-700">
+          {p.price.toFixed(2)} zł
         </div>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
   const ProductDetailsModal: React.FC<{
     product: any;
