@@ -64,9 +64,9 @@ function Row({
 export async function generateMetadata({
   params,
 }: {
-  params: { city: string };
+  params: Promise<{ city: string }>;
 }): Promise<Metadata> {
-  const { city } = params;
+  const { city } = await params;
   const r = await getRestaurantBySlug(city);
 
   const title = r ? `Kontakt — ${r.name} ${r.city}` : "Kontakt";
@@ -77,8 +77,12 @@ export async function generateMetadata({
   return { title, description };
 }
 
-export default async function Page({ params }: { params: { city: string } }) {
-  const { city } = params;
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ city: string }>;
+}) {
+  const { city } = await params;
   const r = await getRestaurantBySlug(city);
 
   if (!r) {
