@@ -128,9 +128,10 @@ const formatTimeLabel = (value?: string | null): string => {
   const dt = new Date(v);
   if (!Number.isNaN(dt.getTime())) {
     return dt.toLocaleTimeString("pl-PL", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Europe/Warsaw",
+});
   }
 
   return "-";

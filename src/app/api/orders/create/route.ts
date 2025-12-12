@@ -3,13 +3,14 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { toZonedTime } from "date-fns-tz";
+import { toZonedTime, fromZonedTime } from "date-fns-tz";
 import { trackingUrl } from "@/lib/orderLink";
 import { sendEmail } from "@/lib/e-mail";
 import { sendSms } from "@/lib/sms";
 import { computeAddonPriceBackend } from "@/lib/addons";
 import { buildKitchenNote } from "@/lib/kitchenNote";
 import { sendPushForRestaurant } from "@/lib/push";
+
 
 
 type LoyaltyChoice = "keep" | "use_4" | "use_8";
@@ -103,7 +104,12 @@ const SCHEDULE: Record<string, Partial<Record<Day, Range>> & { default?: Range }
   };
 
 const tz = "Europe/Warsaw";
-const nowPL = () => toZonedTime(new Date(), tz);
+
+// „prawdziwe teraz” (chwila czasu)
+const nowInstant = () => new Date();
+
+// „widok” teraz w PL (tylko do getHours/getDay itp.)
+const nowPL = (d = nowInstant()) => toZonedTime(d, tz);
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmt = (r: Range) => `${pad(r[0])}:${pad(r[1])}–${pad(r[2])}:${pad(r[3])}`;
 
@@ -684,7 +690,8 @@ export async function POST(req: Request) {
     }
 
     // 1.2) Aktualny czas PL
-    const now = nowPL();
+    const now0 = nowInstant();   // chwila w czasie
+const now = nowPL(now0);     // komponenty w PL do grafiku/blokad
 
     // 1.3) Godziny per miasto (stały grafik)
     {
@@ -1107,71 +1114,75 @@ export async function POST(req: Request) {
     });
 
     // 5) Czas klienta:
-    // - client_delivery_time: "asap" albo "HH:MM"
-    // - scheduled_delivery_at: pełna data/godzina (ISO) – tylko gdy klient wybrał konkretną godzinę
-    const clientDeliveryRaw: any = n.client_delivery_time;
+// - client_delivery_time: "asap" albo "HH:MM"
+// - scheduled_delivery_at: ISO UTC (tylko gdy klient wybrał konkretną godzinę)
+const clientDeliveryRaw: any = n.client_delivery_time;
+
 let clientDeliveryForDb: string | null = null;
 let scheduledDeliveryAt: string | null = null;
 
-    let requestedDateStr: string | null = null;
-    let requestedMinutes: number | null = null;
+let requestedDateStr: string | null = null; // YYYY-MM-DD w PL
+let requestedMinutes: number | null = null; // minuty w PL
 
-    if (typeof clientDeliveryRaw === "string" && clientDeliveryRaw.trim()) {
-      const raw = clientDeliveryRaw.trim();
+const hasTzInfo = (s: string) => /Z$|[+\-]\d{2}:\d{2}$/.test(s);
 
-      // ASAP – tylko flaga tekstowa, bez daty
-      if (raw.toLowerCase() === "asap") {
-        clientDeliveryForDb = "asap";
-      } else {
-        // może być pełne ISO, może być "HH:MM"
-        let d = new Date(raw);
+if (typeof clientDeliveryRaw === "string" && clientDeliveryRaw.trim()) {
+  const raw = clientDeliveryRaw.trim();
+  const low = raw.toLowerCase();
 
-        // fallback, gdy front przekaże tylko "HH:MM"
-        if (Number.isNaN(d.getTime()) && /^\d{1,2}:\d{2}/.test(raw)) {
-          const [hhRaw, mmRaw] = raw.split(":");
-          const hhNum = Number(hhRaw) || 0;
-          const mmNum = Number(mmRaw) || 0;
-          d = new Date(now);
-          d.setHours(hhNum, mmNum, 0, 0);
-        }
+  if (low === "asap") {
+    clientDeliveryForDb = "asap";
+  } else if (/^\d{1,2}:\d{2}$/.test(raw)) {
+    // "HH:MM" traktujemy jako czas Europe/Warsaw dla DZISIAJ
+    const [hhRaw, mmRaw] = raw.split(":");
+    const hhNum = Math.max(0, Math.min(23, Number(hhRaw)));
+    const mmNum = Math.max(0, Math.min(59, Number(mmRaw)));
 
-        if (!Number.isNaN(d.getTime())) {
-          requestedDateStr = `${d.getFullYear()}-${pad(
-            d.getMonth() + 1
-          )}-${pad(d.getDate())}`;
-          requestedMinutes = d.getHours() * 60 + d.getMinutes();
+    const datePL = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const hh = pad(hhNum);
+    const mm = pad(mmNum);
 
-          const hh = pad(d.getHours());
-          const mm = pad(d.getMinutes());
+    const localPL = `${datePL}T${hh}:${mm}:00`;
+    const utc = fromZonedTime(localPL, tz);
 
-          // w bazie w prostym polu trzymamy tylko "HH:MM"
-          clientDeliveryForDb = `${hh}:${mm}`;
-          // pełna data/godzina ląduje w scheduled_delivery_at
-          scheduledDeliveryAt = d.toISOString();
-        }
-      }
+    scheduledDeliveryAt = utc.toISOString();
+
+    // Wszystkie wyliczenia (blokady/panel) robimy w PL:
+    requestedDateStr = datePL;
+    requestedMinutes = hhNum * 60 + mmNum;
+    clientDeliveryForDb = `${hh}:${mm}`;
+  } else {
+    // ISO / datetime
+    // Jeśli brak informacji o strefie w stringu, traktuj jako PL wall-clock
+    let d: Date;
+    if (!hasTzInfo(raw) && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(raw)) {
+      d = fromZonedTime(raw.length === 16 ? `${raw}:00` : raw, tz);
+    } else {
+      d = new Date(raw);
     }
 
-    // jeśli klient nie podał godziny albo nie udało się sparsować – traktujemy jak ASAP
-    if (!requestedDateStr || requestedMinutes == null) {
-      const d = now;
-      requestedDateStr = `${d.getFullYear()}-${pad(
-        d.getMonth() + 1
-      )}-${pad(d.getDate())}`;
-      requestedMinutes = d.getHours() * 60 + d.getMinutes();
+    if (!Number.isNaN(d.getTime())) {
+      scheduledDeliveryAt = d.toISOString();
+      const pl = toZonedTime(d, tz);
 
-      if (!clientDeliveryForDb) {
-        clientDeliveryForDb = "asap";
-      }
+      requestedDateStr = `${pl.getFullYear()}-${pad(pl.getMonth() + 1)}-${pad(pl.getDate())}`;
+      requestedMinutes = pl.getHours() * 60 + pl.getMinutes();
+      clientDeliveryForDb = `${pad(pl.getHours())}:${pad(pl.getMinutes())}`;
     }
+  }
+}
 
-    // bezpieczeństwo – kolumna varchar(10)
-    if (
-      typeof clientDeliveryForDb === "string" &&
-      clientDeliveryForDb.length > 10
-    ) {
-      clientDeliveryForDb = clientDeliveryForDb.slice(0, 10);
-    }
+// fallback: brak/nieparsowalne = ASAP (czas do blokad bierzemy z `now` PL)
+if (!requestedDateStr || requestedMinutes == null) {
+  requestedDateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  requestedMinutes = now.getHours() * 60 + now.getMinutes();
+  if (!clientDeliveryForDb) clientDeliveryForDb = "asap";
+}
+
+// varchar(10) safety
+if (typeof clientDeliveryForDb === "string" && clientDeliveryForDb.length > 10) {
+  clientDeliveryForDb = clientDeliveryForDb.slice(0, 10);
+}
 
 // 5.0) Sprawdzenie blokad czasowych (restaurant_blocked_times)
 try {
