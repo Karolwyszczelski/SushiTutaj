@@ -13,6 +13,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import EditOrderButton from "@/components/EditOrderButton";
 import CancelButton from "@/components/CancelButton";
 import clsx from "clsx";
+import { formatInTimeZone } from "date-fns-tz";
 
 const VAPID_PUBLIC_KEY =
   process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
@@ -62,6 +63,8 @@ interface Order {
   selected_option?: "takeaway" | "delivery";
   payment_method?: PaymentMethod;
   payment_status?: PaymentStatus;
+  client_delivery_time?: string | null;
+  scheduled_delivery_at?: string | null;
 
   /** NOWE: notatka klienta / dla lokalu */
   note?: string | null;
@@ -107,6 +110,22 @@ const fromDBPaymentStatus = (v: any): PaymentStatus => {
   return null;
 };
 
+const TZ = "Europe/Warsaw";
+
+const parseLooseDate = (value: string): Date | null => {
+  const v = (value || "").trim();
+  if (!v) return null;
+
+  // "2025-12-12 19:00:00+00" -> "2025-12-12T19:00:00+00"
+  let s = v.replace(" ", "T");
+
+  // "+0000" -> "+00:00" (jeśli kiedyś przyjdzie bez dwukropka)
+  s = s.replace(/([+-]\d{2})(\d{2})$/, "$1:$2");
+
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
 const formatTimeLabel = (value?: string | null): string => {
   if (!value) return "-";
 
@@ -124,17 +143,22 @@ const formatTimeLabel = (value?: string | null): string => {
     }
   }
 
-  // 2) pełna data/czas (ISO itd.)
-  const dt = new Date(v);
-  if (!Number.isNaN(dt.getTime())) {
-    return dt.toLocaleTimeString("pl-PL", {
-  hour: "2-digit",
-  minute: "2-digit",
-  timeZone: "Europe/Warsaw",
-});
-  }
+  // 2) ISO / timestamptz (bezpiecznie)
+  const dt = parseLooseDate(v);
+  if (dt) return formatInTimeZone(dt, TZ, "HH:mm");
 
   return "-";
+};
+
+const formatClientRequestedTime = (o: Order): string => {
+  // 1) jeśli klient wybrał konkretną datę/godzinę -> scheduled_delivery_at
+  if (o.scheduled_delivery_at) return formatTimeLabel(o.scheduled_delivery_at);
+
+  // 2) jeśli nie, to "asap" albo "HH:MM" z client_delivery_time
+  if (o.client_delivery_time) return formatTimeLabel(o.client_delivery_time);
+
+  // 3) kompatybilność wstecz (stare pole)
+  return formatTimeLabel(o.clientDelivery ?? null);
 };
 
 const getOptionLabel = (opt?: Order["selected_option"]) =>
@@ -1026,10 +1050,11 @@ const playDing = useCallback(async () => {
     delivery_cost: o.delivery_cost ?? null,
     created_at: o.created_at,
     status: o.status,
-   clientDelivery:
-      (o.scheduled_delivery_at as string | undefined) ??
-      (o.client_delivery_time as string | undefined) ??
-      (o.clientDelivery as string | undefined),
+   client_delivery_time: (o.client_delivery_time as string | undefined) ?? null,
+scheduled_delivery_at: (o.scheduled_delivery_at as string | undefined) ?? null,
+
+// kompatybilność wstecz (jeśli gdzieś stary backend/front jeszcze tego używa)
+clientDelivery: (o.clientDelivery as string | undefined) ?? null,
 
     // czas ustawiony przez lokal (ETA)
     deliveryTime: (o.deliveryTime as string | undefined) ?? (o.delivery_time as string | undefined) ?? null,
@@ -1276,9 +1301,14 @@ const playDing = useCallback(async () => {
       deliveryTime: newDeliveryTime,
       // jeśli backend zwróci client_delivery_time – bierzemy z odpowiedzi,
       // jeśli nie – zostawiamy to, co było (np. "asap" albo godzina z checkoutu)
-      clientDelivery:
-        (j.client_delivery_time as string | undefined) ??
-        order.clientDelivery,
+      client_delivery_time:
+  (j.client_delivery_time as string | undefined) ??
+  order.client_delivery_time ??
+  null,
+scheduled_delivery_at:
+  (j.scheduled_delivery_at as string | undefined) ??
+  order.scheduled_delivery_at ??
+  null,
     });
   } finally {
     setEditingOrderId(null);
@@ -1769,15 +1799,12 @@ const playDing = useCallback(async () => {
               {o.reservation_id && (
   (() => {
     let timeLabel: string | null = null;
-
-    if (o.clientDelivery) {
-      const lbl = formatTimeLabel(o.clientDelivery);
-      if (lbl !== "-" && lbl !== "Jak najszybciej") {
-        timeLabel = lbl;
-      }
-    } else if (o.reservation_time) {
-      timeLabel = o.reservation_time;
-    }
+const lbl = formatClientRequestedTime(o);
+if (lbl !== "-" && lbl !== "Jak najszybciej") {
+  timeLabel = lbl;
+} else if (o.reservation_time) {
+  timeLabel = formatTimeLabel(o.reservation_time);
+}
 
     return (
       <Badge tone="green">
@@ -1787,6 +1814,7 @@ const playDing = useCallback(async () => {
   })()
 )}
 
+
               {paymentBadge(o)}
             </div>
             <div className="text-sm text-slate-700 flex flex-wrap gap-x-3 gap-y-1">
@@ -1794,7 +1822,7 @@ const playDing = useCallback(async () => {
     <b>Klient:</b> {o.name || "—"}
   </span>
   <span>
-    <b>Czas (klient):</b> {formatTimeLabel(o.clientDelivery)}
+    <b>Czas (klient):</b> {formatClientRequestedTime(o)}
   </span>
   <span>
     <b>Czas (lokal):</b>{" "}
@@ -1814,8 +1842,8 @@ const playDing = useCallback(async () => {
               #{o.id.slice(0, 8)}
             </span>
             <span className="text-slate-600">
-              {new Date(o.created_at).toLocaleString("pl-PL")}
-            </span>
+  {formatInTimeZone(new Date(o.created_at), TZ, "dd.MM.yyyy HH:mm")}
+</span>
           </div>
         </header>
 
