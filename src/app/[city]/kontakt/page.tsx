@@ -1,6 +1,5 @@
 // src/app/[city]/kontakt/page.tsx
 import type { Metadata } from "next";
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { getRestaurantBySlug } from "@/lib/tenant";
 import {
@@ -14,10 +13,6 @@ import {
   Music,
 } from "lucide-react";
 
-type Props = {
-  params: { city: string } | Promise<{ city: string }>;
-};
-
 type OpeningHours = {
   mon_thu?: { open: string; close: string } | null;
   fri_sat?: { open: string; close: string } | null;
@@ -27,7 +22,7 @@ type OpeningHours = {
 type SocialItem = {
   key: string;
   label: string;
-  href: string; // zawsze string
+  href: string;
   icon: ReactNode;
 };
 
@@ -40,7 +35,6 @@ function sanitizeTel(phone?: string | null) {
 function normalizeUrl(url?: string | null) {
   const s = (url || "").trim();
   if (!s) return "";
-  // jeżeli ktoś wkleił np. "instagram.com/..."
   if (/^https?:\/\//i.test(s)) return s;
   return `https://${s}`;
 }
@@ -67,8 +61,12 @@ function Row({
   );
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { city } = await params;
+export async function generateMetadata({
+  params,
+}: {
+  params: { city: string };
+}): Promise<Metadata> {
+  const { city } = params;
   const r = await getRestaurantBySlug(city);
 
   const title = r ? `Kontakt — ${r.name} ${r.city}` : "Kontakt";
@@ -79,8 +77,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title, description };
 }
 
-export default async function Page({ params }: Props) {
-  const { city } = await params;
+export default async function Page({ params }: { params: { city: string } }) {
+  const { city } = params;
   const r = await getRestaurantBySlug(city);
 
   if (!r) {
@@ -149,27 +147,28 @@ export default async function Page({ params }: Props) {
                   <div className="text-base font-medium text-white">
                     {r.address ?? "—"}
                   </div>
+
                   <div className="flex flex-wrap gap-3">
-                    <Link
+                    <a
                       href={mapsHref}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
                     >
                       Nawiguj <ExternalLink className="h-4 w-4" />
-                    </Link>
+                    </a>
                   </div>
                 </div>
               </Row>
 
               <Row icon={<Phone className="h-5 w-5" />} label="Telefon">
                 {tel ? (
-                  <Link
+                  <a
                     href={`tel:${tel}`}
                     className="text-base font-medium text-white hover:underline"
                   >
                     {r.phone}
-                  </Link>
+                  </a>
                 ) : (
                   <span>—</span>
                 )}
@@ -177,12 +176,12 @@ export default async function Page({ params }: Props) {
 
               <Row icon={<Mail className="h-5 w-5" />} label="E-mail">
                 {mail ? (
-                  <Link
+                  <a
                     href={`mailto:${mail}`}
                     className="text-base font-medium text-white hover:underline"
                   >
                     {mail}
-                  </Link>
+                  </a>
                 ) : (
                   <span>—</span>
                 )}
@@ -219,8 +218,8 @@ export default async function Page({ params }: Props) {
 
           {/* CTA strip */}
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <Link
-              href={tel ? `tel:${tel}` : "#"}
+            <a
+              href={tel ? `tel:${tel}` : undefined}
               aria-disabled={!tel}
               className={`rounded-xl border border-white/10 px-5 py-4 text-left ${
                 tel
@@ -234,10 +233,10 @@ export default async function Page({ params }: Props) {
               <div className="mt-1 text-base font-semibold text-white">
                 {r.phone ?? "—"}
               </div>
-            </Link>
+            </a>
 
-            <Link
-              href={mail ? `mailto:${mail}` : "#"}
+            <a
+              href={mail ? `mailto:${mail}` : undefined}
               aria-disabled={!mail}
               className={`rounded-xl border border-white/10 px-5 py-4 text-left ${
                 mail
@@ -251,9 +250,9 @@ export default async function Page({ params }: Props) {
               <div className="mt-1 truncate text-base font-semibold text-white">
                 {mail ?? "—"}
               </div>
-            </Link>
+            </a>
 
-            <Link
+            <a
               href={mapsHref}
               target="_blank"
               rel="noopener noreferrer"
@@ -265,7 +264,7 @@ export default async function Page({ params }: Props) {
               <div className="mt-1 text-base font-semibold text-white">
                 Otwórz mapy <span className="text-white/60">↗</span>
               </div>
-            </Link>
+            </a>
           </div>
         </div>
 
@@ -280,7 +279,7 @@ export default async function Page({ params }: Props) {
             <div className="mt-4 space-y-2">
               {social.length ? (
                 social.map((s) => (
-                  <Link
+                  <a
                     key={s.key}
                     href={s.href}
                     target="_blank"
@@ -292,7 +291,7 @@ export default async function Page({ params }: Props) {
                       <span className="font-semibold">{s.label}</span>
                     </span>
                     <ExternalLink className="h-4 w-4 text-white/60" />
-                  </Link>
+                  </a>
                 ))
               ) : (
                 <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
