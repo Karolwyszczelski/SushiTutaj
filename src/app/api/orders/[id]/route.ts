@@ -98,20 +98,9 @@ export async function PATCH(request: Request, ctx: any) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // cookies() ma różne typy między runtime’ami – rzutujemy na any
-  const cookieStore = cookies() as any;
-  const cookieRid =
-    cookieStore?.get?.("restaurant_id")?.value ??
-    cookieStore?.get?.("restaurant")?.value ??
-    null;
-
-  const allowedRestaurantId = await resolveRestaurantId(
-    session.user.id,
-    cookieRid
-  );
-  if (!allowedRestaurantId) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+ // cookie używamy tylko opcjonalnie do “kontekstu”, nie do wyliczania restauracji
+const cookieStore = await cookies();
+const cookieRid = cookieStore.get("restaurant_id")?.value ?? null;
 
   // SELECT istniejącego zamówienia
   const { data: existing, error: getErr } = await (supabaseAdmin as any)
@@ -126,28 +115,47 @@ export async function PATCH(request: Request, ctx: any) {
     return NextResponse.json({ error: getErr.message }, { status: 500 });
   }
   if (!existing) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-  if (existing.restaurant_id !== allowedRestaurantId) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  return NextResponse.json({ error: "Not found" }, { status: 404 });
+}
+
+const restaurantId = String(existing.restaurant_id);
+
+// (opcjonalne, ale polecam) jeśli cookie jest ustawione, wymagaj zgodności kontekstu
+if (cookieRid && cookieRid !== restaurantId) {
+  return NextResponse.json({ error: "Wrong restaurant context" }, { status: 403 });
+}
+
+// twardy check członkostwa: user musi być przypisany do restauracji z tego zamówienia
+const { data: member, error: memErr } = await (supabaseAdmin as any)
+  .from("restaurant_admins")
+  .select("restaurant_id")
+  .eq("user_id", session.user.id)
+  .eq("restaurant_id", restaurantId)
+  .limit(1)
+  .maybeSingle();
+
+if (memErr) {
+  return NextResponse.json({ error: memErr.message }, { status: 500 });
+}
+if (!member) {
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+}
 
   /* ====== Mapowanie pól do update ====== */
 
   // sprawdzamy obecność kluczy, nie tylko "truthy" wartość
-  const hasEmployeeTime =
-    "deliveryTime" in body || "employee_delivery_time" in body;
-  const hasClientTime =
-    "client_delivery_time" in body || "delivery_time" in body;
+ // employee ETA (kanoniczne): deliveryTime (timestamptz), plus alias delivery_time
+const hasEmployeeTime =
+  "deliveryTime" in body || "delivery_time" in body || "employee_delivery_time" in body;
 
-  const employeeTime: string | null = hasEmployeeTime
-    ? body.deliveryTime ?? body.employee_delivery_time ?? null
-    : null;
+// klient: tylko client_delivery_time (text) – NIE bierz delivery_time
+const hasClientTime = "client_delivery_time" in body;
 
-  const clientTime: string | null = hasClientTime
-    ? body.client_delivery_time ?? body.delivery_time ?? null
-    : null;
+const employeeTime: string | null = hasEmployeeTime
+  ? body.deliveryTime ?? body.delivery_time ?? body.employee_delivery_time ?? null
+  : null;
 
+const clientTime: string | null = hasClientTime ? body.client_delivery_time ?? null : null;
   const updateData: Record<string, any> = {};
 
   // status zamówienia
@@ -223,12 +231,12 @@ export async function PATCH(request: Request, ctx: any) {
   /* ====== UPDATE zamówienia ====== */
 
   const { data, error } = await (supabaseAdmin as any)
-    .from("orders")
-    .update(updateData)
-    .eq("id", orderId)
-    .eq("restaurant_id", allowedRestaurantId)
-    .select()
-    .maybeSingle();
+  .from("orders")
+  .update(updateData)
+  .eq("id", orderId)
+  .eq("restaurant_id", restaurantId)
+  .select()
+  .maybeSingle();
 
   if (error) {
     console.error("[orders.patch] supabase error:", error);
