@@ -244,8 +244,8 @@ type LiptonVariant = (typeof LIPTON_VARIANTS)[number];
 /* Coca-Cola / Pepsi – zwykła / zero */
 const COLA_ADDON_PREFIX = "Cola: ";
 const COLA_VARIANTS = [
-  `${COLA_ADDON_PREFIX}zwykła`,
-  `${COLA_ADDON_PREFIX}zero`,
+  `${COLA_ADDON_PREFIX}Klasyczna`,
+  `${COLA_ADDON_PREFIX}Zero`,
 ] as const;
 type ColaVariant = (typeof COLA_VARIANTS)[number];
 
@@ -1491,17 +1491,6 @@ const ProductItem: React.FC<{
       addAddon(prod.name, variant);
     }
   };
-
-  // Domyślny wariant SUSHI SPECJAŁ – np. 50% / 50%
-useEffect(() => {
-  if (!isSushiSpecjal) return;
-  if (currentSushiSpecjalVariant) return;
-
-  // indeks 3 = "50% pieczone / 50% surowe"
-  setSushiSpecjalVariant(
-    SUSHI_SPECJAL_VARIANTS[3] as SushiSpecjalVariant
-  );
-}, [isSushiSpecjal, currentSushiSpecjalVariant]);
 
   const toggleAddon = (a: string) => {
     const on = (prod.addons ?? []).includes(a);
