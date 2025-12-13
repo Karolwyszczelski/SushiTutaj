@@ -15,7 +15,7 @@ import { sendPushForRestaurant } from "@/lib/push";
 
 type LoyaltyChoice = "keep" | "use_4" | "use_8";
 
-type NotificationType = "order" | "error" | "system";
+type NotificationType = "order" | "reservation" | "error" | "system";
 
 async function pushAdminNotification(
   restaurant_id: string,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   X,
   LogIn,
@@ -15,7 +15,6 @@ import clsx from "clsx";
 import { useSession } from "@supabase/auth-helpers-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import useCartStore from "@/store/cartStore";
-
 
 /** Akcenty: korzystamy z var(--accent-red*). */
 const gradBtn =
@@ -86,9 +85,7 @@ export default function AccountModal({
 
   // koszyk (zamów ponownie)
   const addItem = useCartStore((s) => (s as any).addItem);
-  const openCheckoutModal = useCartStore(
-    (s) => (s as any).openCheckoutModal
-  );
+  const openCheckoutModal = useCartStore((s) => (s as any).openCheckoutModal);
 
   // gdy użytkownik się zaloguje — pokaż panel
   useEffect(() => {
@@ -140,7 +137,7 @@ export default function AccountModal({
   }, [tab, user, supabase]);
 
   /* ---------------- AUTH ---------------- */
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     setErr(null);
     setMsg(null);
@@ -154,7 +151,7 @@ export default function AccountModal({
     else setMsg("Zalogowano.");
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleRegister = async (e: FormEvent) => {
     e.preventDefault();
     setErr(null);
     setMsg(null);
@@ -164,8 +161,7 @@ export default function AccountModal({
     }
     setBusy(true);
 
-    const origin =
-      typeof window !== "undefined" ? window.location.origin : "";
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
 
     const { error } = await supabase.auth.signUp({
       email,
@@ -194,8 +190,7 @@ export default function AccountModal({
       return;
     }
 
-    const origin =
-      typeof window !== "undefined" ? window.location.origin : "";
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: origin ? `${origin}/auth/reset-password` : undefined,
@@ -236,7 +231,6 @@ export default function AccountModal({
       if (!error && data) {
         setLoyaltyStickers((data as any).stickers ?? 0);
       } else {
-        // brak rekordu = jeszcze żadnych zamówień
         setLoyaltyStickers(0);
       }
       setLoyaltyLoading(false);
@@ -311,6 +305,39 @@ export default function AccountModal({
   /* ---------------- RENDER ---------------- */
   if (!open) return null;
 
+  const MobileTabBtn = ({
+    value,
+    icon,
+    label,
+  }: {
+    value: Exclude<Tab, "auth">;
+    icon: React.ReactNode;
+    label: string;
+  }) => {
+    const active = tab === value;
+    return (
+      <button
+        type="button"
+        onClick={() => setTab(value)}
+        className={clsx(
+          "flex-1 min-w-[110px] rounded-xl px-3 py-2 text-xs font-semibold border transition",
+          active ? gradBtn : "bg-white hover:bg-black/5 border-black/10"
+        )}
+        aria-current={active ? "page" : undefined}
+      >
+        <span
+          className={clsx(
+            "inline-flex items-center justify-center gap-2",
+            active ? "text-white" : "text-black"
+          )}
+        >
+          {icon}
+          <span className="whitespace-nowrap">{label}</span>
+        </span>
+      </button>
+    );
+  };
+
   return (
     <div
       className="fixed inset-0 z-[70] bg-black/60 grid place-items-center px-4"
@@ -321,11 +348,11 @@ export default function AccountModal({
       }}
     >
       <div
-        className="relative w-full max-w-3xl bg-white text-black shadow-2xl grid lg:grid-cols-2"
+        className="relative w-full max-w-3xl bg-white text-black shadow-2xl grid lg:grid-cols-2 rounded-2xl max-h-[92vh] overflow-hidden"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* LEWA: nawigacja / tabs po zalogowaniu | nagł. po niezalogowaniu */}
-        <aside className="hidden lg:flex flex-col gap-2 p-6 border-r border-black/10">
+        {/* LEWA: desktop tabs */}
+        <aside className="hidden lg:flex flex-col gap-2 p-6 border-r border-black/10 overflow-y-auto">
           <h3 className="text-xl font-semibold mb-2">Konto</h3>
           {!user ? (
             <div className="text-sm text-black/70">
@@ -377,7 +404,7 @@ export default function AccountModal({
         </aside>
 
         {/* PRAWA: treść */}
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto">
           {/* Zamknięcie */}
           <button
             onClick={onClose}
@@ -581,16 +608,9 @@ export default function AccountModal({
                   </button>
 
                   <div className="mt-2 space-y-1 text-[11px] text-black/55">
-                    <p>
-                      • Hasło jest przechowywane w postaci zaszyfrowanej (hash).
-                    </p>
-                    <p>
-                      • Konto służy tylko do tej restauracji – nie łączymy go z
-                      innymi usługami.
-                    </p>
-                    <p>
-                      • Zawsze możesz poprosić o usunięcie konta i danych.
-                    </p>
+                    <p>• Hasło jest przechowywane w postaci zaszyfrowanej (hash).</p>
+                    <p>• Konto służy tylko do tej restauracji – nie łączymy go z innymi usługami.</p>
+                    <p>• Zawsze możesz poprosić o usunięcie konta i danych.</p>
                   </div>
                 </form>
               )}
@@ -599,23 +619,47 @@ export default function AccountModal({
 
           {/* ------ PANEL PO ZALOGOWANIU ------ */}
           {user && (
-            <div className="mb-3 flex justify-end lg:hidden">
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="inline-flex items-center gap-2 rounded-full border border-black/10 px-3 py-1.5 text-xs text-red-700 hover:bg-red-50"
-              >
-                <LogOut className="w-3 h-3" />
-                Wyloguj się
-              </button>
-            </div>
+            <>
+              {/* MOBILE: zakładki jak na desktop */}
+              <div className="lg:hidden mb-3">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <h3 className="text-lg font-semibold">Konto</h3>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="inline-flex items-center gap-2 rounded-full border border-black/10 px-3 py-1.5 text-xs text-red-700 hover:bg-red-50"
+                  >
+                    <LogOut className="w-3 h-3" />
+                    Wyloguj
+                  </button>
+                </div>
+
+                <div className="flex gap-2">
+                  <MobileTabBtn
+                    value="orders"
+                    icon={<Package className="w-4 h-4" />}
+                    label="Zamówienia"
+                  />
+                  <MobileTabBtn
+                    value="loyalty"
+                    icon={<BadgePercent className="w-4 h-4" />}
+                    label="Lojalność"
+                  />
+                  <MobileTabBtn
+                    value="profile"
+                    icon={<Settings className="w-4 h-4" />}
+                    label="Ustawienia"
+                  />
+                </div>
+              </div>
+
+              {/* DESKTOP: przycisk wyloguj jest w lewym panelu, więc tu już nie dublujemy */}
+            </>
           )}
 
           {user && tab === "orders" && (
             <div>
-              <h3 className="text-xl font-semibold mb-3">
-                Twoje zamówienia
-              </h3>
+              <h3 className="text-xl font-semibold mb-3">Twoje zamówienia</h3>
               {ordersLoading ? (
                 <p className="text-black/70 text-sm">Ładowanie…</p>
               ) : orders.length === 0 ? (
@@ -625,21 +669,18 @@ export default function AccountModal({
                   {orders.map((o) => (
                     <li
                       key={String(o.id)}
-                      className="rounded-xl border border-black/10 px-3 py-2 flex items-center justify-between"
+                      className="rounded-xl border border-black/10 px-3 py-2 flex items-start sm:items-center justify-between gap-3"
                     >
-                      <div className="text-sm">
-                        <div className="font-semibold">#{o.id}</div>
+                      <div className="text-sm min-w-0">
+                        <div className="font-semibold truncate">#{o.id}</div>
                         <div className="text-black/70">
-                          {o.created_at
-                            ? new Date(o.created_at).toLocaleString()
-                            : ""}{" "}
-                          • {(o.total_price ?? 0).toFixed(2)} zł •{" "}
-                          {o.status || "przyjęte"}
+                          {o.created_at ? new Date(o.created_at).toLocaleString() : ""} •{" "}
+                          {(o.total_price ?? 0).toFixed(2)} zł • {o.status || "przyjęte"}
                         </div>
                       </div>
                       <button
                         onClick={() => reorder(o.id)}
-                        className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm border hover:bg-black/5"
+                        className="shrink-0 inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm border hover:bg-black/5"
                         title="Dodaj pozycje z tego zamówienia do koszyka"
                       >
                         <RefreshCcw className="w-4 h-4" />
@@ -654,36 +695,28 @@ export default function AccountModal({
 
           {user && tab === "loyalty" && (
             <div>
-              <h3 className="text-xl font-semibold mb-3">
-                Program lojalnościowy
-              </h3>
+              <h3 className="text-xl font-semibold mb-3">Program lojalnościowy</h3>
               <p className="text-sm text-black/70 mb-3">
                 Za każde zrealizowane zamówienie dostajesz 1 naklejkę.
                 <br />
-                <b>4 naklejki</b> = darmowa rolka, <b>8 naklejek</b> ={" "}
-                <b>−20%</b> na zamówienie.
+                <b>4 naklejki</b> = darmowa rolka, <b>8 naklejek</b> = <b>−20%</b> na zamówienie.
               </p>
 
               {loyaltyLoading ? (
-                <p className="text-sm text-black/70">
-                  Ładujemy stan programu…
-                </p>
+                <p className="text-sm text-black/70">Ładujemy stan programu…</p>
               ) : (
                 <LoyaltyProgress stickers={loyaltyStickers ?? 0} />
               )}
 
               <p className="text-xs text-black/50 mt-2">
-                Promocje naliczamy przy składaniu zamówienia, po weryfikacji
-                statusu poprzednich.
+                Promocje naliczamy przy składaniu zamówienia, po weryfikacji statusu poprzednich.
               </p>
             </div>
           )}
 
           {user && tab === "profile" && (
             <div className="max-w-xl">
-              <h3 className="text-xl font-semibold mb-3">
-                Profil i adres
-              </h3>
+              <h3 className="text-xl font-semibold mb-3">Profil i adres</h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <input
@@ -727,10 +760,7 @@ export default function AccountModal({
               <div className="mt-3 flex gap-2">
                 <button
                   onClick={saveProfile}
-                  className={clsx(
-                    "rounded-xl px-4 py-2 font-semibold",
-                    gradBtn
-                  )}
+                  className={clsx("rounded-xl px-4 py-2 font-semibold", gradBtn)}
                 >
                   Zapisz profil
                 </button>
@@ -756,10 +786,7 @@ export default function AccountModal({
               <div className="mt-3">
                 <button
                   onClick={changePassword}
-                  className={clsx(
-                    "rounded-xl px-4 py-2 font-semibold",
-                    gradBtn
-                  )}
+                  className={clsx("rounded-xl px-4 py-2 font-semibold", gradBtn)}
                 >
                   Zmień hasło
                 </button>
@@ -777,10 +804,9 @@ function LoyaltyProgress({ stickers }: { stickers: number }) {
   // zakładamy, że w bazie trzymasz *aktualne* niewykorzystane naklejki (0–8)
   const usable = Math.max(0, Math.min(stickers, 8));
 
-  const cells = useMemo(
-    () => Array.from({ length: 8 }, (_, i) => i < usable),
-    [usable]
-  );
+  const cells = useMemo(() => Array.from({ length: 8 }, (_, i) => i < usable), [
+    usable,
+  ]);
 
   const toFreeRoll = usable >= 4 ? 0 : 4 - usable;
   const toDiscount = usable >= 8 ? 0 : 8 - usable;
@@ -803,8 +829,8 @@ function LoyaltyProgress({ stickers }: { stickers: number }) {
       <div className="mt-2 text-sm">
         {usable >= 8 ? (
           <span className="font-semibold">
-            Masz {usable} naklejek — przy następnym zamówieniu naliczymy −20%
-            i licznik się wyzeruje.
+            Masz {usable} naklejek — przy następnym zamówieniu naliczymy −20% i
+            licznik się wyzeruje.
           </span>
         ) : usable >= 4 ? (
           <span>

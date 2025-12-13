@@ -3,6 +3,41 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendPushForRestaurant } from "@/lib/push";
+import { fromZonedTime } from "date-fns-tz";
+
+const TZ = "Europe/Warsaw";
+
+type NotificationType = "order" | "reservation" | "error" | "system";
+
+async function pushAdminNotification(
+  restaurant_id: string,
+  type: NotificationType,
+  title: string,
+  message?: string | null,
+  opts?: { url?: string }
+) {
+  try {
+    // 1) zapis do admin_notifications
+    await supabaseAdmin.from("admin_notifications").insert({
+      restaurant_id,
+      type,
+      title,
+      message: message ?? null,
+    });
+
+    // 2) web-push (do tabletu)
+    const url = opts?.url || "/admin";
+    await sendPushForRestaurant(restaurant_id, {
+      type,
+      title,
+      body: message || title,
+      url,
+    });
+  } catch (e: any) {
+    console.error("[admin_notifications.insert/push] error:", e?.message || e);
+  }
+}
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -72,9 +107,9 @@ function isAtLeastMinAhead(
   timeHHMMSS: string,
   minMinutes: number
 ) {
-  const target = new Date(`${dayStr}T${timeHHMMSS}`);
+  const targetUtc = fromZonedTime(`${dayStr}T${timeHHMMSS}`, TZ); // PL wall-clock -> UTC instant
   const now = new Date();
-  const diffMinutes = (target.getTime() - now.getTime()) / 60_000;
+  const diffMinutes = (targetUtc.getTime() - now.getTime()) / 60_000;
   return diffMinutes >= minMinutes;
 }
 
@@ -126,28 +161,47 @@ export async function POST(req: Request) {
       );
     }
 
-    // Ustal restaurant_id jeśli nie podano
-    let rid = restaurant_id;
-    if (!rid && restaurant_slug) {
-      const { data: r, error: rErr } = await supabaseAdmin
-        .from("restaurants")
-        .select("id")
-        .eq("slug", restaurant_slug)
-        .maybeSingle();
-      if (rErr) {
-        return NextResponse.json(
-          { error: "Błąd sprawdzania restauracji." },
-          { status: 500 }
-        );
-      }
-      rid = r?.id ?? null;
-    }
-    if (!rid) {
-      return NextResponse.json(
-        { error: "Nie wykryto restauracji." },
-        { status: 400 }
-      );
-    }
+    // Ustal restaurant_id + slug (żeby zbudować URL do panelu)
+let rid = restaurant_id;
+let rslug = restaurant_slug; // <-- TU przechowujesz slug w zmiennej
+
+if (!rid && restaurant_slug) {
+  const { data: r, error: rErr } = await supabaseAdmin
+    .from("restaurants")
+    .select("id, slug")
+    .eq("slug", restaurant_slug)
+    .maybeSingle();
+
+  if (rErr) {
+    return NextResponse.json(
+      { error: "Błąd sprawdzania restauracji." },
+      { status: 500 }
+    );
+  }
+
+  rid = r?.id ?? null;
+  rslug = r?.slug ?? rslug; // <-- TU zapisujesz slug z DB
+}
+
+if (rid && !rslug) {
+  // przypadek: przyszło restaurant_id, ale slug nie przyszedł
+  const { data: r2, error: r2Err } = await supabaseAdmin
+    .from("restaurants")
+    .select("slug")
+    .eq("id", rid)
+    .maybeSingle();
+
+  if (!r2Err) rslug = r2?.slug ?? null;
+}
+
+if (!rid) {
+  return NextResponse.json(
+    { error: "Nie wykryto restauracji." },
+    { status: 400 }
+  );
+}
+
+const restaurantId = String(rid);
 
     /* ===== BLOKADY CZASOWE z restaurant_blocked_times (rezerwacje) ===== */
     try {
@@ -252,6 +306,7 @@ export async function POST(req: Request) {
       restaurant_id: rid,
       reservation_date: day,
       reservation_time: timeHHMMSS,
+      restaurant_slug: rslug,
       guests,
       name,
       phone,
@@ -275,6 +330,19 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
+
+    const adminUrl = rslug
+  ? `/admin/reservations?restaurant=${encodeURIComponent(rslug)}`
+  : "/admin/reservations";
+
+// Uwaga: na zablokowanym ekranie nie pokazuj PII (tel/email) – minimalny komunikat.
+await pushAdminNotification(
+  rid,
+  "reservation",
+  `Nowa rezerwacja #${ins.id}`,
+  `${day} ${timeHHMM} • ${guests} os.`,
+  { url: adminUrl }
+);
 
     return NextResponse.json({ ok: true, id: ins?.id }, { status: 201 });
   } catch {

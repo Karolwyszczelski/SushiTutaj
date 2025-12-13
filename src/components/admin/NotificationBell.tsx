@@ -2,10 +2,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, ShoppingBag, AlertTriangle, Info } from "lucide-react";
+import { Bell, ShoppingBag, AlertTriangle, Info, CalendarDays } from "lucide-react";
 import clsx from "clsx";
 
-type NotificationType = "order" | "error" | "system";
+type NotificationType = "order" | "reservation" | "error" | "system";
 
 type AdminNotification = {
   id: string;
@@ -75,6 +75,12 @@ export default function NotificationBell() {
             <ShoppingBag className="h-4 w-4" />
           </div>
         );
+        case "reservation":
+  return (
+    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500/10 text-amber-400">
+      <CalendarDays className="h-4 w-4" />
+    </div>
+  );
       case "error":
         return (
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500/10 text-red-400">

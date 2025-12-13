@@ -1,9 +1,7 @@
-// src/app/api/admin/notifications/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseAdmin = createClient(
@@ -12,14 +10,28 @@ const supabaseAdmin = createClient(
   { auth: { persistSession: false } }
 );
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
-    // Bierzemy aktualny lokal z cookie ustawianego przez ensure-cookie
-    const ck = await cookies(); // możesz spokojnie usunąć "await" – cookies() jest synchroniczne
-    const restaurantId = ck.get("restaurant_id")?.value ?? null;
+    const restaurantIdFromCookie =
+      req.cookies.get("restaurant_id")?.value ?? null;
+
+    const restaurantSlugFromCookie =
+      req.cookies.get("restaurant_slug")?.value ?? null;
+
+    let restaurantId = restaurantIdFromCookie;
+
+    // fallback: jeśli brak restaurant_id, ale jest slug → dociągnij id
+    if (!restaurantId && restaurantSlugFromCookie) {
+      const { data: r, error: rErr } = await supabaseAdmin
+        .from("restaurants")
+        .select("id")
+        .eq("slug", restaurantSlugFromCookie)
+        .maybeSingle();
+
+      if (!rErr && r?.id) restaurantId = r.id;
+    }
 
     if (!restaurantId) {
-      // bez lokalu nie pokazujemy nic (np. admin jeszcze nie wybrał miasta)
       return NextResponse.json({ notifications: [] }, { status: 200 });
     }
 
@@ -38,10 +50,7 @@ export async function GET(req: Request) {
       );
     }
 
-    return NextResponse.json(
-      { notifications: data ?? [] },
-      { status: 200 }
-    );
+    return NextResponse.json({ notifications: data ?? [] }, { status: 200 });
   } catch (e: any) {
     console.error("[admin.notifications] unexpected:", e?.message || e);
     return NextResponse.json(

@@ -249,6 +249,20 @@ const COLA_VARIANTS = [
 ] as const;
 type ColaVariant = (typeof COLA_VARIANTS)[number];
 
+const PEPSI_AADDON_PREFIX = "Pepsi: ";
+const PEPSI_VARIANTS = [
+  `${PEPSI_AADDON_PREFIX}Klasyczna`,
+  `${PEPSI_AADDON_PREFIX}Max`,
+] as const;
+type PepsiVariant = (typeof PEPSI_VARIANTS)[number];
+
+const FANTA_ADDON_PREFIX = "Fanta: ";
+const FANTA_VARIANTS = [
+  `${FANTA_ADDON_PREFIX}Klasyczna`,
+  `${FANTA_ADDON_PREFIX}Zero`,
+] as const;
+type FantaVariant = (typeof FANTA_VARIANTS)[number];
+
 /* Zestaw SUSHI SPECJAŁ – proporcje pieczone/surowe */
 const SUSHI_SPECJAL_ADDON_PREFIX = "SUSHI SPECJAŁ: ";
 const SUSHI_SPECJAL_VARIANTS = [
