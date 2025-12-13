@@ -961,14 +961,6 @@ export default function PickupOrdersPage() {
     };
   }, [supabase, router]);
 
-  if (!authChecked) {
-    return (
-      <div className="p-6 text-sm text-slate-600">
-        Ładowanie panelu…
-      </div>
-    );
-  }
-
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -1174,14 +1166,16 @@ const playDing = useCallback(async () => {
     editingRef.current = editingOrderId;
   }, [editingOrderId]);
 
-  const fetchOrders = useCallback(async function doFetch(opts?: { silent?: boolean }) {
+  const fetchOrders = useCallback(
+  async function doFetch(opts?: { silent?: boolean }) {
     if (!booted) return;
-    if (editingRef.current) return; // nie rozwalaj UI w trakcie akcji/edycji
+    if (editingRef.current) return;
     if (fetchingRef.current) {
       pendingRef.current = true;
       return;
     }
     fetchingRef.current = true;
+
     try {
       setErrorMsg(null);
       if (!opts?.silent) setLoading(true);
@@ -1205,16 +1199,18 @@ const playDing = useCallback(async () => {
         cache: "no-store",
         signal: ac.signal,
       });
+
       const json = await res.json().catch(() => ({} as any));
 
       if (!res.ok) {
-        setOrders([]);
-        setTotal(0);
+        if (!opts?.silent) {
+          setOrders([]);
+          setTotal(0);
+        }
         setErrorMsg(json?.error || "Błąd pobierania zamówień");
         return;
       }
 
-      /* ważne: bierzemy restaurant_id z odpowiedzi API, bo httpOnly cookie nie jest dostępne w JS */
       if (json?.restaurant_id && typeof json.restaurant_id === "string") {
         setRestaurantId(json.restaurant_id);
       }
@@ -1223,95 +1219,74 @@ const playDing = useCallback(async () => {
       const raw = Array.isArray(json.orders) ? json.orders : [];
       const totalCount = Number(json.totalCount || 0);
 
-     const mapped: Order[] = raw.map((o: any) => {
-  const chopsticksRaw =
-    asInt(o.chopsticks_qty) ??
-    asInt(o.chopsticksQty) ??
-    asInt(o.chopsticksqty) ??
-    asInt(o.chopsticks) ??
-    extractChopsticksFromOrderRaw(o);
+      const mapped: Order[] = raw.map((o: any) => {
+        const chopsticksRaw =
+          asInt(o.chopsticks_qty) ??
+          asInt(o.chopsticksQty) ??
+          asInt(o.chopsticksqty) ??
+          asInt(o.chopsticks) ??
+          extractChopsticksFromOrderRaw(o);
 
-  // jeśli to „Na wynos” i w kolumnie address siedzi tekst,
-  // traktujemy go jako notatkę klienta (kompatybilność wsteczna)
-  const noteFromAddress =
-    o.selected_option === "takeaway" &&
-    typeof o.address === "string" &&
-    o.address.trim()
-      ? o.address.trim()
-      : null;
+        const noteFromAddress =
+          o.selected_option === "takeaway" &&
+          typeof o.address === "string" &&
+          o.address.trim()
+            ? o.address.trim()
+            : null;
 
-  return {
-    id: String(o.id),
-    name: o.name ?? o.customer_name ?? o.client_name ?? undefined,
-    total_price: toNumber(o.total_price),
-    delivery_cost: o.delivery_cost ?? null,
-    created_at: o.created_at,
-    status: o.status,
-   client_delivery_time: (o.client_delivery_time as string | undefined) ?? null,
-scheduled_delivery_at: (o.scheduled_delivery_at as string | undefined) ?? null,
+        return {
+          id: String(o.id),
+          name: o.name ?? o.customer_name ?? o.client_name ?? undefined,
+          total_price: toNumber(o.total_price),
+          delivery_cost: o.delivery_cost ?? null,
+          created_at: o.created_at,
+          status: o.status,
 
-// kompatybilność wstecz (jeśli gdzieś stary backend/front jeszcze tego używa)
-clientDelivery: (o.clientDelivery as string | undefined) ?? null,
+          client_delivery_time: (o.client_delivery_time as string | undefined) ?? null,
+          scheduled_delivery_at: (o.scheduled_delivery_at as string | undefined) ?? null,
+          clientDelivery: (o.clientDelivery as string | undefined) ?? null,
 
-    // czas ustawiony przez lokal (ETA)
-    deliveryTime: (o.deliveryTime as string | undefined) ?? (o.delivery_time as string | undefined) ?? null,
+          deliveryTime:
+            (o.deliveryTime as string | undefined) ??
+            (o.delivery_time as string | undefined) ??
+            null,
 
-    // adres – normalnie tylko dla dostawy
-    address:
-      o.selected_option === "delivery"
-        ? `${o.street || ""}${
-            o.flat_number ? `, nr ${o.flat_number}` : ""
-          }${o.city ? `, ${o.city}` : ""}`
-        : o.address || "",
+          address:
+            o.selected_option === "delivery"
+              ? `${o.street || ""}${o.flat_number ? `, nr ${o.flat_number}` : ""}${o.city ? `, ${o.city}` : ""}`
+              : o.address || "",
 
-    street: o.street,
-    flat_number: o.flat_number,
-    city: o.city,
-    phone: o.phone,
-    items: o.items ?? o.order_items ?? [],
-    selected_option: o.selected_option,
-    payment_method: fromDBPaymentMethod(o.payment_method),
-    payment_status: fromDBPaymentStatus(o.payment_status),
+          street: o.street,
+          flat_number: o.flat_number,
+          city: o.city,
+          phone: o.phone,
+          items: o.items ?? o.order_items ?? [],
+          selected_option: o.selected_option,
+          payment_method: fromDBPaymentMethod(o.payment_method),
+          payment_status: fromDBPaymentStatus(o.payment_status),
 
-    // NOWE: notatki
-    note: o.note ?? noteFromAddress ?? null,
-    kitchen_note: o.kitchen_note ?? null,
+          note: o.note ?? noteFromAddress ?? null,
+          kitchen_note: o.kitchen_note ?? null,
 
-    // rabaty / lojalność
-    promo_code: o.promo_code ?? null,
-    discount_amount:
-      o.discount_amount != null ? Number(o.discount_amount) || 0 : 0,
-    loyalty_stickers_before:
-      typeof o.loyalty_stickers_before === "number"
-        ? o.loyalty_stickers_before
-        : null,
-    loyalty_stickers_after:
-      typeof o.loyalty_stickers_after === "number"
-        ? o.loyalty_stickers_after
-        : null,
-    loyalty_applied:
-            o.loyalty_applied === true ||
-            o.loyalty_applied === 1 ||
-            o.loyalty_applied === "1",
-    loyalty_reward_type: o.loyalty_reward_type ?? null,
-    loyalty_reward_value:
-      o.loyalty_reward_value != null
-        ? Number(o.loyalty_reward_value)
-        : null,
-    loyalty_min_order:
-      o.loyalty_min_order != null
-        ? Number(o.loyalty_min_order)
-        : null,
+          promo_code: o.promo_code ?? null,
+          discount_amount: o.discount_amount != null ? Number(o.discount_amount) || 0 : 0,
 
-    // rezerwacja
-    reservation_id: o.reservation_id ?? null,
-    reservation_date: o.reservation_date ?? null,
-    reservation_time: o.reservation_time ?? null,
+          loyalty_stickers_before:
+            typeof o.loyalty_stickers_before === "number" ? o.loyalty_stickers_before : null,
+          loyalty_stickers_after:
+            typeof o.loyalty_stickers_after === "number" ? o.loyalty_stickers_after : null,
+          loyalty_applied: o.loyalty_applied === true || o.loyalty_applied === 1 || o.loyalty_applied === "1",
+          loyalty_reward_type: o.loyalty_reward_type ?? null,
+          loyalty_reward_value: o.loyalty_reward_value != null ? Number(o.loyalty_reward_value) : null,
+          loyalty_min_order: o.loyalty_min_order != null ? Number(o.loyalty_min_order) : null,
 
-    // pałeczki
-    chopsticks: chopsticksRaw ?? 0,
-  };
-});
+          reservation_id: o.reservation_id ?? null,
+          reservation_date: o.reservation_date ?? null,
+          reservation_time: o.reservation_time ?? null,
+
+          chopsticks: chopsticksRaw ?? 0,
+        };
+      });
 
       setTotal(totalCount);
 
@@ -1321,16 +1296,12 @@ clientDelivery: (o.clientDelivery as string | undefined) ?? null,
         return sortOrder === "desc" ? tb - ta : ta - tb;
       });
 
-      // wykrywanie nowych zamówień (do pojedynczego dźwięku)
       const prev = prevIdsRef.current;
       const newOnes = mapped.filter(
-        (o) =>
-          (o.status === "new" ||
-            o.status === "pending" ||
-            o.status === "placed") &&
-          !prev.has(o.id)
+        (o) => (o.status === "new" || o.status === "pending" || o.status === "placed") && !prev.has(o.id)
       );
       if (initializedRef.current && newOnes.length > 0) void playDing();
+
       prevIdsRef.current = new Set(mapped.map((o) => o.id));
       initializedRef.current = true;
 
@@ -1338,8 +1309,10 @@ clientDelivery: (o.clientDelivery as string | undefined) ?? null,
     } catch (e: any) {
       if (e?.name !== "AbortError") {
         setErrorMsg("Błąd sieci");
-        setOrders([]);
-        setTotal(0);
+        if (!opts?.silent) {
+          setOrders([]);
+          setTotal(0);
+        }
       }
     } finally {
       if (!opts?.silent) setLoading(false);
@@ -1349,37 +1322,35 @@ clientDelivery: (o.clientDelivery as string | undefined) ?? null,
         void doFetch({ silent: true });
       }
     }
-  }, [
-    booted,
-    page,
-    perPage,
-    sortOrder,
-    editingOrderId,
-    playDing,
-    restaurantSlug,
-    urlSlug,
-  ]);
+  },
+  [booted, page, perPage, restaurantSlug, urlSlug, sortOrder, playDing]
+);
 
   useEffect(() => {
+    if (!authChecked) return;
     fetchOrders({ silent: true });
-  }, [fetchOrders]);
+  }, [authChecked, fetchOrders]);
 
-  // <-- NOWE: fallback polling zamówień co 8 sekund
+ // <-- NOWE: fallback polling zamówień co 8 sekund
   useEffect(() => {
-    if (!booted) return;           // dopóki nie wiemy, którą restaurację ładujemy
-    if (editingOrderId) return;    // nie odświeżaj w trakcie edycji zamówienia
+    if (!authChecked) return;
+    if (!booted) return;
+    if (editingOrderId) return;
 
     const iv = setInterval(() => {
-      fetchOrders({ silent: true });               // pobierz aktualną listę
-    }, 8000);                      // 8 000 ms = 8 sekund
+      void fetchOrdersRef.current({ silent: true });
+    }, 8000);
 
     return () => clearInterval(iv);
-  }, [booted, editingOrderId, fetchOrders]);
+  }, [authChecked, booted, editingOrderId]);
 
-  /* realtime tylko dla tej restauracji */
+   /* realtime tylko dla tej restauracji */
   useEffect(() => {
+    if (!authChecked) return;
     if (!booted) return;
+
     const filter = restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined;
+
     const ch = supabase
       .channel("orders-realtime")
       .on(
@@ -1396,24 +1367,31 @@ clientDelivery: (o.clientDelivery as string | undefined) ?? null,
             const ridOld = payload.old?.restaurant_id;
             if (ridNew !== restaurantId && ridOld !== restaurantId) return;
           }
-          fetchOrders({ silent: true });
+          void fetchOrdersRef.current({ silent: true });
         }
       )
       .subscribe();
+
     return () => {
       void supabase.removeChannel(ch);
     };
-  }, [supabase, fetchOrders, restaurantId, booted]);
+  }, [supabase, restaurantId, booted, authChecked]);
 
-  /* polling płatności */
+   /* polling płatności */
   useEffect(() => {
+    if (!authChecked) return;
+
     const hasPending = orders.some(
       (o) => o.payment_method === "Online" && o.payment_status === "pending"
     );
     if (!hasPending || editingOrderId) return;
-    const iv = setInterval(() => fetchOrders(), 3000);
+
+    const iv = setInterval(() => {
+      void fetchOrdersRef.current({ silent: true });
+    }, 3000);
+
     return () => clearInterval(iv);
-  }, [orders, editingOrderId, fetchOrders]);
+  }, [authChecked, orders, editingOrderId]);
 
   // powtarzający się dźwięk dopóki są niezaakceptowane zamówienia
   const hasUnaccepted = useMemo(
@@ -1484,6 +1462,11 @@ clientDelivery: (o.clientDelivery as string | undefined) ?? null,
     setEditingOrderId(null);
   }
 };
+
+const fetchOrdersRef = useRef(fetchOrders);
+  useEffect(() => {
+    fetchOrdersRef.current = fetchOrders;
+  }, [fetchOrders]);
 
   // Akceptacja – PATCH /api/orders/[id] → status + czas
   const acceptAndSetTime = async (order: Order, minutes: number) => {
@@ -2448,6 +2431,15 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
       )}
     </section>
   );
+
+  if (!authChecked) {
+  return (
+    <div className="p-6 text-sm text-slate-600">
+      Ładowanie panelu…
+    </div>
+  );
+}
+
 
   return (
     <div className="mx-auto max-w-6xl p-4 text-slate-900 sm:p-6">
