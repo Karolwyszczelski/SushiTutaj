@@ -500,7 +500,7 @@ const normalizeProduct = (raw: Any) => {
   /^zestaw\b/i.test(name) ||
   /^set\b/i.test(name) ||
   /zestaw\s+\d+/i.test(name);
-  
+
   const normSwap = (s: string) =>
   (s || "")
     .normalize("NFKC")
@@ -1414,13 +1414,29 @@ clientDelivery: (o.clientDelivery as string | undefined) ?? null,
     setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, ...upd } : o)));
 
   const completeOrder = async (id: string) => {
+  try {
+    setEditingOrderId(id);
+    setErrorMsg(null);
+
     const res = await fetch(`/api/orders/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "completed" }),
     });
-    if (res.ok) updateLocal(id, { status: "completed" });
-  };
+
+    const j = (await res.json().catch(() => ({}))) as any;
+
+    if (!res.ok) {
+      setErrorMsg(j?.error || `Nie udało się oznaczyć zamówienia jako zrealizowane. (${res.status})`);
+      return;
+    }
+
+    updateLocal(id, { status: "completed" });
+    fetchOrders(); // żeby przerzuciło do historii nawet jeśli realtime/polling się rozminie
+  } finally {
+    setEditingOrderId(null);
+  }
+};
 
   // Akceptacja – PATCH /api/orders/[id] → status + czas
   const acceptAndSetTime = async (order: Order, minutes: number) => {
@@ -1600,58 +1616,86 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
     return <Badge tone="amber">GOTÓWKA</Badge>;
   };
 
+  const plStickersWord = (n: number) => {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (n === 1) return "naklejkę";
+  if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) return "naklejki";
+  return "naklejek";
+};
+
+const calcEarnedStickers = (o: Order) => {
+  if (o.loyalty_applied) return 0; // jeśli użyto nagrody – domyślnie nie naliczamy
+  const min =
+    typeof o.loyalty_min_order === "number" && o.loyalty_min_order > 0
+      ? o.loyalty_min_order
+      : 50;
+
+  const total = typeof o.total_price === "number" ? o.total_price : Number(o.total_price || 0);
+  if (!(total >= min)) return 0;
+
+  // “jak się umawialiśmy” najczęściej = 1 naklejka za każde min_order (np. 50 zł)
+  return Math.max(0, Math.floor(total / min));
+};
+
+
   // Program lojalnościowy – badge w nagłówku karty zamówienia
+
   const loyaltyBadge = (o: Order) => {
-    const before =
-      typeof o.loyalty_stickers_before === "number"
-        ? o.loyalty_stickers_before
-        : null;
-    const after =
-      typeof o.loyalty_stickers_after === "number"
-        ? o.loyalty_stickers_after
-        : null;
-    const hasStickersInfo = before !== null && after !== null;
-    const hasReward = !!o.loyalty_applied;
-    const discount =
-      typeof o.discount_amount === "number" ? o.discount_amount : 0;
-    const minOrder =
-      typeof o.loyalty_min_order === "number" ? o.loyalty_min_order : null;
+  const before =
+    typeof o.loyalty_stickers_before === "number" ? o.loyalty_stickers_before : null;
+  const afterRaw =
+    typeof o.loyalty_stickers_after === "number" ? o.loyalty_stickers_after : null;
 
-    if (!hasReward && !hasStickersInfo) return null;
+  const hasReward = !!o.loyalty_applied;
+  const discount = typeof o.discount_amount === "number" ? o.discount_amount : 0;
+  const minOrder = typeof o.loyalty_min_order === "number" ? o.loyalty_min_order : null;
 
-    let line2: string;
-    if (hasReward) {
-      if (
-        o.loyalty_reward_type === "percent" &&
-        typeof o.loyalty_reward_value === "number"
-      ) {
-        line2 = `Nagroda: −${o.loyalty_reward_value}%${
-          discount > 0 ? ` (−${discount.toFixed(2)} zł)` : ""
-        }`;
-      } else {
-        line2 = "Nagroda: darmowa pozycja / rolka";
-      }
+  const earned = calcEarnedStickers(o);
+
+  // Jeśli nie ma nagrody, to AFTER wyliczamy z BEFORE + earned (żeby nie pokazywać stale 0→1)
+  const displayAfter =
+    hasReward ? afterRaw : before !== null ? before + earned : afterRaw;
+
+  const showStickerCounts = before !== null && displayAfter !== null;
+
+  if (!hasReward && !showStickerCounts && earned <= 0) return null;
+
+  let line2: string;
+  if (hasReward) {
+    if (o.loyalty_reward_type === "percent" && typeof o.loyalty_reward_value === "number") {
+      line2 = `Nagroda: −${o.loyalty_reward_value}%${discount > 0 ? ` (−${discount.toFixed(2)} zł)` : ""}`;
     } else {
-      line2 = "To zamówienie dolicza 1 naklejkę w programie.";
+      line2 = "Nagroda: darmowa pozycja / rolka";
     }
+  } else {
+    line2 =
+      earned > 0
+        ? `To zamówienie dolicza ${earned} ${plStickersWord(earned)} w programie.`
+        : minOrder
+          ? `To zamówienie nie nalicza naklejek (poniżej ${minOrder.toFixed(2)} zł).`
+          : "To zamówienie nie nalicza naklejek.";
+  }
 
-    return (
-      <div className="inline-flex flex-col rounded-xl bg-emerald-50 px-3 py-1.5 text-[11px] text-emerald-800">
-        <span className="font-semibold">Program lojalnościowy</span>
-        <span>{line2}</span>
-        {hasStickersInfo && (
-          <span className="mt-0.5">
-            Naklejki: {before} → {after}
-          </span>
-        )}
-        {minOrder && (
-          <span className="mt-0.5 text-[10px] text-emerald-700">
-            Program liczy zamówienia od {minOrder.toFixed(2)} zł.
-          </span>
-        )}
-      </div>
-    );
-  };
+  return (
+    <div className="inline-flex flex-col rounded-xl bg-emerald-50 px-3 py-1.5 text-[11px] text-emerald-800">
+      <span className="font-semibold">Program lojalnościowy</span>
+      <span>{line2}</span>
+
+      {showStickerCounts && (
+        <span className="mt-0.5">
+          Naklejki: {before} → {displayAfter}
+        </span>
+      )}
+
+      {minOrder && (
+        <span className="mt-0.5 text-[10px] text-emerald-700">
+          Program liczy zamówienia od {minOrder.toFixed(2)} zł.
+        </span>
+      )}
+    </div>
+  );
+};
 
   const setPaymentMethod = async (o: Order, method: PaymentMethod) => {
     try {
@@ -1734,14 +1778,6 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
     {" "}
     <span className="text-slate-400"> · </span> Dodatki:{" "}
     {p.addons.join(", ")}
-  </>
-)}
-
-{isSet && hasSetSwaps && (
-  <>
-    {" "}
-    <span className="text-slate-400"> · </span> Zamiany w zestawie:{" "}
-    {compactSetSwapsInline(setSwaps, 2)}
   </>
 )}
           </div>
@@ -2312,6 +2348,7 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
 
     <button
       onClick={() => completeOrder(o.id)}
+      disabled={editingOrderId === o.id}
       className="h-10 rounded-md bg-sky-600 px-4 text-sm font-semibold text-white shadow hover:bg-sky-500"
     >
       Zrealizowany
