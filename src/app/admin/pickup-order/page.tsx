@@ -695,17 +695,31 @@ const InlineCountdown: React.FC<{
   const [ms, setMs] = useState(
     () => Math.max(0, new Date(targetTime).getTime() - Date.now())
   );
+
+  const doneRef = useRef(false);
+
   useEffect(() => {
-    const iv = setInterval(() => {
+    doneRef.current = false; // reset przy zmianie targetTime
+
+    const id = window.setInterval(() => {
       const left = new Date(targetTime).getTime() - Date.now();
-      setMs(Math.max(0, left));
-      if (left <= 0) onComplete?.();
+      const clamped = Math.max(0, left);
+      setMs(clamped);
+
+      if (left <= 0 && !doneRef.current) {
+        doneRef.current = true;
+        window.clearInterval(id);
+        onComplete?.();
+      }
     }, 1000);
-    return () => clearInterval(iv);
+
+    return () => window.clearInterval(id);
   }, [targetTime, onComplete]);
+
   const sec = Math.floor(ms / 1000);
   const mm = String(Math.floor(sec / 60)).padStart(2, "0");
   const ss = String(sec % 60).padStart(2, "0");
+
   return (
     <span className="rounded-md bg-slate-900 px-2 py-0.5 font-mono text-xs text-white">
       {mm}:{ss}
@@ -1177,7 +1191,7 @@ const playDing = useCallback(async () => {
     fetchingRef.current = true;
 
     try {
-      setErrorMsg(null);
+      if (!opts?.silent) setErrorMsg(null);
       if (!opts?.silent) setLoading(true);
 
       abortRef.current?.abort();
@@ -1203,13 +1217,15 @@ const playDing = useCallback(async () => {
       const json = await res.json().catch(() => ({} as any));
 
       if (!res.ok) {
-        if (!opts?.silent) {
-          setOrders([]);
-          setTotal(0);
-        }
-        setErrorMsg(json?.error || "Błąd pobierania zamówień");
-        return;
-      }
+  if (!opts?.silent) {
+    setOrders([]);
+    setTotal(0);
+    setErrorMsg(json?.error || "Błąd pobierania zamówień");
+  } else {
+    setErrorMsg((prev) => prev ?? (json?.error || "Błąd pobierania zamówień"));
+  }
+  return;
+}
 
       if (json?.restaurant_id && typeof json.restaurant_id === "string") {
         setRestaurantId(json.restaurant_id);
