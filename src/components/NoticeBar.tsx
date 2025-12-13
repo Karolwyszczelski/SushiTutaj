@@ -96,43 +96,61 @@ export default function NoticeBar({ config }: { config: NoticeBarConfig | null }
     setDismissed(true);
   };
 
-  if (!computed.show || dismissed) return null;
+   if (!computed.show || dismissed) return null;
+
+  const panelId = `noticebar-panel-${config?.key ?? "default"}`;
 
   return (
-    <div className="sticky top-0 z-50 border-b border-amber-200 bg-amber-50 text-amber-950">
-      <div className="mx-auto flex max-w-6xl items-center gap-2 px-3 py-2 sm:px-6">
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="inline-flex h-9 items-center gap-2 rounded-md bg-white/70 px-3 text-sm font-semibold hover:bg-white"
-          aria-expanded={expanded}
-        >
-          <span
-            className={`transition-transform ${expanded ? "rotate-180" : ""}`}
-          >
-            ▾
-          </span>
-          <span>{computed.summary}</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="ml-auto inline-flex h-9 items-center rounded-md bg-white/70 px-3 text-sm font-semibold hover:bg-white"
-          aria-label="Zamknij"
-          title="Zamknij"
-        >
-          ✕
-        </button>
-      </div>
-
-      {expanded && (
-        <div className="mx-auto max-w-6xl px-3 pb-3 sm:px-6">
-          <div className="rounded-xl border border-amber-200 bg-white p-3 text-sm leading-relaxed">
-            {computed.body}
-          </div>
+    <div className="sticky top-0 z-50 border-b border-white/10 bg-black/70 backdrop-blur">
+      <div className="mx-auto max-w-6xl px-4 pt-2 pb-3 sm:px-6">
+        {/* Tekst wyrównany i w stylu strony */}
+        <div className="text-center text-[12px] font-semibold tracking-wide text-white/90 sm:text-sm">
+          {computed.summary}
         </div>
-      )}
+
+        {/* Strzałka NA ŚRODKU (jedyny kontroler paska) */}
+        <div className="mt-1 flex justify-center">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            aria-controls={panelId}
+            className="
+              inline-flex h-8 w-12 items-center justify-center
+              rounded-full border border-white/15 bg-white/5
+              text-white shadow-sm
+              hover:border-white/25 hover:bg-white/10
+              focus:outline-none focus:ring-2 focus:ring-white/40
+            "
+            title={expanded ? "Zwiń" : "Rozwiń"}
+          >
+            <span className="text-base leading-none">
+              {expanded ? "▴" : "▾"}
+              {/* jeśli chcesz dosłownie: {expanded ? "/\\" : "\\/"} */}
+            </span>
+          </button>
+        </div>
+
+        {/* Rozwinięta treść */}
+        {expanded && (
+          <div
+            id={panelId}
+            className="mt-3 rounded-2xl border border-white/10 bg-black/50 p-4 text-sm leading-relaxed text-white/90"
+          >
+            <div className="whitespace-pre-line">{computed.body}</div>
+
+            <div className="mt-3 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={onDismiss}
+                className="text-[11px] font-semibold text-white/70 underline underline-offset-4 hover:text-white"
+              >
+                Ukryj na dziś
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
