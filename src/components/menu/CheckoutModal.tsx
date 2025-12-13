@@ -153,7 +153,7 @@ const BASE_SAUCES = [
 // dodatkowe sosy do frytek z batatów (tylko Przasnysz / Szczytno)
 const BATATA_SAUCES = ["Sos czekoladowy", "Sos toffi"];
 
-// do wyceny – wszystkie sosy liczymy po 3 zł
+// do wyceny – wszystkie sosy liczymy po 2 zł
 const ALL_SAUCES = [...BASE_SAUCES, ...BATATA_SAUCES];
 
 const EXTRAS = ["Tempura", "Płatek sojowy", "Tamago", "Ryba pieczona"];
@@ -688,6 +688,13 @@ const tz = "Europe/Warsaw";
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmt = (r: Range) => `${pad(r[0])}:${pad(r[1])}–${pad(r[2])}:${pad(r[3])}`;
 const MIN_SCHEDULE_MINUTES = 60;
+
+const SLOT_STEP_MINUTES = 20; // co ile minut pokazujemy sloty
+
+// HH:mm z minut
+const minutesToHHMM = (mins: number) =>
+  `${pad(Math.floor(mins / 60))}:${pad(mins % 60)}`;
+
 
 function todayRangeFor(slug: string, d = toZonedTime(new Date(), tz)): Range | null {
   const sch = CITY_SCHEDULE[slug] ?? CITY_SCHEDULE["przasnysz"];
@@ -2480,19 +2487,61 @@ export default function CheckoutModal() {
   /** Blokady godzin dla aktualnej restauracji */
 const [blockedTimes, setBlockedTimes] = useState<BlockedTime[]>([]);
 
+const scheduleSlots = useMemo(() => {
+  if (!isCheckoutOpen) return [];
+  const r = openInfo.range;
+  if (!r) return [];
+
+  const nowZoned = toZonedTime(new Date(), tz);
+  const nowMins = nowZoned.getHours() * 60 + nowZoned.getMinutes();
+
+  const openMins = r[0] * 60 + r[1];
+  const closeMins = r[2] * 60 + r[3];
+
+  // min: teraz + MIN_SCHEDULE_MINUTES, ale nie wcześniej niż otwarcie
+  const minAllowedRaw = Math.max(openMins, nowMins + MIN_SCHEDULE_MINUTES);
+  const step = SLOT_STEP_MINUTES;
+  const minAllowed = Math.ceil(minAllowedRaw / step) * step;
+
+  if (minAllowed > closeMins) return [];
+
+  const out: string[] = [];
+  const base = new Date(nowZoned);
+
+  for (let m = minAllowed; m <= closeMins; m += step) {
+    const hh = Math.floor(m / 60);
+    const mm = m % 60;
+
+    const dt = new Date(base);
+    dt.setHours(hh, mm, 0, 0);
+
+    // filtr blokad z panelu
+    if (isDateTimeBlocked(dt, blockedTimes)) continue;
+
+    out.push(minutesToHHMM(m));
+  }
+
+  return out;
+}, [isCheckoutOpen, openInfo.range, blockedTimes]);
+
+const canSchedule = scheduleSlots.length > 0;
+
 const [loyaltyStickers, setLoyaltyStickers] = useState<number | null>(null);
 const [loyaltyChoice, setLoyaltyChoice] = useState<LoyaltyChoice>("keep");
 const [loyaltyLoading, setLoyaltyLoading] = useState(false);
 
 
   useEffect(() => {
-    if (deliveryTimeOption === "schedule") {
-      setScheduledTime((prev) => {
-        const inside = prev >= timeMin && prev <= timeMax;
-        return inside ? prev : timeMin;
-      });
-    }
-  }, [timeMin, timeMax, deliveryTimeOption]);
+  if (deliveryTimeOption !== "schedule") return;
+
+  // jeśli brak slotów – nie pozwalamy na "Na godzinę"
+  if (scheduleSlots.length === 0) {
+    setDeliveryTimeOption("asap");
+    return;
+  }
+
+  setScheduledTime((prev) => (scheduleSlots.includes(prev) ? prev : scheduleSlots[0]));
+}, [deliveryTimeOption, scheduleSlots]);
 
   useEffect(() => {
     if (isLoggedIn && session) {
@@ -3284,6 +3333,12 @@ return () => {
     }
 
    if (deliveryTimeOption === "schedule" && selectedOption) {
+    if (!scheduleSlots.includes(scheduledTime)) {
+    setErrorMessage(
+      "Wybrana godzina jest niedostępna. Wybierz jedną z dostępnych godzin."
+    );
+    return;
+  }
   const [h, m] = scheduledTime.split(":").map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(m)) {
     setErrorMessage(
@@ -3682,25 +3737,41 @@ return (
         />
         <span>Jak najszybciej</span>
       </label>
-      <label className="flex items-center gap-2">
+       <label className="flex items-center gap-2">
         <input
           type="radio"
           name="timeOption"
           value="schedule"
           checked={deliveryTimeOption === "schedule"}
-          onChange={() => setDeliveryTimeOption("schedule")}
+          disabled={!canSchedule}
+          onChange={() => {
+            if (!canSchedule) return;
+            setDeliveryTimeOption("schedule");
+          }}
         />
-        <span>Na godzinę</span>
+        <span>
+          Na godzinę{!canSchedule ? " (brak wolnych slotów)" : ""}
+        </span>
       </label>
-      {deliveryTimeOption === "schedule" && (
-        <input
-          type="time"
+
+      {deliveryTimeOption === "schedule" && canSchedule && (
+        <select
           className="border border-black/15 rounded-xl px-2 py-1 bg-white"
-          min={timeMin}
-          max={timeMax}
           value={scheduledTime}
           onChange={(e) => setScheduledTime(e.target.value)}
-        />
+        >
+          {scheduleSlots.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {deliveryTimeOption === "schedule" && !canSchedule && (
+        <span className="text-xs text-red-600">
+          Brak dostępnych godzin na dziś — wybierz „Jak najszybciej”.
+        </span>
       )}
     </div>
     <p className="text-xs text-black/60">

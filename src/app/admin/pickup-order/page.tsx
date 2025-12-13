@@ -13,7 +13,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import EditOrderButton from "@/components/EditOrderButton";
 import CancelButton from "@/components/CancelButton";
 import clsx from "clsx";
-import { formatInTimeZone } from "date-fns-tz";
+import { formatInTimeZone, toZonedTime, fromZonedTime } from "date-fns-tz";
 
 const VAPID_PUBLIC_KEY =
   process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
@@ -111,6 +111,41 @@ const fromDBPaymentStatus = (v: any): PaymentStatus => {
 };
 
 const TZ = "Europe/Warsaw";
+
+const normalizeHHMM = (v: string): string | null => {
+  const m = (v || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const h = parseInt(m[1], 10);
+  const min = parseInt(m[2], 10);
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+};
+
+/**
+ * Buduje ISO (UTC) dla podanej godziny HH:MM w strefie TZ.
+ * Jeśli wybrana godzina jest już „w przeszłości” dzisiaj — ustawia na jutro.
+ */
+const buildIsoFromHHMMInTZ = (hhmm: string, tz = TZ): string | null => {
+  const norm = normalizeHHMM(hhmm);
+  if (!norm) return null;
+
+  const [hStr, mStr] = norm.split(":");
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+
+  const now = new Date();
+  const nowTz = toZonedTime(now, tz);
+
+  const targetTz = new Date(nowTz);
+  targetTz.setHours(h, m, 0, 0);
+
+  if (targetTz.getTime() <= nowTz.getTime()) {
+    targetTz.setDate(targetTz.getDate() + 1);
+  }
+
+  const utc = fromZonedTime(targetTz, tz);
+  return utc.toISOString();
+};
 
 const parseLooseDate = (value: string): Date | null => {
   const v = (value || "").trim();
@@ -653,6 +688,8 @@ const AcceptButton: React.FC<{
     [order.selected_option]
   );
 
+
+
   const [minutes, setMinutes] = useState<number>(options[0]);
   useEffect(() => setMinutes(options[0]), [options]);
 
@@ -707,6 +744,78 @@ const AcceptButton: React.FC<{
     </div>
   );
 };
+
+const TimeQuickSet: React.FC<{
+  order: Order;
+  mode: "accept" | "set";
+  disabled?: boolean;
+  onApply: (hhmm: string) => Promise<void> | void;
+}> = ({ order, mode, disabled, onApply }) => {
+  const requested = useMemo(() => {
+    const t = formatClientRequestedTime(order);
+    return t !== "-" && t !== "Jak najszybciej" ? t : "";
+  }, [order]);
+
+  const currentLocal = useMemo(() => {
+    const t = formatTimeLabel(order.deliveryTime ?? null);
+    return t !== "-" && t !== "Jak najszybciej" ? t : "";
+  }, [order.deliveryTime]);
+
+  const initial = useMemo(() => {
+    return mode === "accept" ? requested : currentLocal || requested;
+  }, [mode, requested, currentLocal]);
+
+  const [val, setVal] = useState<string>(initial || "");
+
+  useEffect(() => {
+    setVal(initial || "");
+  }, [initial]);
+
+  const label =
+    mode === "accept"
+      ? `Akceptuj (${val || "--:--"})`
+      : `Ustaw (${val || "--:--"})`;
+
+  return (
+    <div className="inline-flex items-center gap-2">
+      <input
+        type="time"
+        step={60}
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        disabled={disabled}
+        className="h-10 w-[120px] rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm"
+      />
+
+      {requested && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setVal(requested)}
+          className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
+          title="Ustaw na czas wybrany przez klienta"
+        >
+          Czas klienta
+        </button>
+      )}
+
+      <button
+        type="button"
+        disabled={disabled || !val}
+        onClick={() => onApply(val)}
+        className="h-10 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow hover:bg-emerald-600 disabled:opacity-50"
+        title={
+          mode === "accept"
+            ? "Akceptuj zamówienie i ustaw godzinę"
+            : "Nadpisz godzinę realizacji"
+        }
+      >
+        {label}
+      </button>
+    </div>
+  );
+};
+
 
 /* --------- Pałeczki – odczyt z różnych pól --------- */
 
@@ -1314,6 +1423,87 @@ scheduled_delivery_at:
     setEditingOrderId(null);
   }
 };
+
+// Akceptacja z ABSOLUTNĄ godziną (HH:MM) – klient dostaje godzinę jak przy akceptacji
+const acceptAndSetAbsoluteTime = async (order: Order, hhmm: string) => {
+  const iso = buildIsoFromHHMMInTZ(hhmm, TZ);
+  if (!iso) {
+    setErrorMsg("Nieprawidłowa godzina. Użyj formatu HH:MM.");
+    return;
+  }
+
+  try {
+    setEditingOrderId(order.id);
+    setErrorMsg(null);
+
+    const res = await fetch(`/api/orders/${order.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        status: "accepted",
+        deliveryTime: iso,
+        delivery_time: iso,
+      }),
+    });
+
+    const j = (await res.json().catch(() => ({}))) as any;
+
+    if (!res.ok) {
+      setErrorMsg(j?.error || "Nie udało się zaakceptować zamówienia.");
+      return;
+    }
+
+    const newDeliveryTime: string =
+      (j.deliveryTime as string) || (j.delivery_time as string) || iso;
+
+    updateLocal(order.id, {
+      status: (j.status as Order["status"]) || "accepted",
+      deliveryTime: newDeliveryTime,
+      client_delivery_time:
+        (j.client_delivery_time as string | undefined) ??
+        order.client_delivery_time ??
+        null,
+      scheduled_delivery_at:
+        (j.scheduled_delivery_at as string | undefined) ??
+        order.scheduled_delivery_at ??
+        null,
+    });
+  } finally {
+    setEditingOrderId(null);
+  }
+};
+
+// Nadpisanie godziny dla już zaakceptowanego zamówienia (HH:MM)
+const setAbsoluteTime = async (order: Order, hhmm: string) => {
+  const iso = buildIsoFromHHMMInTZ(hhmm, TZ);
+  if (!iso) {
+    setErrorMsg("Nieprawidłowa godzina. Użyj formatu HH:MM.");
+    return;
+  }
+
+  try {
+    setEditingOrderId(order.id);
+    setErrorMsg(null);
+
+    const res = await fetch(`/api/orders/${order.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deliveryTime: iso, delivery_time: iso }),
+    });
+
+    const j = (await res.json().catch(() => ({}))) as any;
+    if (!res.ok) return;
+
+    const newDeliveryTime: string =
+      (j.deliveryTime as string) || (j.delivery_time as string) || iso;
+
+    updateLocal(order.id, { deliveryTime: newDeliveryTime });
+    fetchOrders();
+  } finally {
+    setEditingOrderId(null);
+  }
+};
+
 
   const extendTime = async (order: Order, minutes: number) => {
     const base =
