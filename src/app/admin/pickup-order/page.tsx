@@ -8,7 +8,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import EditOrderButton from "@/components/EditOrderButton";
 import CancelButton from "@/components/CancelButton";
@@ -939,9 +939,35 @@ const extractChopsticksFromOrderRaw = (o: any): number | null => {
 };
 
 export default function PickupOrdersPage() {
-  const supabase = createClientComponentClient();
+  const supabase = useMemo(() => createClientComponentClient(), []);
+  const router = useRouter();
   const searchParams = useSearchParams();
   const urlSlug = (searchParams.get("restaurant") || "").toLowerCase() || null;
+
+  const [authChecked, setAuthChecked] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!alive) return;
+      if (!data.session) {
+        router.replace("/admin/login"); // dostosuj jeśli masz inną ścieżkę
+        return;
+      }
+      setAuthChecked(true);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [supabase, router]);
+
+  if (!authChecked) {
+    return (
+      <div className="p-6 text-sm text-slate-600">
+        Ładowanie panelu…
+      </div>
+    );
+  }
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1140,12 +1166,25 @@ const playDing = useCallback(async () => {
   const prevIdsRef = useRef<Set<string>>(new Set());
   const initializedRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+  const fetchingRef = useRef(false);
+  const pendingRef = useRef(false);
+  const editingRef = useRef<string | null>(null);
 
-  const fetchOrders = useCallback(async () => {
+  useEffect(() => {
+    editingRef.current = editingOrderId;
+  }, [editingOrderId]);
+
+  const fetchOrders = useCallback(async function doFetch(opts?: { silent?: boolean }) {
     if (!booted) return;
+    if (editingRef.current) return; // nie rozwalaj UI w trakcie akcji/edycji
+    if (fetchingRef.current) {
+      pendingRef.current = true;
+      return;
+    }
+    fetchingRef.current = true;
     try {
       setErrorMsg(null);
-      if (!editingOrderId) setLoading(true);
+      if (!opts?.silent) setLoading(true);
 
       abortRef.current?.abort();
       const ac = new AbortController();
@@ -1250,7 +1289,10 @@ clientDelivery: (o.clientDelivery as string | undefined) ?? null,
       typeof o.loyalty_stickers_after === "number"
         ? o.loyalty_stickers_after
         : null,
-    loyalty_applied: !!o.loyalty_applied,
+    loyalty_applied:
+            o.loyalty_applied === true ||
+            o.loyalty_applied === 1 ||
+            o.loyalty_applied === "1",
     loyalty_reward_type: o.loyalty_reward_type ?? null,
     loyalty_reward_value:
       o.loyalty_reward_value != null
@@ -1300,7 +1342,12 @@ clientDelivery: (o.clientDelivery as string | undefined) ?? null,
         setTotal(0);
       }
     } finally {
-      if (!editingOrderId) setLoading(false);
+      if (!opts?.silent) setLoading(false);
+      fetchingRef.current = false;
+      if (pendingRef.current) {
+        pendingRef.current = false;
+        void doFetch({ silent: true });
+      }
     }
   }, [
     booted,
@@ -1314,7 +1361,7 @@ clientDelivery: (o.clientDelivery as string | undefined) ?? null,
   ]);
 
   useEffect(() => {
-    fetchOrders();
+    fetchOrders({ silent: true });
   }, [fetchOrders]);
 
   // <-- NOWE: fallback polling zamówień co 8 sekund
@@ -1323,7 +1370,7 @@ clientDelivery: (o.clientDelivery as string | undefined) ?? null,
     if (editingOrderId) return;    // nie odświeżaj w trakcie edycji zamówienia
 
     const iv = setInterval(() => {
-      fetchOrders();               // pobierz aktualną listę
+      fetchOrders({ silent: true });               // pobierz aktualną listę
     }, 8000);                      // 8 000 ms = 8 sekund
 
     return () => clearInterval(iv);
@@ -1349,7 +1396,7 @@ clientDelivery: (o.clientDelivery as string | undefined) ?? null,
             const ridOld = payload.old?.restaurant_id;
             if (ridNew !== restaurantId && ridOld !== restaurantId) return;
           }
-          fetchOrders();
+          fetchOrders({ silent: true });
         }
       )
       .subscribe();
@@ -1432,7 +1479,7 @@ clientDelivery: (o.clientDelivery as string | undefined) ?? null,
     }
 
     updateLocal(id, { status: "completed" });
-    fetchOrders(); // żeby przerzuciło do historii nawet jeśli realtime/polling się rozminie
+    fetchOrders({ silent: true }); // żeby przerzuciło do historii nawet jeśli realtime/polling się rozminie
   } finally {
     setEditingOrderId(null);
   }
@@ -1563,7 +1610,7 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
       (j.deliveryTime as string) || (j.delivery_time as string) || iso;
 
     updateLocal(order.id, { deliveryTime: newDeliveryTime });
-    fetchOrders();
+    fetchOrders({ silent: true });
   } finally {
     setEditingOrderId(null);
   }
@@ -1585,7 +1632,7 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
       });
       if (!res.ok) return;
       updateLocal(order.id, { deliveryTime: dt });
-      fetchOrders();
+      fetchOrders({ silent: true });
     } finally {
       setEditingOrderId(null);
     }
@@ -1599,7 +1646,8 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
     });
     if (res.ok) {
       updateLocal(id, { status: "new" });
-      fetchOrders();
+      fetchOrders({ silent: true });
+
     }
   };
 

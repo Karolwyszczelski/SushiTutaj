@@ -249,12 +249,15 @@ const clientTime: string | null = hasClientTime ? body.client_delivery_time ?? n
     );
   }
 
-  const updated = data as any;
-   // ====== LOYALTY: nalicz naklejki tylko przy przejściu na completed ======
-  const statusJustCompleted =
-    ("status" in body) &&
-    body.status === "completed" &&
-    existing.status !== "completed";
+ const normStatus = (s: any) => String(s ?? "").trim().toLowerCase();
+
+const updated = data as any;
+
+// ====== LOYALTY: nalicz naklejki tylko przy przejściu na completed ======
+const statusJustCompleted =
+  ("status" in body) &&
+  normStatus(body.status) === "completed" &&
+  normStatus(existing.status) !== "completed";
 
   if (statusJustCompleted) {
     try {
@@ -262,6 +265,22 @@ const clientTime: string | null = hasClientTime ? body.client_delivery_time ?? n
         "process_loyalty_for_order",
         { p_order_id: orderId }
       );
+
+      if (!procErr) {
+  const { data: fresh, error: freshErr } = await (supabaseAdmin as any)
+    .from("orders")
+    .select("loyalty_awarded, loyalty_stickers_before, loyalty_stickers_after, loyalty_processed_at")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (!freshErr && fresh) {
+    updated.loyalty_awarded = fresh.loyalty_awarded ?? updated.loyalty_awarded;
+    updated.loyalty_stickers_before = fresh.loyalty_stickers_before ?? updated.loyalty_stickers_before;
+    updated.loyalty_stickers_after = fresh.loyalty_stickers_after ?? updated.loyalty_stickers_after;
+    updated.loyalty_processed_at = fresh.loyalty_processed_at ?? updated.loyalty_processed_at;
+  }
+}
+
 
       if (procErr) {
         console.error("[loyalty] process_loyalty_for_order error:", procErr);
@@ -281,8 +300,20 @@ const clientTime: string | null = hasClientTime ? body.client_delivery_time ?? n
       console.error("[loyalty] rpc exception:", e);
     }
   }
-  const when: string | null =
-    updated.deliveryTime ?? updated.client_delivery_time ?? null;
+  
+  const whenIso: string | null =
+  updated.deliveryTime ?? updated.scheduled_delivery_at ?? null;
+
+const whenText: string | null =
+  typeof updated.client_delivery_time === "string" ? updated.client_delivery_time : null;
+
+const fmtWhen = () => {
+  const t = fmtTime(whenIso);
+  if (t) return t;
+  if (whenText && whenText !== "asap" && /^\d{1,2}:\d{2}$/.test(whenText)) return whenText;
+  return null;
+};
+
 
   /* ====== SMS (SMSAPI przez sendSms) ====== */
 
@@ -293,14 +324,14 @@ const clientTime: string | null = hasClientTime ? body.client_delivery_time ?? n
 
   let smsBody = "";
   if (onlyTimeUpdate) {
-    const t = fmtTime(when);
+    const t = fmtWhen();
     smsBody = t
       ? `⏰ Aktualizacja: zamówienie ${orderId} będzie gotowe ok. ${t}.`
       : `⏰ Zaktualizowano czas dla zamówienia ${orderId}.`;
   } else {
     switch (updated.status) {
       case "accepted": {
-        const t = fmtTime(when);
+        const t = fmtWhen();
         smsBody = t
           ? `👍 Zamówienie ${orderId} przyjęte. Przewidywany czas ok. ${t}.`
           : `👍 Zamówienie ${orderId} przyjęte.`;
@@ -357,7 +388,7 @@ try {
   trackUrl = null; // brak linku, ale mail dalej idzie
 }
 
-      const timeStr = fmtTime(when);
+      const timeStr = fmtWhen();
       const optionTxt = optLabel(updated.selected_option);
       const changingPaymentStatus = body.payment_status !== undefined;
 

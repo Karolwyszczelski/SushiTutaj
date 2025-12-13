@@ -1,3 +1,5 @@
+//src/api/orders/create/route.ts
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -131,61 +133,49 @@ const LOYALTY_REWARD_ROLL_COUNT = 4; // ile naklejek do darmowej rolki
 const LOYALTY_REWARD_PERCENT_COUNT = 8; // ile naklejek do rabatu -30%
 const LOYALTY_ELIGIBLE_STATUSES = ["accepted", "completed", "placed"];
 
-async function computeLoyaltyStickersForUser(
-  userId: string | null,
-  restaurantId: string | null
-): Promise<number> {
-  if (!userId || !restaurantId) return 0;
+// ============ FUNKCJE POMOCNICZE DLA OPCJI A (NOWY SYSTEM) ============
 
+// ile naklejek przyznajemy po zakończeniu zamówienia (kwotowo)
+function computeEarnedStickersFromBase(baseWithoutDelivery: number): number {
+  const base = Number(baseWithoutDelivery || 0);
+  if (base < LOYALTY_MIN_ORDER_BASE) return 0;
+  // 50 zł = 1 naklejka, 100 zł = 2 itd., maks 8
+  return Math.min(8, Math.floor(base / LOYALTY_MIN_ORDER_BASE));
+}
+
+// aktualne saldo z konta lojalnościowego
+async function getLoyaltyBalance(userId: string): Promise<number> {
   const { data, error } = await supabaseAdmin
-    .from("orders")
-    .select(
-      "total_price, discount_amount, delivery_cost, status, loyalty_choice, created_at"
-    )
-    .eq("restaurant_id", restaurantId)
-    .eq("user", userId)
-    .order("created_at", { ascending: true });
+    .from("loyalty_accounts")
+    .select("stickers")
+    .eq("user_id", userId)
+    .maybeSingle();
 
-  if (error || !data) {
-    console.error("[orders.create] loyalty compute error:", error);
+  if (error) {
+    console.error("[orders.create] loyalty_accounts read error:", error.message);
     return 0;
   }
+  return Number((data as any)?.stickers ?? 0) || 0;
+}
 
-  let stickers = 0;
-
-  for (const row of data as any[]) {
-    const status = String(row.status || "").toLowerCase();
-    if (!LOYALTY_ELIGIBLE_STATUSES.includes(status)) continue;
-
-    const total = Number(row.total_price || 0);
-    const discount = Number(row.discount_amount || 0);
-    const delivery = Number(row.delivery_cost || 0);
-    const base = total + discount - delivery;
-    const qualifies = base >= LOYALTY_MIN_ORDER_BASE;
-
-    const choice = (row.loyalty_choice as LoyaltyChoice | null) || "keep";
-
-    if (choice === "use_4") {
-      // Darmowa rolka – spal wszystkie aktualne naklejki
-      stickers = 0;
-      continue;
-    }
-
-    if (choice === "use_8") {
-      // Rabat -30% – spal wszystkie aktualne naklejki
-      stickers = 0;
-      continue;
-    }
-
-    // Normalne zbieranie – +1 tylko dla zamówień ≥ progu,
-    // ale nigdy powyżej 8 (cap)
-    if (qualifies && stickers < LOYALTY_REWARD_PERCENT_COUNT) {
-      stickers += 1;
-    }
+// próba spalenia (rezerwacji) naklejek – przez RPC
+async function trySpendLoyalty(userId: string, count: number): Promise<{ ok: boolean; before: number; after: number }> {
+  const { data, error } = await supabaseAdmin.rpc("loyalty_spend", {
+    p_user_id: userId,
+    p_count: count,
+  });
+  if (error) {
+    console.warn("[orders.create] loyalty_spend rpc error:", error.message);
+    const b = await getLoyaltyBalance(userId);
+    return { ok: false, before: b, after: b };
   }
 
-  return stickers;
+  const row = Array.isArray(data) ? data[0] : data;
+  const before = Number((row as any)?.before ?? 0);
+  const after = Number((row as any)?.after ?? before);
+  return { ok: true, before, after };
 }
+
 
 /* ===== Utils ===== */
 type Any = Record<string, any>;
@@ -955,149 +945,107 @@ const now = nowPL(now0);     // komponenty w PL do grafiku/blokad
       n.delivery_cost = rounded;
     }
 
-       // 2.9) Program lojalnościowy + finalne przeliczenie total_price
-    const deliveryCostFinal =
-      n.selected_option === "delivery" ? Number(n.delivery_cost || 0) : 0;
+      // 2.9) Program lojalnościowy (Opcja A – saldo z loyalty_accounts + rezerwacja nagrody) + finalne przeliczenie total_price
+const deliveryCostFinal =
+  n.selected_option === "delivery" ? Number(n.delivery_cost || 0) : 0;
 
-    // Baza rabatów (kody + lojalność) – tylko produkty + opakowanie
-    const discountBase = baseWithoutDelivery;
+// Baza rabatów (kody + lojalność) – tylko produkty + opakowanie
+const discountBase = baseWithoutDelivery;
 
-    // Czy to zamówienie samo w sobie daje nową naklejkę
-    const qualifiesForStickerCurrent =
-      discountBase >= LOYALTY_MIN_ORDER_BASE && !!n.user_id;
+// ile naklejek to zamówienie da po completed
+const earnedOnComplete =
+  n.user_id ? computeEarnedStickersFromBase(discountBase) : 0;
 
-    let loyalty_stickers_before = 0;
-    let loyalty_stickers_after = 0;
-    let loyalty_applied = false;
-    let loyalty_reward_type: string | null = null;
-    let loyalty_reward_value: number | null = null;
-    let loyalty_discount_amount = 0;
+let loyalty_stickers_before = 0;
+let loyalty_stickers_after = 0;
+let loyalty_applied = false;
+let loyalty_reward_type: string | null = null;
+let loyalty_reward_value: number | null = null;
+let loyalty_discount_amount = 0;
+let effectiveLoyaltyChoice: LoyaltyChoice = "keep";
 
-    // domyślny wybór – brak nagrody
-    let effectiveLoyaltyChoice: LoyaltyChoice = "keep";
+if (n.user_id) {
+  const balanceBefore = await getLoyaltyBalance(n.user_id);
+  loyalty_stickers_before = balanceBefore;
 
-    if (n.user_id && restaurant_id) {
-      try {
-        const stickersAvailable = await computeLoyaltyStickersForUser(
-          n.user_id,
-          restaurant_id
-        );
+  const rawChoice = (n.loyalty_choice as LoyaltyChoice | null) || "keep";
+  let spentNow = 0;
+  let balanceAfterSpend = balanceBefore;
 
-        loyalty_stickers_before = stickersAvailable;
-
-        const rawChoice =
-          (n.loyalty_choice as LoyaltyChoice | null) || "keep";
-
-        // Walidacja tego, co przysłał frontend:
-        // - darmowa rolka tylko jeśli klient ma ≥ 4 naklejek
-        // - rabat -30% tylko jeśli klient ma ≥ 8 naklejek
-        if (
-          rawChoice === "use_4" &&
-          stickersAvailable >= LOYALTY_REWARD_ROLL_COUNT
-        ) {
-          effectiveLoyaltyChoice = "use_4";
-        } else if (
-          rawChoice === "use_8" &&
-          stickersAvailable >= LOYALTY_REWARD_PERCENT_COUNT
-        ) {
-          effectiveLoyaltyChoice = "use_8";
-        } else {
-          effectiveLoyaltyChoice = "keep";
-        }
-
-        // Obliczamy stan po tym zamówieniu
-        if (effectiveLoyaltyChoice === "use_4") {
-          // DARMOWA ROLKA:
-          // - zużywamy wszystkie naklejki → reset do 0
-          // - brak automatycznego rabatu pieniężnego (rolka ogarniana ręcznie)
-          loyalty_stickers_after = 0;
-          loyalty_applied = true;
-          loyalty_reward_type = "roll_free";
-          loyalty_reward_value = LOYALTY_REWARD_ROLL_COUNT;
-        } else if (effectiveLoyaltyChoice === "use_8") {
-          // RABAT -30%:
-          // - zużywamy wszystkie naklejki → reset do 0
-          loyalty_stickers_after = 0;
-          loyalty_applied = true;
-          loyalty_reward_type = "percent";
-          loyalty_reward_value = LOYALTY_PERCENT;
-
-          const baseForLoyalty = discountBase;
-          loyalty_discount_amount =
-            Math.max(
-              0,
-              Math.round(
-                baseForLoyalty * (LOYALTY_PERCENT / 100) * 100
-              ) / 100
-            );
-        } else {
-          // ZBIERANIE NAKLEJEK:
-          // - dokładamy +1 tylko jeśli zamówienie spełnia próg
-          // - nie przekraczamy 8 (cap), więc jak klient powie „nie” przy 8,
-          //   to dalej będzie 8, ale nie rośnie więcej
-          if (qualifiesForStickerCurrent) {
-            loyalty_stickers_after = Math.min(
-              LOYALTY_REWARD_PERCENT_COUNT,
-              loyalty_stickers_before + 1
-            );
-          } else {
-            loyalty_stickers_after = loyalty_stickers_before;
-          }
-        }
-      } catch (e) {
-        console.error(
-          "[orders.create] loyalty compute/2.9 error:",
-          e
-        );
-      }
+  if (rawChoice === "use_4") {
+    const r = await trySpendLoyalty(n.user_id, LOYALTY_REWARD_ROLL_COUNT);
+    if (r.ok) {
+      effectiveLoyaltyChoice = "use_4";
+      loyalty_applied = true;
+      loyalty_reward_type = "roll_free";
+      loyalty_reward_value = LOYALTY_REWARD_ROLL_COUNT;
+      spentNow = LOYALTY_REWARD_ROLL_COUNT;
+      balanceAfterSpend = r.after;
     }
+  } else if (rawChoice === "use_8") {
+    const r = await trySpendLoyalty(n.user_id, LOYALTY_REWARD_PERCENT_COUNT);
+    if (r.ok) {
+      effectiveLoyaltyChoice = "use_8";
+      loyalty_applied = true;
+      loyalty_reward_type = "percent";
+      loyalty_reward_value = LOYALTY_PERCENT;
+      spentNow = LOYALTY_REWARD_PERCENT_COUNT;
+      balanceAfterSpend = r.after;
 
-    // zapisujemy finalny wybór (po walidacji)
-    n.loyalty_choice = effectiveLoyaltyChoice;
-
-    const manualDiscountRaw = Number(n.discount_amount || 0);
-    const totalDiscountRaw =
-      Math.max(0, manualDiscountRaw) + Math.max(0, loyalty_discount_amount);
-
-    // rabat może zmniejszyć tylko część produktową (bez dostawy)
-    const discountClamped = Math.max(
-      0,
-      Math.min(totalDiscountRaw, discountBase)
-    );
-
-    const serverTotal =
-      Math.max(
-        0,
-        Math.round(
-          ((discountBase - discountClamped) + deliveryCostFinal) * 100
-        )
-      ) / 100;
-
-    n.discount_amount = discountClamped;
-    n.total_price = serverTotal;
-
-    if (n.user_id) {
-      n.loyalty_stickers_before = loyalty_stickers_before;
-      n.loyalty_stickers_after = loyalty_stickers_after;
-      n.loyalty_applied = loyalty_applied;
-      n.loyalty_reward_type = loyalty_reward_type;
-      n.loyalty_reward_value = loyalty_reward_value;
-      n.loyalty_min_order = LOYALTY_MIN_ORDER_BASE;
-
-      n.legal_accept = {
-        ...n.legal_accept,
-        loyalty: {
-          stickers_before: loyalty_stickers_before,
-          stickers_after: loyalty_stickers_after,
-          applied: loyalty_applied,
-          reward_type: loyalty_reward_type,
-          reward_value: loyalty_reward_value,
-          min_order: LOYALTY_MIN_ORDER_BASE,
-          discount_amount: loyalty_discount_amount,
-          choice: n.loyalty_choice, // info: klient chciał / nie chciał użyć 4 naklejek
-        },
-      };
+      loyalty_discount_amount =
+        Math.max(0, Math.round(discountBase * (LOYALTY_PERCENT / 100) * 100)) / 100;
     }
+  }
+
+  // przewidywany stan po completed
+  loyalty_stickers_after = Math.min(
+    LOYALTY_REWARD_PERCENT_COUNT,
+    balanceAfterSpend + earnedOnComplete
+  );
+
+  n.legal_accept = {
+    ...n.legal_accept,
+    loyalty: {
+      stickers_before: balanceBefore,
+      stickers_after_projected: loyalty_stickers_after,
+      earned_on_complete: earnedOnComplete,
+      spent_now: spentNow,
+      applied: loyalty_applied,
+      reward_type: loyalty_reward_type,
+      reward_value: loyalty_reward_value,
+      min_order: LOYALTY_MIN_ORDER_BASE,
+      discount_amount: loyalty_discount_amount,
+      choice: effectiveLoyaltyChoice,
+    },
+  };
+}
+
+n.loyalty_choice = effectiveLoyaltyChoice;
+
+// Rabat końcowy: kody + lojalność
+const manualDiscountRaw = Number(n.discount_amount || 0);
+const totalDiscountRaw =
+  Math.max(0, manualDiscountRaw) + Math.max(0, loyalty_discount_amount);
+
+const discountClamped = Math.max(0, Math.min(totalDiscountRaw, discountBase));
+
+const serverTotal =
+  Math.max(
+    0,
+    Math.round(((discountBase - discountClamped) + deliveryCostFinal) * 100)
+  ) / 100;
+
+n.discount_amount = discountClamped;
+n.total_price = serverTotal;
+
+if (n.user_id) {
+  n.loyalty_stickers_before = loyalty_stickers_before;
+  n.loyalty_stickers_after = loyalty_stickers_after;
+  n.loyalty_applied = loyalty_applied;
+  n.loyalty_reward_type = loyalty_reward_type;
+  n.loyalty_reward_value = loyalty_reward_value;
+  n.loyalty_min_order = LOYALTY_MIN_ORDER_BASE;
+}
 
     // 3) Produkty
     const productIds = n.itemsArray

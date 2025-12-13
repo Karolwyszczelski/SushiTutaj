@@ -130,7 +130,7 @@ type Promo =
   | null;
 
 
-  type LoyaltyChoice = "keep" | "use_4";
+  type LoyaltyChoice = "keep" | "use_4" | "use_8";
 
   /* --- KONFIG PROGRAMU LOJALNOŚCIOWEGO --- */
 // Minimalna baza do naliczenia 1 naklejki – produkty + opakowanie, bez dostawy
@@ -138,6 +138,17 @@ const LOYALTY_MIN_ORDER_BASE = 50; // zł
 
 // Statusy zamówień, które liczą się do naklejek
 const LOYALTY_ELIGIBLE_STATUSES = ["accepted", "completed", "placed"] as const;
+
+const LOYALTY_PERCENT = 30;
+const LOYALTY_REWARD_ROLL_COUNT = 4;
+const LOYALTY_REWARD_PERCENT_COUNT = 8;
+
+// 50 zł = 1 naklejka, 100 zł = 2 itd., max 8
+function computeEarnedStickersFromBase(baseWithoutDelivery: number): number {
+  const base = Number(baseWithoutDelivery || 0);
+  if (base < LOYALTY_MIN_ORDER_BASE) return 0;
+  return Math.min(LOYALTY_REWARD_PERCENT_COUNT, Math.floor(base / LOYALTY_MIN_ORDER_BASE));
+}
 
 
 /* Sushi sosy i dodatki */
@@ -236,9 +247,9 @@ type JuiceVariant = (typeof JUICE_VARIANTS)[number];
 /* Lipton – smak */
 const LIPTON_ADDON_PREFIX = "Lipton: ";
 const LIPTON_VARIANTS = [
-  `${LIPTON_ADDON_PREFIX}brzoskwinia`,
-  `${LIPTON_ADDON_PREFIX}cytryna`,
-  `${LIPTON_ADDON_PREFIX}herbata`,
+  `${LIPTON_ADDON_PREFIX}Brzoskwinia`,
+  `${LIPTON_ADDON_PREFIX}Cytryna`,
+  `${LIPTON_ADDON_PREFIX}Herbata Zielona`,
 ] as const;
 type LiptonVariant = (typeof LIPTON_VARIANTS)[number];
 
@@ -703,14 +714,14 @@ const CITY_SCHEDULE: Record<
   Partial<Record<Day, Range>> & { default?: Range }
 > = {
   ciechanow: {
-    0: [12, 0, 20, 30],
-    1: [12, 0, 20, 30],
-    2: [12, 0, 20, 30],
-    3: [12, 0, 20, 30],
-    4: [12, 0, 21, 30],
-    5: [12, 0, 20, 30],
-    6: [12, 0, 20, 30],
-  },
+  0: [12, 0, 20, 30],
+  1: [12, 0, 20, 30],
+  2: [12, 0, 20, 30],
+  3: [12, 0, 20, 30],
+  4: [12, 0, 20, 30], // czwartek 20:30
+  5: [12, 0, 21, 30], // piątek 21:30
+  6: [12, 0, 20, 30],
+},
   przasnysz: { default: [12, 0, 20, 30] },
   szczytno: { default: [12, 0, 20, 30] },
 };
@@ -2889,38 +2900,42 @@ useEffect(() => {
           return;
         }
 
-        let earned = 0; // zamówienia dające naklejki
-        let spent = 0;  // naklejki spalone na nagrody
+        let earned = 0; // naliczone naklejki (zależne od kwoty)
+let spent = 0;  // spalone naklejki na nagrody
 
-        (data as any[]).forEach((o) => {
-          const status = String(o.status || "").toLowerCase();
-          if (!LOYALTY_ELIGIBLE_STATUSES.includes(status as any)) return;
+(data as any[]).forEach((o) => {
+  const status = String(o.status || "").toLowerCase();
+  if (!LOYALTY_ELIGIBLE_STATUSES.includes(status as any)) return;
 
-          const choice = (o as any).loyalty_choice as LoyaltyChoice | null;
+  const choice = (o as any).loyalty_choice as LoyaltyChoice | null;
 
-          const total = Number(o.total_price || 0);
-          const discount = Number(o.discount_amount || 0);
-          const delivery = Number(o.delivery_cost || 0);
+  const total = Number(o.total_price || 0);
+  const discount = Number(o.discount_amount || 0);
+  const delivery = Number(o.delivery_cost || 0);
 
-          // baza = produkty + opakowanie (bez dostawy, z rabatem cofniętym)
-          const base = total + discount - delivery;
+  // baza = produkty + opakowanie (bez dostawy, z rabatem cofniętym)
+  const base = total + discount - delivery;
 
-          // zamówienie z nagrodą NIE dodaje nowej naklejki – tylko spala 4
-          if (choice !== "use_4" && base >= LOYALTY_MIN_ORDER_BASE) {
-            earned += 1;
-          }
+  // Zamówienie z nagrodą: nie nalicza nowych naklejek, tylko spala
+  if (choice === "use_4") {
+    spent += 4;
+    return;
+  }
+  if (choice === "use_8") {
+    spent += 8;
+    return;
+  }
 
-          if (choice === "use_4") {
-            spent += 4;
-          }
-        });
+  // TU JEST KLUCZ: ilość naklejek zależy od kwoty (50=1, 100=2, ...)
+  earned += computeEarnedStickersFromBase(base);
+});
 
-        const stickers = Math.max(0, earned - spent);
-        setLoyaltyStickers(stickers);
-        setLoyaltyChoice("keep");
+const stickers = Math.max(0, earned - spent);
+setLoyaltyStickers(stickers);
+setLoyaltyChoice("keep");
       } catch (e) {
+        console.error("Loyalty: wyjątek podczas ładowania", e);
         if (!cancelled) {
-          console.error("Loyalty: wyjątek przy liczeniu naklejek", e);
           setLoyaltyStickers(0);
           setLoyaltyChoice("keep");
         }
@@ -3636,7 +3651,8 @@ const orderPayload: any = {
     selectedOption === "delivery" ? "Płatność wyłącznie gotówką u kierowcy" : null,
   chopsticks_qty: Math.max(0, Math.min(10, Number(chopsticksQty) || 0)),
   reservation_id: reservationId || null,
-  loyalty_choice: canUseLoyalty4 ? loyaltyChoice : null,
+  loyalty_choice:
+  canUseLoyalty4 && loyaltyChoice === "use_4" ? "use_4" : null,
   loyalty_stickers_before:
     typeof loyaltyStickers === "number" ? loyaltyStickers : null,
   // NOWE: zapisujemy godzinę również dla "Na wynos"
