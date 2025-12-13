@@ -271,7 +271,7 @@ const clientTime: string | null = hasClientTime ? body.client_delivery_time ?? n
       case "accepted": {
         const t = fmtTime(when);
         smsBody = t
-          ? `👍 Zamówienie ${orderId} przyjęte. Odbiór ok. ${t}.`
+          ? `👍 Zamówienie ${orderId} przyjęte. Przewidywany czas ok. ${t}.`
           : `👍 Zamówienie ${orderId} przyjęte.`;
         break;
       }

@@ -32,8 +32,8 @@ interface CartState {
   removeItem: (name: string) => void;
   removeWholeItem: (name: string) => void;
 
-  addAddon: (name: string, addon: string) => void;
-  removeAddon: (name: string, addon: string) => void;
+  addAddon: (name: string, addon: string, opts?: { allowDuplicate?: boolean }) => void;
+removeAddon: (name: string, addon: string, opts?: { removeOne?: boolean }) => void;
   /** Zamiana składnika/rolki w zestawie – nadpisuje istniejącą zamianę dla danego `from` */
   swapIngredient: (name: string, from: string, to: string) => void;
   removeSwap: (name: string, swapIndex: number) => void;
@@ -105,27 +105,43 @@ const useCartStore = create<CartState>((set) => ({
       items: state.items.filter((item) => item.name !== name),
     })),
 
-  addAddon: (name, addon) =>
-    set((state) => ({
-      items: state.items.map((i) => {
-        if (i.name !== name) return i;
-        const addons = Array.isArray(i.addons) ? i.addons : [];
-        if (addons.includes(addon)) return i;
-        return { ...i, addons: [...addons, addon] };
-      }),
-    })),
+  addAddon: (name, addon, opts) =>
+  set((state) => ({
+    items: state.items.map((i) => {
+      if (i.name !== name) return i;
 
-  removeAddon: (name, addon) =>
-    set((state) => ({
-      items: state.items.map((i) =>
-        i.name === name
-          ? {
-              ...i,
-              addons: (i.addons || []).filter((a) => a !== addon),
-            }
-          : i
-      ),
-    })),
+      const addons = Array.isArray(i.addons) ? i.addons : [];
+      const exists = addons.includes(addon);
+
+      // domyślnie jak było: bez duplikatów
+      // allowDuplicate=true: dodaj kolejną porcję tego samego addon
+      if (!opts?.allowDuplicate && exists) return i;
+
+      return { ...i, addons: [...addons, addon] };
+    }),
+  })),
+
+  removeAddon: (name, addon, opts) =>
+  set((state) => ({
+    items: state.items.map((i) => {
+      if (i.name !== name) return i;
+
+      const addons = Array.isArray(i.addons) ? i.addons : [];
+      if (!addons.length) return i;
+
+      // removeOne=true: usuń tylko jedną porcję (pierwsze wystąpienie)
+      if (opts?.removeOne) {
+        const idx = addons.indexOf(addon);
+        if (idx === -1) return i;
+        const next = addons.slice();
+        next.splice(idx, 1);
+        return { ...i, addons: next };
+      }
+
+      // domyślnie jak było: usuń wszystkie takie addony
+      return { ...i, addons: addons.filter((a) => a !== addon) };
+    }),
+  })),
 
   swapIngredient: (name, from, to) =>
     set((state) => ({

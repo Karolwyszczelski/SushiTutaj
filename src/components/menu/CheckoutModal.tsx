@@ -229,6 +229,7 @@ const JUICE_ADDON_PREFIX = "Sok: ";
 const JUICE_VARIANTS = [
   `${JUICE_ADDON_PREFIX}jabłko`,
   `${JUICE_ADDON_PREFIX}pomarańcza`,
+  `${JUICE_ADDON_PREFIX}multiwitamina`,
 ] as const;
 type JuiceVariant = (typeof JUICE_VARIANTS)[number];
 
@@ -252,7 +253,7 @@ type ColaVariant = (typeof COLA_VARIANTS)[number];
 const PEPSI_ADDON_PREFIX = "Pepsi: ";
 const PEPSI_VARIANTS = [
   `${PEPSI_ADDON_PREFIX}Klasyczna`,
-  `${PEPSI_ADDON_PREFIX}Max`, // albo "Zero" jeśli wolisz nazewnictwo
+  `${PEPSI_ADDON_PREFIX}Zero`, // albo "Zero" jeśli wolisz nazewnictwo
 ] as const;
 type PepsiVariant = (typeof PEPSI_VARIANTS)[number];
 
@@ -290,6 +291,16 @@ const SUSHI_SPECJAL_VARIANTS = [
   `${SUSHI_SPECJAL_ADDON_PREFIX}100% surowe`,
 ] as const;
 type SushiSpecjalVariant = (typeof SUSHI_SPECJAL_VARIANTS)[number];
+
+/* Sashimi – wybór rodzaju */
+const SASHIMI_ADDON_PREFIX = "Sashimi: ";
+const SASHIMI_VARIANTS = [
+  `${SASHIMI_ADDON_PREFIX}łosoś`,
+  `${SASHIMI_ADDON_PREFIX}mix`,
+  `${SASHIMI_ADDON_PREFIX}tuńczyk`,
+] as const;
+type SashimiVariant = (typeof SASHIMI_VARIANTS)[number];
+
 
 
 /** Dopłata za wersję pieczoną całego zestawu – per zestaw (z menu) */
@@ -444,6 +455,25 @@ function isWaterProduct(prod: any, prodInfo?: ProductDb | null): boolean {
   return text.includes("woda");
 }
 
+function isSashimiProduct(prod: any, prodInfo?: ProductDb | null): boolean {
+  const text = `${prod?.name || ""} ${prodInfo?.name || ""} ${prodInfo?.description || ""}`
+    .toLowerCase()
+    .trim();
+
+  if (!text) return false;
+
+  // tylko "Sashimi ..."
+  const isSashimi = text.includes("sashimi");
+  if (!isSashimi) return false;
+
+  // chcesz to tylko w przystawkach:
+  const sub = (prodInfo?.subcategory || "").toLowerCase();
+  if (sub && !sub.includes("przystawk")) return false;
+
+  return true;
+}
+
+
 function isBubbleTeaProduct(prod: any, prodInfo?: ProductDb | null): boolean {
   const text = `${prod?.name || ""} ${prodInfo?.name || ""} ${
     prodInfo?.description || ""
@@ -597,7 +627,8 @@ function computeAddonPrice(addon: string, product?: ProductDb | null): number {
     addon.startsWith(SUSHI_SPECJAL_ADDON_PREFIX) ||
     addon.startsWith(PEPSI_ADDON_PREFIX) ||
   addon.startsWith(FANTA_ADDON_PREFIX) ||
-  addon.startsWith(SPRITE_ADDON_PREFIX)
+  addon.startsWith(SPRITE_ADDON_PREFIX) ||
+  addon.startsWith(SASHIMI_ADDON_PREFIX)
   ) {
     return 0;
   }
@@ -1073,12 +1104,12 @@ const ProductItem: React.FC<{
   optionsByCat: Record<string, string[]>;
   restaurantSlug: string;
   helpers: {
-    addAddon: (name: string, addon: string) => void;
-    removeAddon: (name: string, addon: string) => void;
-    swapIngredient: (name: string, from: string, to: string) => void;
-    removeItem: (name: string) => void;
-    removeWholeItem: (name: string) => void;
-  };
+  addAddon: (name: string, addon: string, opts?: { allowDuplicate?: boolean }) => void;
+  removeAddon: (name: string, addon: string, opts?: { removeOne?: boolean }) => void;
+  swapIngredient: (name: string, from: string, to: string) => void;
+  removeItem: (name: string) => void;
+  removeWholeItem: (name: string) => void;
+};
 }> = ({
   prod,
   productCategory,
@@ -1307,13 +1338,39 @@ const ProductItem: React.FC<{
   }, [prod, prodInfo, restaurantSlug]);
 
   const saucesForProduct = useMemo(() => {
-    if (isSweetPotatoFries) {
-      // tu pokazujemy tylko te 4 sosy do batatów
-      return ["Spicy Mayo", "Teryiaki", "Sos czekoladowy", "Sos toffi"];
-    }
-    // standardowy zestaw sosów
-    return BASE_SAUCES;
-  }, [isSweetPotatoFries]);
+  return isSweetPotatoFries
+    ? ["Spicy Mayo", "Teryiaki", "Sos czekoladowy", "Sos toffi"]
+    : BASE_SAUCES;
+}, [isSweetPotatoFries]);
+
+const sauceQtyMap = useMemo(() => {
+  const arr: string[] = Array.isArray(prod.addons) ? (prod.addons as string[]) : [];
+  const allowed = new Set(saucesForProduct);
+
+  const m = new Map<string, number>();
+  for (const a of arr) {
+    if (typeof a !== "string") continue;
+    if (!allowed.has(a)) continue;
+    m.set(a, (m.get(a) ?? 0) + 1);
+  }
+  return m;
+}, [prod.addons, saucesForProduct]);
+
+const getSauceQty = useCallback(
+  (s: string) => sauceQtyMap.get(s) ?? 0,
+  [sauceQtyMap]
+);
+
+const incSauce = useCallback(
+  (s: string) => addAddon(prod.name, s, { allowDuplicate: true }),
+  [addAddon, prod.name]
+);
+
+const decSauce = useCallback(
+  (s: string) => removeAddon(prod.name, s, { removeOne: true }),
+  [removeAddon, prod.name]
+);
+
 
   // Tatar: tylko w Szczytnie / Przasnyszu, przystawki + tatar z łososia/tuńczyka
  // Tatar: tylko w Szczytnie / Przasnyszu, przystawki + tatar z łososia/tuńczyka
@@ -1421,6 +1478,25 @@ const SOFT_DRINK_GROUP = useMemo<SoftDrinkGroup | null>(() => {
       };
   }
 }, [softDrink]);
+
+const isSashimi = useMemo(() => isSashimiProduct(prod, prodInfo), [prod, prodInfo]);
+
+const currentSashimiVariant = useMemo<SashimiVariant | null>(() => {
+  if (!isSashimi) return null;
+  const addonsArr = Array.isArray(prod.addons) ? (prod.addons as string[]) : [];
+  const found = addonsArr.find(
+    (a) => typeof a === "string" && SASHIMI_VARIANTS.includes(a as SashimiVariant)
+  ) as SashimiVariant | undefined;
+  return found ?? null;
+}, [isSashimi, prod.addons]);
+
+const setSashimiVariant = (variant: SashimiVariant | null) => {
+  SASHIMI_VARIANTS.forEach((v) => {
+    if (prod.addons?.includes(v)) removeAddon(prod.name, v);
+  });
+  if (variant) addAddon(prod.name, variant);
+};
+
 
   // Zestaw SUSHI SPECJAŁ 100 szt – wybór proporcji pieczone/surowe
   const isSushiSpecjal = useMemo(
@@ -1594,12 +1670,27 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
   };
 
   const toggleAddon = (a: string) => {
-    const on = (prod.addons ?? []).includes(a);
-    const allowed = EXTRAS.includes(a) ? canUseExtra(a) : true;
-    if (!allowed) return;
-    if (on) removeAddon(prod.name, a);
-    else addAddon(prod.name, a);
-  };
+  const on = (prod.addons ?? []).includes(a);
+  const isExtra = EXTRAS.includes(a);
+  const allowed = isExtra ? canUseExtra(a) : true;
+  if (!allowed) return;
+
+  if (on) {
+    removeAddon(prod.name, a);
+    return;
+  }
+
+  // jeśli to jeden z EXTRAS -> usuń pozostałe EXTRAS (radio-like)
+  if (isExtra) {
+    EXTRAS.forEach((ex) => {
+      if ((prod.addons ?? []).includes(ex)) {
+        removeAddon(prod.name, ex);
+      }
+    });
+  }
+
+  addAddon(prod.name, a);
+};
 
   const toggleWholeSetBake = () => {
     const on = isWholeSetBaked;
@@ -1830,10 +1921,25 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
               key={ex}
               type="button"
               onClick={() => {
-                if (!allowed) return;
-                if (on) removeAddon(prod.name, key);
-                else addAddon(prod.name, key);
-              }}
+  if (!allowed) return;
+
+  if (on) {
+    // klik w aktywny -> zdejmij
+    removeAddon(prod.name, key);
+    return;
+  }
+
+  // klik w nowy -> usuń WSZYSTKIE inne dodatki dla tej rolki (radio-like)
+  EXTRAS.forEach((ex2) => {
+    const k2 = extraKey(ex2);
+    if ((prod.addons ?? []).includes(k2)) {
+      removeAddon(prod.name, k2);
+    }
+  });
+
+  // i ustaw wybrany
+  addAddon(prod.name, key);
+}}
               className={clsx(
                 "px-2 py-1 rounded text-[11px] border",
                 !allowed
@@ -1925,27 +2031,100 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
         )}
 
         <div>
-          <div className="font-semibold mb-1">Sosy:</div>
-          <div className="flex flex-wrap gap-2">
-            {saucesForProduct.map((s) => {
-              const on = prod.addons?.includes(s);
-              return (
-                <button
-                  key={s}
-                  onClick={() => toggleAddon(s)}
-                  className={clsx(
-                    "px-2 py-1 rounded text-xs border",
-                    on
-                      ? "bg-black text-white border-black"
-                      : "bg-white text-black hover:bg-gray-50 border-gray-200"
-                  )}
-                >
-                  {on ? `✓ ${s}` : `+ ${s}`}
-                </button>
-              );
-            })}
+  <div className="font-semibold mb-1">Sosy:</div>
+
+  <div className="flex flex-wrap gap-2">
+    {saucesForProduct.map((s) => {
+      const qty = getSauceQty(s);
+
+      return (
+        <div
+          key={s}
+          className={clsx(
+            "flex items-center gap-2 rounded border px-2 py-1",
+            qty > 0
+              ? "border-black bg-white"
+              : "border-gray-200 bg-white"
+          )}
+        >
+          <span className="text-xs text-black whitespace-nowrap">{s}</span>
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => decSauce(s)}
+              disabled={qty === 0}
+              className={clsx(
+                "h-7 w-7 rounded border text-sm leading-none flex items-center justify-center",
+                qty === 0
+                  ? "opacity-40 cursor-not-allowed border-gray-200"
+                  : "border-gray-300 hover:bg-gray-50"
+              )}
+              aria-label={`Usuń porcję: ${s}`}
+            >
+              –
+            </button>
+
+            <span className="min-w-[20px] text-center text-[11px] text-black/70">
+              {qty}
+            </span>
+
+            <button
+              type="button"
+              onClick={() => incSauce(s)}
+              className="h-7 w-7 rounded border border-black bg-black text-white text-sm leading-none flex items-center justify-center hover:opacity-90"
+              aria-label={`Dodaj porcję: ${s}`}
+            >
+              +
+            </button>
           </div>
         </div>
+      );
+    })}
+  </div>
+
+  <p className="text-[11px] text-black/60 mt-1">
+    Sosy są liczone po 2 zł za porcję.
+  </p>
+</div>
+
+{isSashimi && (
+  <div>
+    <div className="font-semibold mb-1">Rodzaj Sashimi</div>
+    <p className="text-[11px] text-black/60 mb-1">
+      Wybierz rodzaj Sashimi. Informacja trafi do kuchni – bez dopłaty.
+    </p>
+
+    <div className="flex flex-wrap gap-2">
+      {SASHIMI_VARIANTS.map((variant) => {
+        const isActive = currentSashimiVariant === variant;
+        const label = variant.replace(SASHIMI_ADDON_PREFIX, "");
+        return (
+          <button
+            key={variant}
+            type="button"
+            onClick={() => setSashimiVariant(isActive ? null : (variant as SashimiVariant))}
+            className={clsx(
+              "px-2 py-1 rounded text-xs border",
+              isActive
+                ? "bg-black text-white border-black"
+                : "bg-white text-black hover:bg-gray-50 border-gray-200"
+            )}
+          >
+            {isActive ? `✓ ${label}` : label}
+          </button>
+        );
+      })}
+    </div>
+
+    {!currentSashimiVariant && (
+      <p className="text-xs text-red-600 mt-1">
+        Wybierz rodzaj Sashimi (łosoś / mix / tuńczyk).
+      </p>
+    )}
+  </div>
+)}
+
 
                 {isGyoza && (
           <div>
@@ -3374,6 +3553,25 @@ return () => {
     return;
   }
 }
+
+// WALIDACJA: Sashimi musi mieć wybrany wariant (łosoś / mix / tuńczyk)
+for (const it of items as any[]) {
+  const p = resolveProduct(it);
+  if (!isSashimiProduct(it, p || null)) continue;
+
+  const addonsArr: string[] = Array.isArray(it.addons) ? it.addons : [];
+  const hasVariant = addonsArr.some(
+    (a) => typeof a === "string" && SASHIMI_VARIANTS.includes(a as any)
+  );
+
+  if (!hasVariant) {
+    setErrorMessage(
+      `Wybierz rodzaj Sashimi (łosoś / mix / tuńczyk) przy pozycji: ${it.name || "Sashimi"}.`
+    );
+    return;
+  }
+}
+
 
     if (!guardEmail()) return;
     if (TURNSTILE_SITE_KEY && !(await ensureFreshToken())) {
