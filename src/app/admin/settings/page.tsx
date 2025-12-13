@@ -8,6 +8,7 @@ import DeliveryZonesForm from "@/components/admin/settings/DeliveryZonesForm";
 import BlockedAddressesForm from "@/components/admin/settings/BlockedAddressesForm";
 import DiscountCodesForm from "@/components/admin/settings/DiscountCodesForm";
 import BlockedTimesForm from "@/components/admin/settings/BlockedTimesForm";
+import NoticeBarForm from "@/components/admin/settings/NoticeBarForm";
 
 function classNames(...classes: string[]) {
   return classes.filter(Boolean).join(" ");
@@ -103,6 +104,12 @@ export default function SettingsPage() {
               <span className="sm:hidden">Godziny</span>
               <span className="hidden sm:inline">Blokady godzin</span>
             </Tab>
+            <Tab className={({ selected }) =>
+  classNames(tabBase, "shrink-0 px-4", selected ? tabSelected : tabUnselected)
+}>
+  <span className="sm:hidden">Pasek</span>
+  <span className="hidden sm:inline">Pasek informacji</span>
+</Tab>
           </div>
         </Tab.List>
 
@@ -199,6 +206,11 @@ export default function SettingsPage() {
               <BlockedTimesForm restaurantSlug={restaurantSlug} />
             </div>
           </Tab.Panel>
+          <Tab.Panel className="focus:outline-none">
+  <div className="rounded-2xl border bg-white p-4 sm:p-5 shadow-sm">
+    <NoticeBarForm restaurantSlug={restaurantSlug} />
+  </div>
+</Tab.Panel>
         </Tab.Panels>
       </Tab.Group>
     </div>

@@ -1,6 +1,11 @@
+import React from "react";
 import { notFound } from "next/navigation";
 import TenantClientProvider from "@/components/TenantClientProvider";
-import { getRestaurantBySlug } from "@/lib/tenant"; // ← poprawny import
+import { getRestaurantBySlug } from "@/lib/tenant";
+
+// NEW:
+import NoticeBar from "@/components/NoticeBar";
+import { getResolvedNoticeBar } from "@/lib/noticeBar";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +32,14 @@ export default async function CityLayout({
     address: r.address,
   };
 
+  // NEW: pobierz "resolved" (najpierw per restauracja, potem global)
+  const noticeConfig = await getResolvedNoticeBar(tenant.slug);
+
   return (
     <TenantClientProvider tenant={tenant}>
+      {/* NEW: pasek na górze (sticky) */}
+      <NoticeBar config={noticeConfig} />
+
       {children}
     </TenantClientProvider>
   );
