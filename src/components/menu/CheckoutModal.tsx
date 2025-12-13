@@ -249,10 +249,10 @@ const COLA_VARIANTS = [
 ] as const;
 type ColaVariant = (typeof COLA_VARIANTS)[number];
 
-const PEPSI_AADDON_PREFIX = "Pepsi: ";
+const PEPSI_ADDON_PREFIX = "Pepsi: ";
 const PEPSI_VARIANTS = [
-  `${PEPSI_AADDON_PREFIX}Klasyczna`,
-  `${PEPSI_AADDON_PREFIX}Max`,
+  `${PEPSI_ADDON_PREFIX}Klasyczna`,
+  `${PEPSI_ADDON_PREFIX}Max`, // albo "Zero" jeśli wolisz nazewnictwo
 ] as const;
 type PepsiVariant = (typeof PEPSI_VARIANTS)[number];
 
@@ -262,6 +262,21 @@ const FANTA_VARIANTS = [
   `${FANTA_ADDON_PREFIX}Zero`,
 ] as const;
 type FantaVariant = (typeof FANTA_VARIANTS)[number];
+
+const SPRITE_ADDON_PREFIX = "Sprite: ";
+const SPRITE_VARIANTS = [
+  `${SPRITE_ADDON_PREFIX}Klasyczna`,
+  `${SPRITE_ADDON_PREFIX}Zero`,
+] as const;
+type SpriteVariant = (typeof SPRITE_VARIANTS)[number];
+
+type SoftDrinkVariant = ColaVariant | PepsiVariant | FantaVariant | SpriteVariant;
+
+type SoftDrinkGroup = {
+  title: string;
+  prefix: string;
+  variants: readonly SoftDrinkVariant[];
+};
 
 /* Zestaw SUSHI SPECJAŁ – proporcje pieczone/surowe */
 const SUSHI_SPECJAL_ADDON_PREFIX = "SUSHI SPECJAŁ: ";
@@ -494,9 +509,36 @@ function isColaProduct(prod: any, prodInfo?: ProductDb | null): boolean {
   return (
     text.includes("coca-cola") ||
     text.includes("coca cola") ||
-    text.includes("cola") ||
-    text.includes("pepsi")
+    text.includes("cola")
+
   );
+}
+
+function isPepsiProduct(prod: any, prodInfo?: ProductDb | null): boolean {
+  const text = `${prod?.name || ""} ${prodInfo?.name || ""} ${
+    prodInfo?.description || ""
+  }`
+    .toLowerCase()
+    .trim();
+  return !!text && text.includes("pepsi");
+}
+
+function isFantaProduct(prod: any, prodInfo?: ProductDb | null): boolean {
+  const text = `${prod?.name || ""} ${prodInfo?.name || ""} ${
+    prodInfo?.description || ""
+  }`
+    .toLowerCase()
+    .trim();
+  return !!text && text.includes("fanta");
+}
+
+function isSpriteProduct(prod: any, prodInfo?: ProductDb | null): boolean {
+  const text = `${prod?.name || ""} ${prodInfo?.name || ""} ${
+    prodInfo?.description || ""
+  }`
+    .toLowerCase()
+    .trim();
+  return !!text && text.includes("sprite");
 }
 
 function isSushiSpecjalProduct(
@@ -552,7 +594,10 @@ function computeAddonPrice(addon: string, product?: ProductDb | null): number {
     addon.startsWith(JUICE_ADDON_PREFIX) ||
     addon.startsWith(LIPTON_ADDON_PREFIX) ||
     addon.startsWith(COLA_ADDON_PREFIX) ||
-    addon.startsWith(SUSHI_SPECJAL_ADDON_PREFIX)
+    addon.startsWith(SUSHI_SPECJAL_ADDON_PREFIX) ||
+    addon.startsWith(PEPSI_ADDON_PREFIX) ||
+  addon.startsWith(FANTA_ADDON_PREFIX) ||
+  addon.startsWith(SPRITE_ADDON_PREFIX)
   ) {
     return 0;
   }
@@ -1330,11 +1375,45 @@ const ProductItem: React.FC<{
     [prod, prodInfo]
   );
 
-  // Cola / Pepsi – zwykła vs Zero
-  const isCola = useMemo(
-    () => isColaProduct(prod, prodInfo),
-    [prod, prodInfo]
-  );
+  const softDrink = useMemo<"cola" | "pepsi" | "fanta" | "sprite" | null>(() => {
+  if (isPepsiProduct(prod, prodInfo)) return "pepsi";
+  if (isFantaProduct(prod, prodInfo)) return "fanta";
+  if (isSpriteProduct(prod, prodInfo)) return "sprite";
+  if (isColaProduct(prod, prodInfo)) return "cola";
+  return null;
+}, [prod, prodInfo]);
+
+const SOFT_DRINK_GROUP = useMemo<SoftDrinkGroup | null>(() => {
+  if (!softDrink) return null;
+
+  switch (softDrink) {
+    case "pepsi":
+      return {
+        title: "Wariant napoju",
+        prefix: PEPSI_ADDON_PREFIX,
+        variants: PEPSI_VARIANTS as readonly SoftDrinkVariant[],
+      };
+    case "fanta":
+      return {
+        title: "Wariant napoju",
+        prefix: FANTA_ADDON_PREFIX,
+        variants: FANTA_VARIANTS as readonly SoftDrinkVariant[],
+      };
+    case "sprite":
+      return {
+        title: "Wariant napoju",
+        prefix: SPRITE_ADDON_PREFIX,
+        variants: SPRITE_VARIANTS as readonly SoftDrinkVariant[],
+      };
+    case "cola":
+    default:
+      return {
+        title: "Wariant napoju",
+        prefix: COLA_ADDON_PREFIX,
+        variants: COLA_VARIANTS as readonly SoftDrinkVariant[],
+      };
+  }
+}, [softDrink]);
 
   // Zestaw SUSHI SPECJAŁ 100 szt – wybór proporcji pieczone/surowe
   const isSushiSpecjal = useMemo(
@@ -1462,24 +1541,25 @@ const ProductItem: React.FC<{
     if (variant) addAddon(prod.name, variant);
   };
 
-  const currentColaVariant = useMemo<ColaVariant | null>(() => {
-    if (!isCola) return null;
-    const addonsArr = Array.isArray(prod.addons)
-      ? (prod.addons as string[])
-      : [];
-    const found = addonsArr.find((a) =>
-      typeof a === "string" &&
-      COLA_VARIANTS.includes(a as ColaVariant)
-    ) as ColaVariant | undefined;
-    return found ?? null;
-  }, [isCola, prod.addons]);
+  const currentSoftDrinkVariant = useMemo<SoftDrinkVariant | null>(() => {
+  if (!SOFT_DRINK_GROUP) return null;
 
-  const setColaVariant = (variant: ColaVariant | null) => {
-    COLA_VARIANTS.forEach((v) => {
-      if (prod.addons?.includes(v)) removeAddon(prod.name, v);
-    });
-    if (variant) addAddon(prod.name, variant);
-  };
+  const addonsArr: string[] = Array.isArray(prod.addons) ? prod.addons : [];
+  const found = addonsArr.find(
+    (a): a is SoftDrinkVariant =>
+      SOFT_DRINK_GROUP.variants.includes(a as SoftDrinkVariant)
+  );
+
+  return found ?? null;
+}, [SOFT_DRINK_GROUP, prod.addons]);
+
+const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
+  [...COLA_VARIANTS, ...PEPSI_VARIANTS, ...FANTA_VARIANTS, ...SPRITE_VARIANTS].forEach((v) => {
+    if (prod.addons?.includes(v)) removeAddon(prod.name, v);
+  });
+
+  if (variant) addAddon(prod.name, variant);
+};
 
    const currentSushiSpecjalVariant = useMemo<SushiSpecjalVariant | null>(
     () => {
@@ -2066,39 +2146,35 @@ const ProductItem: React.FC<{
           </div>
         )}
 
-        {isCola && (
-          <div>
-            <div className="font-semibold mb-1">Wariant napoju</div>
-            <p className="text-[11px] text-black/60 mb-1">
-              Wybierz, czy chcesz napój w wersji zwykłej czy Zero. Informacja trafi do kuchni – bez dopłaty.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {COLA_VARIANTS.map((variant) => {
-                const isActive = currentColaVariant === variant;
-                const label = variant.replace(COLA_ADDON_PREFIX, "");
-                return (
-                  <button
-                    key={variant}
-                    type="button"
-                    onClick={() =>
-                      setColaVariant(
-                        isActive ? null : (variant as ColaVariant)
-                      )
-                    }
-                    className={clsx(
-                      "px-2 py-1 rounded text-xs border",
-                      isActive
-                        ? "bg-black text-white border-black"
-                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
-                    )}
-                  >
-                    {isActive ? `✓ ${label}` : label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        {SOFT_DRINK_GROUP && (
+  <div>
+    <div className="font-semibold mb-1">{SOFT_DRINK_GROUP.title}</div>
+    <p className="text-[11px] text-black/60 mb-1">
+      Wybierz wariant napoju. Informacja trafi do kuchni – bez dopłaty.
+    </p>
+    <div className="flex flex-wrap gap-2">
+      {SOFT_DRINK_GROUP.variants.map((variant) => {
+        const isActive = currentSoftDrinkVariant === variant;
+        const label = variant.replace(SOFT_DRINK_GROUP.prefix, "");
+        return (
+          <button
+            key={variant}
+            type="button"
+            onClick={() => setSoftDrinkVariant(isActive ? null : variant)}
+            className={clsx(
+              "px-2 py-1 rounded text-xs border",
+              isActive
+                ? "bg-black text-white border-black"
+                : "bg-white text-black hover:bg-gray-50 border-gray-200"
+            )}
+          >
+            {isActive ? `✓ ${label}` : label}
+          </button>
+        );
+      })}
+    </div>
+  </div>
+)}
 
         {isSushiSpecjal && (
   <div>
