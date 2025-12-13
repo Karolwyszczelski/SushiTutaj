@@ -19,10 +19,6 @@ type Props = {
   placeholder?: string;
 };
 
-requestAnimationFrame(() => {
-  (document.activeElement as HTMLElement | null)?.blur?.();
-});
-
 const inputCls =
   "w-full px-3 py-2 border border-black/15 rounded-md bg-white text-black placeholder-black/50 outline-none focus:ring-2 focus:ring-black/20";
 
@@ -34,6 +30,18 @@ export default function AddressAutocomplete({
   placeholder = "Wpisz swój adres",
 }: Props) {
   const [val, setVal] = useState("");
+  useEffect(() => {
+  if (typeof window === "undefined") return;
+
+  const raf = window.requestAnimationFrame;
+  if (typeof raf !== "function") return;
+
+  const id = raf(() => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+  });
+
+  return () => window.cancelAnimationFrame?.(id);
+}, []);
   const inputRef = useRef<HTMLInputElement>(null);
   const listenerRef = useRef<any>(null);
 

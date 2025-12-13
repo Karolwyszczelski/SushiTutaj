@@ -4,7 +4,11 @@ import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Header from "./Header";
 import FloatingQuickActions from "./FloatingQuickActions";
-import CheckoutModal from "./menu/CheckoutModal";
+import dynamic from "next/dynamic";
+
+const CheckoutModal = dynamic(() => import("./menu/CheckoutModal"), {
+  ssr: false,
+});
 
 export default function ClientWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
