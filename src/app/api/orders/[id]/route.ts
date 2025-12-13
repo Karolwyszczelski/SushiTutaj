@@ -250,6 +250,37 @@ const clientTime: string | null = hasClientTime ? body.client_delivery_time ?? n
   }
 
   const updated = data as any;
+   // ====== LOYALTY: nalicz naklejki tylko przy przejściu na completed ======
+  const statusJustCompleted =
+    ("status" in body) &&
+    body.status === "completed" &&
+    existing.status !== "completed";
+
+  if (statusJustCompleted) {
+    try {
+      const { data: proc, error: procErr } = await (supabaseAdmin as any).rpc(
+        "process_loyalty_for_order",
+        { p_order_id: orderId }
+      );
+
+      if (procErr) {
+        console.error("[loyalty] process_loyalty_for_order error:", procErr);
+      } else {
+        const row = Array.isArray(proc) ? proc[0] : proc;
+
+        // opcjonalnie: dołącz do odpowiedzi, żeby UI mogło od razu pokazać before/after
+        if (row) {
+          updated.loyalty_awarded = row.earned ?? updated.loyalty_awarded;
+          updated.loyalty_stickers_before =
+            row.stickers_before ?? updated.loyalty_stickers_before;
+          updated.loyalty_stickers_after =
+            row.stickers_after ?? updated.loyalty_stickers_after;
+        }
+      }
+    } catch (e) {
+      console.error("[loyalty] rpc exception:", e);
+    }
+  }
   const when: string | null =
     updated.deliveryTime ?? updated.client_delivery_time ?? null;
 

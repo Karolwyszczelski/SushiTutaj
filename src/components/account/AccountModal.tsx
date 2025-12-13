@@ -697,8 +697,11 @@ export default function AccountModal({
             <div>
               <h3 className="text-xl font-semibold mb-3">Program lojalnościowy</h3>
               <p className="text-sm text-black/70 mb-3">
-                Za każde zrealizowane zamówienie dostajesz 1 naklejkę.
-                <br />
+               Naklejki naliczamy za <b>zrealizowane</b> zamówienia wg kwoty wydanej:
+  <br />• <b>od 50 zł</b> → 1 naklejka
+  <br />• <b>od 200 zł</b> → 2 naklejki
+  <br />• <b>od 300 zł</b> → 3 naklejki
+  <br /><br />
                 <b>4 naklejki</b> = darmowa rolka, <b>8 naklejek</b> = <b>−20%</b> na zamówienie.
               </p>
 
