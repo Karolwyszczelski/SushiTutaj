@@ -2431,9 +2431,6 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
           {list.length} zamówień
         </span>
       </div>
-      {loading && list === newList && (
-        <p className="text-center text-slate-500">Ładowanie…</p>
-      )}
       {list.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-600">
           Brak pozycji w tej sekcji.

@@ -120,9 +120,11 @@ const cookieRid = cookieStore.get("restaurant_id")?.value ?? null;
 
 const restaurantId = String(existing.restaurant_id);
 
-// (opcjonalne, ale polecam) jeśli cookie jest ustawione, wymagaj zgodności kontekstu
-if (cookieRid && cookieRid !== restaurantId) {
-  return NextResponse.json({ error: "Wrong restaurant context" }, { status: 403 });
+// cookie jest tylko “kontekstem UI” — nie blokuj operacji
+// zabezpieczenie robi twardy check członkostwa (restaurant_admins) poniżej
+const shouldFixCookie = cookieRid && cookieRid !== restaurantId;
+if (shouldFixCookie) {
+  console.warn("[orders.patch] cookie restaurant_id mismatch", { cookieRid, restaurantId });
 }
 
 // twardy check członkostwa: user musi być przypisany do restauracji z tego zamówienia
@@ -467,5 +469,17 @@ try {
     console.error("[orders.patch] email error:", e);
   }
 
-  return NextResponse.json(updated);
+  const resp = NextResponse.json(updated);
+
+// samonapraw kontekst — ustaw cookie na restaurację zamówienia
+if (cookieRid && cookieRid !== restaurantId) {
+  resp.cookies.set("restaurant_id", restaurantId, {
+    path: "/",
+    sameSite: "lax",
+    secure: true,
+    httpOnly: true,
+  });
+}
+
+return resp;
 }
