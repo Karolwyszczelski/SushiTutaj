@@ -147,6 +147,36 @@ const buildIsoFromHHMMInTZ = (hhmm: string, tz = TZ): string | null => {
   return utc.toISOString();
 };
 
+const buildIsoForOrderHHMM = (order: Order, hhmm: string, tz = TZ): string | null => {
+  const norm = normalizeHHMM(hhmm);
+  if (!norm) return null;
+
+  const [hStr, mStr] = norm.split(":");
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+
+  // Jeżeli klient podał konkretną DATĘ+GODZINĘ (scheduled_delivery_at),
+  // to bierzemy datę z tego pola i ustawiamy tylko godzinę HH:MM w tej dacie.
+  const baseDt = order.scheduled_delivery_at ? parseLooseDate(order.scheduled_delivery_at) : null;
+
+  if (baseDt) {
+    const baseTz = toZonedTime(baseDt, tz);
+    const targetTz = new Date(baseTz);
+    targetTz.setHours(h, m, 0, 0);
+    const utc = fromZonedTime(targetTz, tz);
+    return utc.toISOString();
+  }
+
+  // Fallback: buduj na dziś/jutro
+  return buildIsoFromHHMMInTZ(norm, tz);
+};
+
+const hasClientFixedTime = (o: Order) => {
+  const t = formatClientRequestedTime(o);
+  return t !== "-" && t !== "Jak najszybciej";
+};
+
+
 const parseLooseDate = (value: string): Date | null => {
   const v = (value || "").trim();
   if (!v) return null;
@@ -313,6 +343,8 @@ const deepFindName = (root: Any): string | undefined => {
   return undefined;
 };
 
+
+
 /* --------- Stałe z logiki CheckoutModal dla zestawów / sushi --------- */
 
 const RAW_SET_BAKE_ALL = "Zamiana całego zestawu na pieczony";
@@ -379,10 +411,9 @@ const parseSetAddonsFromAddons = (
 
     // opłata za zamiany w zestawie
     if (a === SWAP_FEE_NAME) {
-      hasSwapFee = true;
-      plain.push(a);
-      continue;
-    }
+  hasSwapFee = true;
+  continue; // NIE pokazujemy tego w UI
+}
 
     // baza podania tatara
     if (TARTAR_BASES.includes(a)) {
@@ -465,6 +496,25 @@ const normalizeProduct = (raw: Any) => {
   const deep = deepFindName(source);
   const name = (shallow[0] || deep || "(bez nazwy)") as string;
 
+  const isSet =
+  /^zestaw\b/i.test(name) ||
+  /^set\b/i.test(name) ||
+  /zestaw\s+\d+/i.test(name);
+  
+  const normSwap = (s: string) =>
+  (s || "")
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+
+const isNoOpSwap = (from?: string, to?: string) => {
+  const a = normSwap(from || "");
+  const b = normSwap(to || "");
+  return !!a && !!b && a === b; // np. "ogórek" === "ogórek"
+};
+
+
   const price = toNumber(
     source.price ??
       source.unit_price ??
@@ -490,6 +540,8 @@ const normalizeProduct = (raw: Any) => {
       const from = typeof s.from === "string" ? s.from.trim() : "";
       const to = typeof s.to === "string" ? s.to.trim() : "";
       if (!from && !to) return null;
+
+      if (isNoOpSwap(from, to)) return null;
 
       let label: string;
       if (from && to) label = `Zamiana: ${from} → ${to}`;
@@ -530,6 +582,8 @@ const normalizeProduct = (raw: Any) => {
 
       if (!from && !to) return null;
 
+      if (isNoOpSwap(from, to)) return null;
+
       let core = "";
       if (from && to) core = `${from} → ${to}`;
       else if (to) core = `na: ${to}`;
@@ -565,7 +619,7 @@ const normalizeProduct = (raw: Any) => {
   const { plain, setMeta, tartarBases } =
     parseSetAddonsFromAddons(uniqueAddons);
 
-  const addons = [...plain, ...swapLabels];
+  const addons = isSet ? plain : [...plain, ...swapLabels];
 
   const ingredients = collectStrings(source.ingredients).length
     ? collectStrings(source.ingredients)
@@ -590,11 +644,6 @@ const normalizeProduct = (raw: Any) => {
     (typeof source.comment === "string" && source.comment) ||
     (typeof srcOptions?.note === "string" && srcOptions.note) ||
     undefined;
-
-  const isSet =
-    /^zestaw\b/i.test(name) ||
-    /^set\b/i.test(name) ||
-    /zestaw\s+\d+/i.test(name);
 
   return {
     name,
@@ -1426,7 +1475,7 @@ scheduled_delivery_at:
 
 // Akceptacja z ABSOLUTNĄ godziną (HH:MM) – klient dostaje godzinę jak przy akceptacji
 const acceptAndSetAbsoluteTime = async (order: Order, hhmm: string) => {
-  const iso = buildIsoFromHHMMInTZ(hhmm, TZ);
+  const iso = buildIsoForOrderHHMM(order, hhmm, TZ);
   if (!iso) {
     setErrorMsg("Nieprawidłowa godzina. Użyj formatu HH:MM.");
     return;
@@ -1475,7 +1524,7 @@ const acceptAndSetAbsoluteTime = async (order: Order, hhmm: string) => {
 
 // Nadpisanie godziny dla już zaakceptowanego zamówienia (HH:MM)
 const setAbsoluteTime = async (order: Order, hhmm: string) => {
-  const iso = buildIsoFromHHMMInTZ(hhmm, TZ);
+  const iso = buildIsoForOrderHHMM(order, hhmm, TZ);
   if (!iso) {
     setErrorMsg("Nieprawidłowa godzina. Użyj formatu HH:MM.");
     return;
@@ -1647,6 +1696,17 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
     (o) => o.status === "cancelled" || o.status === "completed"
   );
 
+  const compactSetSwapsInline = (
+  setSwaps: Array<{ label: string }>,
+  max = 2
+) => {
+  if (!setSwaps || setSwaps.length === 0) return "";
+  const shown = setSwaps.slice(0, max).map((s) => s.label);
+  const rest = setSwaps.length - shown.length;
+  return rest > 0 ? `${shown.join(", ")} (+${rest})` : shown.join(", ");
+};
+
+
   const ProductItem: React.FC<{
   raw: any;
   onDetails?: (p: any) => void;
@@ -1668,13 +1728,22 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
 
           <div className="mt-0.5 text-[12px] text-slate-700">
             Ilość: <b>{p.quantity}</b>
-            {p.addons.length > 0 && (
-              <>
-                {" "}
-                <span className="text-slate-400"> · </span> Dodatki:{" "}
-                {p.addons.join(", ")}
-              </>
-            )}
+           {/* DODATKI / ZAMIANY – wersja skrócona */}
+{!isSet && p.addons.length > 0 && (
+  <>
+    {" "}
+    <span className="text-slate-400"> · </span> Dodatki:{" "}
+    {p.addons.join(", ")}
+  </>
+)}
+
+{isSet && hasSetSwaps && (
+  <>
+    {" "}
+    <span className="text-slate-400"> · </span> Zamiany w zestawie:{" "}
+    {compactSetSwapsInline(setSwaps, 2)}
+  </>
+)}
           </div>
 
           {isSet && p.setMeta && (
@@ -1699,20 +1768,6 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
                     : "pozycje"}
                 </>
               )}
-            </div>
-          )}
-
-          {/* NOWE: czytelny blok tylko z faktycznymi zamianami w zestawie */}
-          {hasSetSwaps && (
-            <div className="mt-1 text-[11px] text-slate-800">
-              <div className="font-semibold text-slate-900">
-                Zamiany w tym zestawie:
-              </div>
-              <ul className="mt-0.5 ml-4 list-disc space-y-0.5">
-                {setSwaps.map((s, i) => (
-                  <li key={i}>{s.label}</li>
-                ))}
-              </ul>
             </div>
           )}
 
@@ -1791,17 +1846,17 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
             {isSet && p.setMeta && (
               <>
                 <div className="mt-1">
-                  <b>Zamiany w zestawie:</b>{" "}
-                  {p.swaps && p.swaps.length > 0 ? (
-                    <ul className="ml-5 mt-1 list-disc">
-                      {p.swaps.map((s: string, i: number) => (
-                        <li key={i}>{s}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <span>brak</span>
-                  )}
-                </div>
+  <b>Zamiany w zestawie:</b>{" "}
+  {p.setSwaps && p.setSwaps.length > 0 ? (
+    <ul className="ml-5 mt-1 list-disc">
+      {p.setSwaps.map((s: any, i: number) => (
+        <li key={i}>{s.label}</li>
+      ))}
+    </ul>
+  ) : (
+    <span>brak</span>
+  )}
+</div>
 
                 {p.setMeta.bakedWholeSet && (
                   <div>
@@ -1935,11 +1990,11 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
               </div>
             )}
 
-            {p.addons.length > 0 && (
-              <div>
-                <b>Dodatki ogólne:</b> {p.addons.join(", ")}
-              </div>
-            )}
+            {!isSet && p.addons.length > 0 && (
+  <div>
+    <b>Dodatki ogólne:</b> {p.addons.join(", ")}
+  </div>
+)}
 
             {p.note && (
               <div className="italic text-slate-800">{p.note}</div>
@@ -2187,10 +2242,19 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
             o.status === "pending" ||
             o.status === "placed") && (
             <>
-              <AcceptButton
-                order={o}
-                onAccept={(m) => acceptAndSetTime(o, m)}
-              />
+              {hasClientFixedTime(o) ? (
+  <TimeQuickSet
+    order={o}
+    mode="accept"
+    disabled={editingOrderId === o.id}
+    onApply={(hhmm) => acceptAndSetAbsoluteTime(o, hhmm)}
+  />
+) : (
+  <AcceptButton
+    order={o}
+    onAccept={(m) => acceptAndSetTime(o, m)}
+  />
+)}
               <EditOrderButton
                 orderId={o.id}
                 currentProducts={parseProducts(o.items).map(
@@ -2211,41 +2275,49 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
           )}
 
           {o.status === "accepted" && (
-            <>
-              <CancelButton
-                orderId={o.id}
-                onOrderUpdated={() => fetchOrders()}
-              />
-              {[20, 40, 60, 80].map((m) => (
-  <button
-    key={m}
-    onClick={() => extendTime(o, m)}
-    className="h-10 rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white shadow hover:bg-emerald-500"
-  >
-    +{formatMinutes(m)}
-  </button>
-))}
-              <EditOrderButton
-                orderId={o.id}
-                currentProducts={parseProducts(o.items).map(
-                  normalizeProduct
-                )}
-                currentSelectedOption={o.selected_option || "takeaway"}
-                onOrderUpdated={(id, data) =>
-                  data ? updateLocal(id, data) : fetchOrders()
-                }
-                onEditStart={() => setEditingOrderId(o.id)}
-                onEditEnd={() => setEditingOrderId(null)}
-              />
-              <button
-                onClick={() => completeOrder(o.id)}
-                className="h-10 rounded-md bg-sky-600 px-4 text-sm font-semibold text-white shadow hover:bg-sky-500"
-              >
-                Zrealizowany
-              </button>
-            </>
-          )}
+  <>
+    <CancelButton
+      orderId={o.id}
+      onOrderUpdated={() => fetchOrders()}
+    />
 
+    {/* NOWE: ustawienie konkretnej godziny po akceptacji */}
+    <TimeQuickSet
+      order={o}
+      mode="set"
+      disabled={editingOrderId === o.id}
+      onApply={(hhmm) => setAbsoluteTime(o, hhmm)}
+    />
+
+    {[20, 40, 60, 80].map((m) => (
+      <button
+        key={m}
+        onClick={() => extendTime(o, m)}
+        className="h-10 rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white shadow hover:bg-emerald-500"
+      >
+        +{formatMinutes(m)}
+      </button>
+    ))}
+
+    <EditOrderButton
+      orderId={o.id}
+      currentProducts={parseProducts(o.items).map(normalizeProduct)}
+      currentSelectedOption={o.selected_option || "takeaway"}
+      onOrderUpdated={(id, data) =>
+        data ? updateLocal(id, data) : fetchOrders()
+      }
+      onEditStart={() => setEditingOrderId(o.id)}
+      onEditEnd={() => setEditingOrderId(null)}
+    />
+
+    <button
+      onClick={() => completeOrder(o.id)}
+      className="h-10 rounded-md bg-sky-600 px-4 text-sm font-semibold text-white shadow hover:bg-sky-500"
+    >
+      Zrealizowany
+    </button>
+  </>
+)}
           {o.status === "cancelled" && (
             <button
               onClick={() => restoreOrder(o.id)}
