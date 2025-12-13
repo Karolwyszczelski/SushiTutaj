@@ -2754,12 +2754,17 @@ useEffect(() => {
     if (!isCheckoutOpen) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeCheckoutModal();
     window.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
+    const prevBody = document.body.style.overflow;
+const prevHtml = document.documentElement.style.overflow;
+
+document.body.style.overflow = "hidden";
+document.documentElement.style.overflow = "hidden";
+
+return () => {
+  window.removeEventListener("keydown", onKey);
+  document.body.style.overflow = prevBody;
+  document.documentElement.style.overflow = prevHtml;
+};
   }, [isCheckoutOpen, closeCheckoutModal]);
 
   // Turnstile – render jako useCallback
@@ -3504,17 +3509,17 @@ return (
     )}
 
     <div
-  className="fixed inset-0 z-[58] bg-black/70 grid place-items-stretch lg:place-items-center p-0 lg:p-4 overflow-y-auto"
+  className="fixed inset-0 z-[58] bg-black/70 grid place-items-stretch lg:place-items-center p-0 lg:p-4 overflow-hidden"
   role="dialog"
   aria-modal="true"
   onMouseDown={(e) => {
     if (e.target === e.currentTarget) closeCheckoutModal();
   }}
 >
-      <div
-        className="w-full max-w-5xl bg-white text-black shadow-2xl grid grid-rows-[auto,1fr] h-full lg:h-auto lg:max-h-[90vh]"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+        <div
+  className="w-full max-w-5xl bg-white text-black shadow-2xl grid grid-rows-[auto,1fr] h-screen h-[100dvh] lg:h-auto lg:max-h-[90vh]"
+  onMouseDown={(e) => e.stopPropagation()}
+>
         <div className="flex items-center justify-between px-6 py-4 border-b border-black/10">
           <h2 className="text-xl font-semibold">
             Zamówienie — {restaurantCityLabel}
@@ -3530,7 +3535,7 @@ return (
           )}
         </div>
 
-        <div className="overflow-y-auto overscroll-contain modal-scroll">
+        <div className="min-h-0 overflow-y-auto overscroll-contain modal-scroll">
           <div
     className={clsx(
       "grid grid-cols-1 gap-6 p-6",

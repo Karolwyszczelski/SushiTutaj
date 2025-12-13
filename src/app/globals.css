@@ -115,3 +115,14 @@ html,body{ touch-action:manipulation; }
 .modal-scroll {
   -webkit-overflow-scrolling: touch;
 }
+
+/* Google Places Autocomplete dropdown */
+.pac-container {
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
+}
+
+/* Stabilniejsze przewijanie w modalach na mobile */
+.modal-scroll {
+  -webkit-overflow-scrolling: touch;
+}

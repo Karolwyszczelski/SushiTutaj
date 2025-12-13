@@ -19,6 +19,10 @@ type Props = {
   placeholder?: string;
 };
 
+requestAnimationFrame(() => {
+  (document.activeElement as HTMLElement | null)?.blur?.();
+});
+
 const inputCls =
   "w-full px-3 py-2 border border-black/15 rounded-md bg-white text-black placeholder-black/50 outline-none focus:ring-2 focus:ring-black/20";
 
