@@ -1127,6 +1127,7 @@ const enablePush = useCallback(async () => {
 
  /* AUDIO – dźwięk nowego zamówienia */
 const newOrderAudio = useRef<HTMLAudioElement | null>(null);
+const [audioUnlocked, setAudioUnlocked] = useState(false);
 
 useEffect(() => {
   if (typeof window === "undefined") return;
@@ -1139,15 +1140,16 @@ useEffect(() => {
 
   // „odblokowanie” audio po pierwszym kliknięciu
   const unlock = async () => {
-    try {
-      a.currentTime = 0;
-      await a.play();
-      a.pause();
-      console.log("[audio] odblokowane");
-    } catch (err) {
-      console.warn("[audio] nie udało się odblokować", err);
-    }
-  };
+  try {
+    a.currentTime = 0;
+    await a.play();
+    a.pause();
+    setAudioUnlocked(true);
+    console.log("[audio] odblokowane");
+  } catch (err) {
+    console.warn("[audio] nie udało się odblokować", err);
+  }
+};
 
   window.addEventListener("pointerdown", unlock, { once: true });
   console.log("[audio] zainicjalizowano", src);
@@ -1157,6 +1159,10 @@ useEffect(() => {
 
 const playDing = useCallback(async () => {
   try {
+    if (!audioUnlocked) {
+  console.warn("[audio] zablokowane (brak interakcji użytkownika)");
+  return;
+}
     if (!newOrderAudio.current) {
       console.warn("[audio] brak instancji Audio");
       return;
@@ -1176,9 +1182,29 @@ const playDing = useCallback(async () => {
   const pendingRef = useRef(false);
   const editingRef = useRef<string | null>(null);
 
+  const lastDingAtRef = useRef(0);
+const dingOnce = useCallback(() => {
+  const now = Date.now();
+  if (now - lastDingAtRef.current < 1200) return; // anty-dubler
+  lastDingAtRef.current = now;
+  void playDing();
+}, [playDing]);
+
+
   useEffect(() => {
     editingRef.current = editingOrderId;
   }, [editingOrderId]);
+
+  useEffect(() => {
+  if (!editingOrderId) return;
+
+  const t = window.setTimeout(() => {
+    console.warn("[pickup] watchdog: reset editingOrderId", editingOrderId);
+    setEditingOrderId(null);
+  }, 30000);
+
+  return () => window.clearTimeout(t);
+}, [editingOrderId]);
 
   const fetchOrders = useCallback(
   async function doFetch(opts?: { silent?: boolean }) {
@@ -1355,10 +1381,11 @@ const playDing = useCallback(async () => {
 
     const iv = setInterval(() => {
       void fetchOrdersRef.current({ silent: true });
-    }, 8000);
+    }, 5000);
 
     return () => clearInterval(iv);
   }, [authChecked, booted, editingOrderId]);
+  
 
    /* realtime tylko dla tej restauracji */
   useEffect(() => {
@@ -1378,6 +1405,18 @@ const playDing = useCallback(async () => {
           ...(filter ? { filter } : {}),
         },
         (payload: any) => {
+          const ev = payload?.eventType; // 'INSERT' | 'UPDATE' | 'DELETE'
+const newStatus = String(payload?.new?.status ?? "");
+const oldStatus = String(payload?.old?.status ?? "");
+
+const isUnaccepted = (s: string) => ["new", "pending", "placed"].includes(s);
+
+// ding na nowe zamówienie
+if (ev === "INSERT" && isUnaccepted(newStatus)) dingOnce();
+
+// ding gdy zamówienie "wchodzi" w new/pending/placed przez UPDATE
+if (ev === "UPDATE" && !isUnaccepted(oldStatus) && isUnaccepted(newStatus)) dingOnce();
+
           if (restaurantId) {
             const ridNew = payload.new?.restaurant_id;
             const ridOld = payload.old?.restaurant_id;
@@ -1483,6 +1522,27 @@ const fetchOrdersRef = useRef(fetchOrders);
   useEffect(() => {
     fetchOrdersRef.current = fetchOrders;
   }, [fetchOrders]);
+
+  useEffect(() => {
+  if (!authChecked || !booted) return;
+
+  const refresh = () => {
+    void fetchOrdersRef.current({ silent: true });
+  };
+
+  const onVis = () => {
+    if (document.visibilityState === "visible") refresh();
+  };
+
+  window.addEventListener("focus", refresh);
+  document.addEventListener("visibilitychange", onVis);
+
+  return () => {
+    window.removeEventListener("focus", refresh);
+    document.removeEventListener("visibilitychange", onVis);
+  };
+}, [authChecked, booted]);
+
 
   // Akceptacja – PATCH /api/orders/[id] → status + czas
   const acceptAndSetTime = async (order: Order, minutes: number) => {
