@@ -652,7 +652,9 @@ const looksLikeAutoSwapSummary = (txt: string) => {
   return false;
 };
 
-const formatSetSwapChosen = (s: any) => {
+const hasArrow = (t: string) => (t || "").includes("→") || (t || "").includes("->");
+
+const formatSetSwapLine = (s: any) => {
   const qty =
     typeof s?.qty === "number"
       ? s.qty
@@ -660,13 +662,19 @@ const formatSetSwapChosen = (s: any) => {
       ? parseInt(String(s.qty).replace(/[^\d]/g, ""), 10)
       : undefined;
 
-  const chosen = cleanSwapText(s?.to || "");
-  if (!chosen) return "";
+  const from = cleanSwapText(s?.from || "");
+  const to = cleanSwapText(s?.to || "");
+
+  if (!to) return "";
 
   const prefix =
     typeof qty === "number" && Number.isFinite(qty) && qty > 1 ? `${qty}× ` : "";
 
-  return `${prefix}${chosen}`;
+  // chcemy: FROM → TO
+  if (from) return `${prefix}${from} → ${to}`;
+
+  // fallback, gdy nie mamy FROM
+  return `${prefix}${to}`;
 };
 
 
@@ -761,22 +769,19 @@ const isNoOpSwap = (from?: string, to?: string) => {
 
   const swapLabels = swapDetails.map((s) => s.label);
 
-  // --- NOWE: set_swaps (zamiany w ZESTAWACH) ---
+  // --- set_swaps (zamiany w ZESTAWACH) ---
   const rawSetSwaps =
     (Array.isArray((source as any).set_swaps) && (source as any).set_swaps) ||
     (Array.isArray(srcOptions?.set_swaps) && srcOptions!.set_swaps) ||
     [];
 
-  type SetSwapDetail = { qty?: number; from?: string; to?: string; label: string };
+  type SetSwapDetail = { qty?: number; from?: string; to: string; label: string };
 
-  const setSwaps: SetSwapDetail[] = (rawSetSwaps as any[])
+  const setSwapsBase: SetSwapDetail[] = (rawSetSwaps as any[])
     .map((s) => {
       if (!s) return null;
 
-      const fromRaw = typeof s.from === "string" ? s.from.trim() : "";
-      const toRaw = typeof s.to === "string" ? s.to.trim() : "";
       const rawQty = (s as any).qty;
-
       const qtyNum =
         typeof rawQty === "number"
           ? rawQty
@@ -784,32 +789,89 @@ const isNoOpSwap = (from?: string, to?: string) => {
           ? parseInt(rawQty.replace(/[^\d]/g, ""), 10)
           : undefined;
 
-      // fallback: jeśli nie ma "to", spróbuj wyciągnąć z label
       const lbl = typeof (s as any).label === "string" ? String((s as any).label) : "";
-      const parsed = lbl ? parseToFromLabel(lbl) : { from: "", to: "" };
 
-      const from = cleanSwapText(fromRaw || parsed.from || "");
-      const to = cleanSwapText(toRaw || parsed.to || "");
+      let from = cleanSwapText(typeof (s as any).from === "string" ? (s as any).from : "");
+      let to = cleanSwapText(typeof (s as any).to === "string" ? (s as any).to : "");
 
-      // musimy mieć docelową (wybraną) rolkę, inaczej nie ma czego pokazać
+      // 1) Czasem backend wkłada "FROM → TO" do pola `to` – rozbijamy
+      if (!from && to && hasArrow(to)) {
+        const p = parseToFromLabel(to);
+        const pf = cleanSwapText(p.from || "");
+        const pt = cleanSwapText(p.to || "");
+        if (pt) {
+          from = pf;
+          to = pt;
+        }
+      }
+
+      // 2) Jeśli nadal brakuje danych – próbuj z label
+      if ((!to || !from) && lbl && hasArrow(lbl)) {
+        const p = parseToFromLabel(lbl);
+        if (!from) from = cleanSwapText(p.from || "");
+        if (!to) to = cleanSwapText(p.to || "");
+      }
+
+      // 3) Jeśli nadal brak `to`, a label jest „gołe” – traktuj label jako `to`
+      if (!to && lbl && !hasArrow(lbl)) {
+        to = cleanSwapText(lbl);
+      }
+
       if (!to) return null;
-
-      // usuń pseudo-zamiany typu "Futomaki X" -> "X"
-      if (isNoOpSwapLoose(from, to)) return null;
-
-      const label =
-        typeof qtyNum === "number" && Number.isFinite(qtyNum) && qtyNum > 0
-          ? `${qtyNum}× ${to}`
-          : to;
 
       return {
         qty: qtyNum,
         from: from || undefined,
-        to: to || undefined,
-        label,
-      };
+        to,
+        label: "", // uzupełnimy niżej
+      } as SetSwapDetail;
     })
     .filter(Boolean) as SetSwapDetail[];
+
+  // Uzupełnij FROM z `swapsRaw` (często to tam jest pełna para)
+  const setSwapsFilled: SetSwapDetail[] = setSwapsBase
+    .map((ss) => {
+      let from = cleanSwapText(ss.from || "");
+      const to = cleanSwapText(ss.to || "");
+
+      if (!from && to) {
+        const hit = swapDetails.find(
+          (d) => d?.to && swapCompareKey(d.to) === swapCompareKey(to)
+        );
+        if (hit?.from) from = cleanSwapText(hit.from);
+      }
+
+      // usuń pseudo-zamiany typu "Futomaki X" → "X"
+      if (from && to && isNoOpSwapLoose(from, to)) return null;
+
+      const out: SetSwapDetail = {
+        ...ss,
+        from: from || undefined,
+        to,
+        label: formatSetSwapLine({ ...ss, from: from || undefined, to }),
+      };
+
+      // jak label pusty (brak to) – nie pokazujemy
+      if (!out.label) return null;
+
+      return out;
+    })
+    .filter(Boolean) as SetSwapDetail[];
+
+  // Fallback: jeśli set_swaps puste, a mamy swapDetails (i to jest zestaw) – pokaż je jako "Zamiany w zestawie"
+  const setSwapsFinal: SetSwapDetail[] =
+    isSet && setSwapsFilled.length === 0 && swapDetails.length > 0
+      ? (swapDetails
+          .map((d) => {
+            const from = cleanSwapText(d.from || "");
+            const to = cleanSwapText(d.to || "");
+            if (!to && !from) return null;
+            if (from && to && isNoOpSwapLoose(from, to)) return null;
+            const label = from && to ? `${from} → ${to}` : (to || from);
+            return { qty: undefined, from: from || undefined, to: to || from, label };
+          })
+          .filter(Boolean) as SetSwapDetail[])
+      : setSwapsFilled;
 
   // --- DODATKI ---
   const rawAddons = [
@@ -878,9 +940,9 @@ const addons = collapseLabelsWithQty(isSet ? plain : [...plain, ...swapLabels]);
 
   // jeśli to wygląda jak auto-podsumowanie zamian (a mamy setSwaps) – nie pokazujemy tego jako "Notatka"
   const note =
-    noteCandidate && setSwaps.length > 0 && looksLikeAutoSwapSummary(noteCandidate)
-      ? undefined
-      : noteCandidate;
+  isSet && noteCandidate && looksLikeAutoSwapSummary(noteCandidate)
+    ? undefined
+    : noteCandidate;
 
   return {
     name,
@@ -1376,7 +1438,7 @@ useEffect(() => {
       const sub = await reg.pushManager.getSubscription();
       if (!sub) return;
 
-      const res = await fetch("/api/push/subscribe", {
+      const res = await fetch("/api/admin/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -2227,7 +2289,10 @@ const isNonEmptyString = (v: unknown): v is string =>
   const addonsOnly = (p.addons || []).filter((a: string) => !swapLabelSet.has(a));
 
   const hasMetaBlock =
-    addonsOnly.length > 0 || swapsHuman.length > 0 || setSwaps.length > 0 || !!p.note;
+  addonsOnly.length > 0 ||
+  (!isSet && swapsHuman.length > 0) ||
+  setSwaps.length > 0 ||
+  !!p.note;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm text-slate-900">
@@ -2291,7 +2356,7 @@ const isNonEmptyString = (v: unknown): v is string =>
           )}
 
           {/* Zamiany (poza zestawami) */}
-          {swapsHuman.length > 0 && (
+          {!isSet && swapsHuman.length > 0 && (
             <div className={addonsOnly.length > 0 ? "mt-2 border-t border-slate-200 pt-2" : ""}>
               <div className="text-[12px] font-semibold text-slate-800">Zamiany</div>
               <ul className="mt-1 ml-5 list-disc space-y-0.5 text-[12px] text-slate-700">
@@ -2314,7 +2379,7 @@ const isNonEmptyString = (v: unknown): v is string =>
               <div className="text-[12px] font-semibold text-slate-800">Zamiany w zestawie</div>
               <ul className="mt-1 ml-5 list-disc space-y-0.5 text-[12px] text-slate-700">
                 {setSwaps.map((s: any, i: number) => {
-  const txt = formatSetSwapChosen(s);
+  const txt = formatSetSwapLine(s);
   if (!txt) return null;
   return <li key={i}>{txt}</li>;
 })}
@@ -2358,7 +2423,7 @@ const isNonEmptyString = (v: unknown): v is string =>
     onClose(): void;
   }> = ({ product, onClose }) => {
     // zawsze normalizujemy na bazie oryginalnego _raw
-    const p = normalizeProduct(product?._raw || product);
+   const p = normalizeProduct(product);
     const title = p.quantity > 1 ? `${p.name} x${p.quantity}` : p.name;
     const isSet = !!p.isSet;
 
@@ -2805,9 +2870,9 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
                 {prods.map((p: any, i: number) => (
                   <li key={i}>
                     <ProductItem
-                      raw={p}
-                      onDetails={(np) => setSelectedProduct(np)}
-                    />
+  raw={p}
+  onDetails={(np) => setSelectedProduct(np?._raw ?? np)}
+/>
                   </li>
                 ))}
               </ul>
