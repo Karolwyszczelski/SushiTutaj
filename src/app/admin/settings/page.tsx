@@ -4,6 +4,14 @@
 import { Tab } from "@headlessui/react";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  CalendarDays,
+  MapPinned,
+  ShieldBan,
+  BadgePercent,
+  Clock4,
+  Info,
+} from "lucide-react";
 
 import TableLayoutForm from "@/components/admin/settings/TableLayoutForm";
 import DeliveryZonesForm from "@/components/admin/settings/DeliveryZonesForm";
@@ -12,19 +20,65 @@ import DiscountCodesForm from "@/components/admin/settings/DiscountCodesForm";
 import BlockedTimesForm from "@/components/admin/settings/BlockedTimesForm";
 import NoticeBarForm from "@/components/admin/settings/NoticeBarForm";
 
-function classNames(...classes: string[]) {
+function cn(...classes: string[]) {
   return classes.filter(Boolean).join(" ");
 }
-
-const tabBase =
-  "rounded-lg px-3 py-2 text-center font-medium outline-none transition";
-const tabSelected = "bg-white text-slate-900 shadow-sm";
-const tabUnselected = "text-slate-600 hover:text-slate-900";
 
 type EnsureCookieResp = {
   restaurant_slug?: string | null;
   restaurant_id?: string | null;
 };
+
+const ACCENT = "#de1d13";
+
+const tabs = [
+  {
+    key: "tables",
+    short: "Stoły",
+    long: "Rezerwacje & Stoły",
+    Icon: CalendarDays,
+    render: () => <TableLayoutForm />,
+  },
+  {
+    key: "zones",
+    short: "Strefy",
+    long: "Strefy dostawy",
+    Icon: MapPinned,
+    render: () => <DeliveryZonesForm />,
+  },
+  {
+    key: "blocked",
+    short: "Adresy",
+    long: "Blokowane adresy",
+    Icon: ShieldBan,
+    render: () => <BlockedAddressesForm />,
+  },
+  {
+    key: "discounts",
+    short: "Promki",
+    long: "Promocje & rabaty",
+    Icon: BadgePercent,
+    render: () => <DiscountCodesForm />,
+  },
+  {
+    key: "times",
+    short: "Godziny",
+    long: "Blokady godzin",
+    Icon: Clock4,
+    render: (restaurantSlug: string | null) => (
+      <BlockedTimesForm restaurantSlug={restaurantSlug} />
+    ),
+  },
+  {
+    key: "notice",
+    short: "Pasek",
+    long: "Pasek informacji",
+    Icon: Info,
+    render: (restaurantSlug: string | null) => (
+      <NoticeBarForm restaurantSlug={restaurantSlug} />
+    ),
+  },
+] as const;
 
 export default function SettingsPage() {
   const searchParams = useSearchParams();
@@ -39,7 +93,7 @@ export default function SettingsPage() {
 
   const [restaurantSlug, setRestaurantSlug] = useState<string | null>(initialSlug);
 
-  // Self-heal: jeśli ktoś wejdzie w /admin/settings bez ?restaurant=...
+  // Self-heal: jeśli ktoś wejdzie bez ?restaurant=... lub cookie się rozjedzie
   useEffect(() => {
     let alive = true;
 
@@ -57,12 +111,9 @@ export default function SettingsPage() {
 
         const json = (await res.json()) as EnsureCookieResp;
         const srvSlug = json.restaurant_slug?.toLowerCase() ?? null;
-
         if (!alive) return;
 
-        if (srvSlug && srvSlug !== restaurantSlug) {
-          setRestaurantSlug(srvSlug);
-        }
+        if (srvSlug && srvSlug !== restaurantSlug) setRestaurantSlug(srvSlug);
 
         // dopnij/poprzez URL
         if (srvSlug) {
@@ -84,138 +135,136 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qs, pathname, initialSlug]);
 
+  const tabBtnBase =
+    "group w-full rounded-xl px-3 py-2.5 outline-none transition flex items-center gap-2 justify-center sm:justify-start";
+  const tabBtnSelected = cn(
+    "bg-white shadow-sm ring-1 ring-black/5",
+    "text-slate-900"
+  );
+  const tabBtnUnselected = cn(
+    "text-slate-600 hover:text-slate-900 hover:bg-white/60",
+    "focus-visible:ring-2 focus-visible:ring-offset-2"
+  );
+
   return (
-    <div className="min-h-screen bg-slate-50 p-4 sm:p-6 text-slate-900">
-      {/* nagłówek */}
-      <div className="mb-5 sm:mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Ustawienia panelu</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Konfiguracja dla aktualnie wybranego lokalu.
-        </p>
-      </div>
-
-      <Tab.Group>
-        {/* Jedna lista Tabów (responsywna) */}
-        <Tab.List className="rounded-xl bg-slate-100 p-1 text-sm">
-          <div className="flex gap-2 overflow-x-auto whitespace-nowrap sm:overflow-visible sm:whitespace-normal">
-            <Tab
-              className={({ selected }) =>
-                classNames(
-                  tabBase,
-                  "shrink-0 px-4 sm:flex-1 sm:px-3",
-                  selected ? tabSelected : tabUnselected
-                )
-              }
-            >
-              <span className="sm:hidden">Stoły</span>
-              <span className="hidden sm:inline">Rezerwacje &amp; Stoły</span>
-            </Tab>
-
-            <Tab
-              className={({ selected }) =>
-                classNames(
-                  tabBase,
-                  "shrink-0 px-4 sm:flex-1 sm:px-3",
-                  selected ? tabSelected : tabUnselected
-                )
-              }
-            >
-              <span className="sm:hidden">Strefy</span>
-              <span className="hidden sm:inline">Strefy dostawy</span>
-            </Tab>
-
-            <Tab
-              className={({ selected }) =>
-                classNames(
-                  tabBase,
-                  "shrink-0 px-4 sm:flex-1 sm:px-3",
-                  selected ? tabSelected : tabUnselected
-                )
-              }
-            >
-              <span className="sm:hidden">Adresy</span>
-              <span className="hidden sm:inline">Blokowane adresy</span>
-            </Tab>
-
-            <Tab
-              className={({ selected }) =>
-                classNames(
-                  tabBase,
-                  "shrink-0 px-4 sm:flex-1 sm:px-3",
-                  selected ? tabSelected : tabUnselected
-                )
-              }
-            >
-              <span className="sm:hidden">Promki</span>
-              <span className="hidden sm:inline">Promocje &amp; rabaty</span>
-            </Tab>
-
-            <Tab
-              className={({ selected }) =>
-                classNames(
-                  tabBase,
-                  "shrink-0 px-4 sm:flex-1 sm:px-3",
-                  selected ? tabSelected : tabUnselected
-                )
-              }
-            >
-              <span className="sm:hidden">Godziny</span>
-              <span className="hidden sm:inline">Blokady godzin</span>
-            </Tab>
-
-            <Tab
-              className={({ selected }) =>
-                classNames(
-                  tabBase,
-                  "shrink-0 px-4 sm:flex-1 sm:px-3",
-                  selected ? tabSelected : tabUnselected
-                )
-              }
-            >
-              <span className="sm:hidden">Pasek</span>
-              <span className="hidden sm:inline">Pasek informacji</span>
-            </Tab>
+    <div className="min-h-[100dvh] bg-gradient-to-b from-slate-50 to-white text-slate-900">
+      <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-7">
+        {/* HEADER */}
+        <div className="mb-5 sm:mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
+              Ustawienia panelu
+            </h1>
+            <p className="mt-1 text-sm text-slate-600">
+              Konfiguracja dla aktualnie wybranego lokalu.
+            </p>
           </div>
-        </Tab.List>
 
-        <Tab.Panels className="mt-4">
-          <Tab.Panel className="focus:outline-none">
-            <div className="rounded-2xl border bg-white p-4 sm:p-5 shadow-sm">
-              <TableLayoutForm />
+          <div className="flex items-center gap-2">
+            <div className="rounded-full bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 shadow-sm">
+              <span className="text-slate-500">Lokal:</span>{" "}
+              <span className="font-medium text-slate-900">
+                {restaurantSlug ?? "—"}
+              </span>
             </div>
-          </Tab.Panel>
 
-          <Tab.Panel className="focus:outline-none">
-            <div className="rounded-2xl border bg-white p-4 sm:p-5 shadow-sm">
-              <DeliveryZonesForm />
-            </div>
-          </Tab.Panel>
+            <button
+              type="button"
+              onClick={() => {
+                if (!restaurantSlug) return;
+                try {
+                  navigator.clipboard?.writeText(restaurantSlug);
+                } catch {}
+              }}
+              className="rounded-full bg-white px-3 py-1.5 text-sm ring-1 ring-slate-200 shadow-sm hover:bg-slate-50"
+              title="Skopiuj slug lokalu"
+            >
+              Kopiuj
+            </button>
+          </div>
+        </div>
 
-          <Tab.Panel className="focus:outline-none">
-            <div className="rounded-2xl border bg-white p-4 sm:p-5 shadow-sm">
-              <BlockedAddressesForm />
-            </div>
-          </Tab.Panel>
+        {/* SHELL */}
+        <div className="rounded-2xl border border-slate-200 bg-white/70 shadow-sm backdrop-blur">
+          <Tab.Group>
+            {/* TAB BAR */}
+            <Tab.List className="border-b border-slate-200 p-2">
+              <div className="flex gap-2 overflow-x-auto whitespace-nowrap sm:overflow-visible sm:whitespace-normal">
+                {tabs.map(({ key, short, long, Icon }) => (
+                  <Tab
+                    key={key}
+                    className={({ selected }) =>
+                      cn(
+                        tabBtnBase,
+                        "shrink-0 sm:flex-1",
+                        selected ? tabBtnSelected : tabBtnUnselected
+                      )
+                    }
+                  >
+                    <Icon
+                      className={cn(
+                        "h-4 w-4",
+                        "transition",
+                        // wymuszamy kolor ikon dla czytelności
+                        "text-slate-700 group-hover:text-slate-900"
+                      )}
+                    />
+                    <span className="sm:hidden">{short}</span>
+                    <span className="hidden sm:inline">{long}</span>
+                    {/* akcent pod aktywnym tabem */}
+                    <span
+                      className={cn(
+                        "ml-auto hidden sm:block h-2 w-2 rounded-full",
+                        // kropka jako sygnał aktywności
+                        "opacity-0 group-data-[headlessui-state=selected]:opacity-100"
+                      )}
+                      style={{ backgroundColor: ACCENT }}
+                    />
+                  </Tab>
+                ))}
+              </div>
+            </Tab.List>
 
-          <Tab.Panel className="focus:outline-none">
-            <div className="rounded-2xl border bg-white p-4 sm:p-5 shadow-sm">
-              <DiscountCodesForm />
-            </div>
-          </Tab.Panel>
+            {/* CONTENT */}
+            <Tab.Panels className="p-3 sm:p-5">
+              {tabs.map((t) => (
+                <Tab.Panel key={t.key} className="focus:outline-none">
+                  {/* panel header */}
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-base sm:text-lg font-semibold">
+                        {t.long}
+                      </h2>
+                      <p className="mt-1 text-sm text-slate-600">
+                        Ustawienia zapisują się dla wybranego lokalu.
+                      </p>
+                    </div>
 
-          <Tab.Panel className="focus:outline-none">
-            <div className="rounded-2xl border bg-white p-4 sm:p-5 shadow-sm">
-              <BlockedTimesForm restaurantSlug={restaurantSlug} />
-            </div>
-          </Tab.Panel>
+                    <div
+                      className="hidden sm:block rounded-full px-3 py-1 text-xs font-medium ring-1 ring-slate-200 bg-white"
+                      style={{ color: ACCENT }}
+                    >
+                      Panel
+                    </div>
+                  </div>
 
-          <Tab.Panel className="focus:outline-none">
-            <div className="rounded-2xl border bg-white p-4 sm:p-5 shadow-sm">
-              <NoticeBarForm restaurantSlug={restaurantSlug} />
-            </div>
-          </Tab.Panel>
-        </Tab.Panels>
-      </Tab.Group>
+                  {/* card */}
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm">
+                    {t.render(restaurantSlug)}
+                  </div>
+
+                  {!restaurantSlug && (t.key === "times" || t.key === "notice") && (
+                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                      Brak sluga lokalu w URL. Odśwież stronę lub przejdź do panelu
+                      z wybranego lokalu (parametr <b>?restaurant=...</b>).
+                    </div>
+                  )}
+                </Tab.Panel>
+              ))}
+            </Tab.Panels>
+          </Tab.Group>
+        </div>
+      </div>
     </div>
   );
 }
