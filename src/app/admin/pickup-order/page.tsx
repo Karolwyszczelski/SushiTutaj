@@ -1127,51 +1127,70 @@ const enablePush = useCallback(async () => {
 
  /* AUDIO – dźwięk nowego zamówienia */
 const newOrderAudio = useRef<HTMLAudioElement | null>(null);
-const [audioUnlocked, setAudioUnlocked] = useState(false);
+const audioUnlockedRef = useRef(false);
+
+const unlockAudio = useCallback(async () => {
+  try {
+    if (typeof window === "undefined") return;
+    if (!newOrderAudio.current) return;
+
+    // trik: start w muted, żeby przeglądarka pozwoliła „zainicjować”
+    const a = newOrderAudio.current;
+    a.muted = true;
+    a.currentTime = 0;
+    await a.play();
+    a.pause();
+    a.currentTime = 0;
+    a.muted = false;
+
+    audioUnlockedRef.current = true;
+    console.log("[audio] unlocked");
+  } catch (e) {
+    audioUnlockedRef.current = false;
+    console.warn("[audio] unlock failed", e);
+  }
+}, []);
 
 useEffect(() => {
   if (typeof window === "undefined") return;
 
-  const src = "/new-order.mp3"; // upewnij się, że plik jest w public/
+  const src = "/new-order.mp3"; // MUSI być w /public/new-order.mp3
   const a = new Audio(src);
   a.preload = "auto";
   a.volume = 1;
   newOrderAudio.current = a;
 
-  // „odblokowanie” audio po pierwszym kliknięciu
-  const unlock = async () => {
-  try {
-    a.currentTime = 0;
-    await a.play();
-    a.pause();
-    setAudioUnlocked(true);
-    console.log("[audio] odblokowane");
-  } catch (err) {
-    console.warn("[audio] nie udało się odblokować", err);
-  }
-};
+  // spróbuj odblokować po pierwszym geście użytkownika
+  const onFirstGesture = () => void unlockAudio();
+  window.addEventListener("pointerdown", onFirstGesture, { once: true });
+  window.addEventListener("keydown", onFirstGesture, { once: true });
 
-  window.addEventListener("pointerdown", unlock, { once: true });
-  console.log("[audio] zainicjalizowano", src);
+  console.log("[audio] init", src);
 
-  return () => window.removeEventListener("pointerdown", unlock);
-}, []);
+  return () => {
+    window.removeEventListener("pointerdown", onFirstGesture);
+    window.removeEventListener("keydown", onFirstGesture);
+  };
+}, [unlockAudio]);
 
 const playDing = useCallback(async () => {
   try {
-    if (!audioUnlocked) {
-  console.warn("[audio] zablokowane (brak interakcji użytkownika)");
-  return;
-}
     if (!newOrderAudio.current) {
-      console.warn("[audio] brak instancji Audio");
+      console.warn("[audio] missing Audio()");
       return;
     }
+
+    // jeśli nie było gestu użytkownika — nie udawajmy, że zadziała
+    if (!audioUnlockedRef.current) {
+      console.warn("[audio] locked (no user gesture yet)");
+      return;
+    }
+
     newOrderAudio.current.currentTime = 0;
     await newOrderAudio.current.play();
     console.log("[audio] ding");
   } catch (err) {
-    console.warn("[audio] błąd odtwarzania", err);
+    console.warn("[audio] play error", err);
   }
 }, []);
 
@@ -1206,10 +1225,16 @@ const dingOnce = useCallback(() => {
   return () => window.clearTimeout(t);
 }, [editingOrderId]);
 
-  const fetchOrders = useCallback(
-  async function doFetch(opts?: { silent?: boolean }) {
+  // REF do fetchOrders (polling/realtime zawsze woła najnowszą wersję)
+const fetchOrdersRef = useRef<
+  (opts?: { silent?: boolean }) => void | Promise<void>
+>(() => {});
+
+const fetchOrders = useCallback(
+  async (opts?: { silent?: boolean }) => {
     if (!booted) return;
     if (editingRef.current) return;
+
     if (fetchingRef.current) {
       pendingRef.current = true;
       return;
@@ -1243,15 +1268,15 @@ const dingOnce = useCallback(() => {
       const json = await res.json().catch(() => ({} as any));
 
       if (!res.ok) {
-  if (!opts?.silent) {
-    setOrders([]);
-    setTotal(0);
-    setErrorMsg(json?.error || "Błąd pobierania zamówień");
-  } else {
-    setErrorMsg((prev) => prev ?? (json?.error || "Błąd pobierania zamówień"));
-  }
-  return;
-}
+        if (!opts?.silent) {
+          setOrders([]);
+          setTotal(0);
+          setErrorMsg(json?.error || "Błąd pobierania zamówień");
+        } else {
+          setErrorMsg((prev) => prev ?? (json?.error || "Błąd pobierania zamówień"));
+        }
+        return;
+      }
 
       if (json?.restaurant_id && typeof json.restaurant_id === "string") {
         setRestaurantId(json.restaurant_id);
@@ -1340,7 +1365,9 @@ const dingOnce = useCallback(() => {
 
       const prev = prevIdsRef.current;
       const newOnes = mapped.filter(
-        (o) => (o.status === "new" || o.status === "pending" || o.status === "placed") && !prev.has(o.id)
+        (o) =>
+          (o.status === "new" || o.status === "pending" || o.status === "placed") &&
+          !prev.has(o.id)
       );
       if (initializedRef.current && newOnes.length > 0) void playDing();
 
@@ -1359,14 +1386,21 @@ const dingOnce = useCallback(() => {
     } finally {
       if (!opts?.silent) setLoading(false);
       fetchingRef.current = false;
+
       if (pendingRef.current) {
         pendingRef.current = false;
-        void doFetch({ silent: true });
+        void fetchOrders({ silent: true });
       }
     }
   },
   [booted, page, perPage, restaurantSlug, urlSlug, sortOrder, playDing]
 );
+
+// aktualizuj ref po każdej zmianie fetchOrders
+useEffect(() => {
+  fetchOrdersRef.current = (opts) => void fetchOrders(opts);
+}, [fetchOrders]);
+
 
   useEffect(() => {
     if (!authChecked) return;
@@ -1517,11 +1551,6 @@ if (ev === "UPDATE" && !isUnaccepted(oldStatus) && isUnaccepted(newStatus)) ding
     setEditingOrderId(null);
   }
 };
-
-const fetchOrdersRef = useRef(fetchOrders);
-  useEffect(() => {
-    fetchOrdersRef.current = fetchOrders;
-  }, [fetchOrders]);
 
   useEffect(() => {
   if (!authChecked || !booted) return;
@@ -1732,18 +1761,22 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
 };
 
 const calcEarnedStickers = (o: Order) => {
-  if (o.loyalty_applied) return 0; // jeśli użyto nagrody – domyślnie nie naliczamy
-  const min =
-    typeof o.loyalty_min_order === "number" && o.loyalty_min_order > 0
-      ? o.loyalty_min_order
-      : 50;
+  // jeśli użyto nagrody (rabat / darmowa rolka) – nie naliczamy naklejek
+  if (o.loyalty_applied) return 0;
 
-  const total = typeof o.total_price === "number" ? o.total_price : Number(o.total_price || 0);
-  if (!(total >= min)) return 0;
+  const total = toNumber(o.total_price, 0);
 
-  // “jak się umawialiśmy” najczęściej = 1 naklejka za każde min_order (np. 50 zł)
-  return Math.max(0, Math.floor(total / min));
+  // progi:
+  // < 50 zł  -> 0
+  // 50–200  -> 1
+  // >200–300 -> 2
+  // >300    -> 3
+  if (total < 50) return 0;
+  if (total <= 200) return 1;
+  if (total <= 300) return 2;
+  return 3;
 };
+
 
 
   // Program lojalnościowy – badge w nagłówku karty zamówienia
@@ -2580,7 +2613,7 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
       </div>
 
       {/* Instrukcja dla obsługi */}
-      <div className="mb-4 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-amber-100 p-3 text-xs sm:text-sm text-amber-900">
+      <div className="mb-4 rounded-2xl border border-amber-200 bg-white/300 p-3 text-xs sm:text-sm text-black-900">
         <p className="mb-1 font-semibold">
           Jak obsługiwać zamówienia:
         </p>
@@ -2593,14 +2626,6 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
             Po akceptacji zamówienie trafia do sekcji{" "}
             <b>„Zamówienia w realizacji”</b>, a klient dostaje godzinę
             odbioru / dostawy.
-          </li>
-          <li>
-            <b>Pałeczki</b> – liczba jest pobierana z zamówienia klienta
-            (nie zmieniasz jej tutaj).
-          </li>
-          <li>
-            <b>Płatność</b> – wybierz formę. Dla opcji <b>Online</b>{" "}
-            możesz użyć przycisku „Odśwież status”.
           </li>
           <li>
             Po wydaniu zamówienia kliknij <b>„Zrealizowany”</b>, żeby

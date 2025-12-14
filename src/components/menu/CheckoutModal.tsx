@@ -137,7 +137,7 @@ type Promo =
 const LOYALTY_MIN_ORDER_BASE = 50; // zł
 
 // Statusy zamówień, które liczą się do naklejek
-const LOYALTY_ELIGIBLE_STATUSES = ["accepted", "completed", "placed"] as const;
+const LOYALTY_ELIGIBLE_STATUSES = ["accepted", "completed"] as const;
 
 const LOYALTY_PERCENT = 30;
 const LOYALTY_REWARD_ROLL_COUNT = 4;
@@ -282,7 +282,21 @@ const SPRITE_VARIANTS = [
 ] as const;
 type SpriteVariant = (typeof SPRITE_VARIANTS)[number];
 
-type SoftDrinkVariant = ColaVariant | PepsiVariant | FantaVariant | SpriteVariant;
+/* 7UP – zwykła / zero */
+const SEVENUP_ADDON_PREFIX = "7UP: ";
+const SEVENUP_VARIANTS = [
+  `${SEVENUP_ADDON_PREFIX}Klasyczna`,
+  `${SEVENUP_ADDON_PREFIX}Zero`,
+] as const;
+type SevenUpVariant = (typeof SEVENUP_VARIANTS)[number];
+
+
+type SoftDrinkVariant =
+  | ColaVariant
+  | PepsiVariant
+  | FantaVariant
+  | SpriteVariant
+  | SevenUpVariant;
 
 type SoftDrinkGroup = {
   title: string;
@@ -582,6 +596,37 @@ function isSpriteProduct(prod: any, prodInfo?: ProductDb | null): boolean {
   return !!text && text.includes("sprite");
 }
 
+function isSevenUpProduct(prod: any, prodInfo?: ProductDb | null): boolean {
+  const text = `${prod?.name || ""} ${prodInfo?.name || ""} ${prodInfo?.description || ""}`
+    .toLowerCase()
+    .trim();
+
+  if (!text) return false;
+
+  return text.includes("7up") || text.includes("7-up") || text.includes("7 up");
+}
+
+function isDessertProduct(prod: any, prodInfo?: ProductDb | null): boolean {
+  const sub = (prodInfo?.subcategory || "").toLowerCase();
+  if (sub.includes("deser")) return true; // "deser", "desery"
+
+  const text = `${prod?.name || ""} ${prodInfo?.name || ""} ${prodInfo?.description || ""}`
+    .toLowerCase()
+    .trim();
+
+  // słowa-klucze – dopasuj, jeśli masz inne nazwy w menu
+  return (
+    text.includes("mochi") ||
+    text.includes("deser") ||
+    text.includes("ciasto") ||
+    text.includes("brownie") ||
+    text.includes("sernik") ||
+    text.includes("lody")
+  );
+}
+
+
+
 function isSushiSpecjalProduct(
   prod: any,
   prodInfo?: ProductDb | null
@@ -639,7 +684,9 @@ function computeAddonPrice(addon: string, product?: ProductDb | null): number {
     addon.startsWith(PEPSI_ADDON_PREFIX) ||
   addon.startsWith(FANTA_ADDON_PREFIX) ||
   addon.startsWith(SPRITE_ADDON_PREFIX) ||
+  addon.startsWith(SEVENUP_ADDON_PREFIX) ||
   addon.startsWith(SASHIMI_ADDON_PREFIX)
+  
   ) {
     return 0;
   }
@@ -1450,13 +1497,25 @@ const decSauce = useCallback(
     [prod, prodInfo]
   );
 
-  const softDrink = useMemo<"cola" | "pepsi" | "fanta" | "sprite" | null>(() => {
+  const isDessert = useMemo(
+  () => isDessertProduct(prod, prodInfo),
+  [prod, prodInfo]
+);
+
+  const softDrink = useMemo<"cola" | "pepsi" | "fanta" | "sprite" | "7up" | null>(() => {
+  if (isSevenUpProduct(prod, prodInfo)) return "7up";
   if (isPepsiProduct(prod, prodInfo)) return "pepsi";
   if (isFantaProduct(prod, prodInfo)) return "fanta";
   if (isSpriteProduct(prod, prodInfo)) return "sprite";
   if (isColaProduct(prod, prodInfo)) return "cola";
   return null;
 }, [prod, prodInfo]);
+
+const isDrink =
+  !!softDrink || isWater || isBubbleTea || isRamune || isJuice || isLipton;
+
+const showSauces = !isDrink && !isDessert;
+
 
 const SOFT_DRINK_GROUP = useMemo<SoftDrinkGroup | null>(() => {
   if (!softDrink) return null;
@@ -1487,6 +1546,13 @@ const SOFT_DRINK_GROUP = useMemo<SoftDrinkGroup | null>(() => {
         prefix: COLA_ADDON_PREFIX,
         variants: COLA_VARIANTS as readonly SoftDrinkVariant[],
       };
+      case "7up":
+  return {
+    title: "Wariant napoju",
+    prefix: SEVENUP_ADDON_PREFIX,
+    variants: SEVENUP_VARIANTS as readonly SoftDrinkVariant[],
+  };
+
   }
 }, [softDrink]);
 
@@ -1648,9 +1714,14 @@ const setSashimiVariant = (variant: SashimiVariant | null) => {
 }, [SOFT_DRINK_GROUP, prod.addons]);
 
 const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
-  [...COLA_VARIANTS, ...PEPSI_VARIANTS, ...FANTA_VARIANTS, ...SPRITE_VARIANTS].forEach((v) => {
-    if (prod.addons?.includes(v)) removeAddon(prod.name, v);
-  });
+  [...COLA_VARIANTS,
+  ...PEPSI_VARIANTS,
+  ...FANTA_VARIANTS,
+  ...SPRITE_VARIANTS,
+  ...SEVENUP_VARIANTS,
+].forEach((v) => {
+  if (prod.addons?.includes(v)) removeAddon(prod.name, v);
+});
 
   if (variant) addAddon(prod.name, variant);
 };
@@ -2041,63 +2112,63 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
           </div>
         )}
 
-        <div>
-  <div className="font-semibold mb-1">Sosy:</div>
+        {showSauces && (
+  <div>
+    <div className="font-semibold mb-1">Sosy:</div>
 
-  <div className="flex flex-wrap gap-2">
-    {saucesForProduct.map((s) => {
-      const qty = getSauceQty(s);
+    <div className="flex flex-wrap gap-2">
+      {saucesForProduct.map((s) => {
+        const qty = getSauceQty(s);
 
-      return (
-        <div
-          key={s}
-          className={clsx(
-            "flex items-center gap-2 rounded border px-2 py-1",
-            qty > 0
-              ? "border-black bg-white"
-              : "border-gray-200 bg-white"
-          )}
-        >
-          <span className="text-xs text-black whitespace-nowrap">{s}</span>
+        return (
+          <div
+            key={s}
+            className={clsx(
+              "flex items-center gap-2 rounded border px-2 py-1",
+              qty > 0 ? "border-black bg-white" : "border-gray-200 bg-white"
+            )}
+          >
+            <span className="text-xs text-black whitespace-nowrap">{s}</span>
 
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => decSauce(s)}
-              disabled={qty === 0}
-              className={clsx(
-                "h-7 w-7 rounded border text-sm leading-none flex items-center justify-center",
-                qty === 0
-                  ? "opacity-40 cursor-not-allowed border-gray-200"
-                  : "border-gray-300 hover:bg-gray-50"
-              )}
-              aria-label={`Usuń porcję: ${s}`}
-            >
-              –
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => decSauce(s)}
+                disabled={qty === 0}
+                className={clsx(
+                  "h-7 w-7 rounded border text-sm leading-none flex items-center justify-center",
+                  qty === 0
+                    ? "opacity-40 cursor-not-allowed border-gray-200"
+                    : "border-gray-300 hover:bg-gray-50"
+                )}
+                aria-label={`Usuń porcję: ${s}`}
+              >
+                –
+              </button>
 
-            <span className="min-w-[20px] text-center text-[11px] text-black/70">
-              {qty}
-            </span>
+              <span className="min-w-[20px] text-center text-[11px] text-black/70">
+                {qty}
+              </span>
 
-            <button
-              type="button"
-              onClick={() => incSauce(s)}
-              className="h-7 w-7 rounded border border-black bg-black text-white text-sm leading-none flex items-center justify-center hover:opacity-90"
-              aria-label={`Dodaj porcję: ${s}`}
-            >
-              +
-            </button>
+              <button
+                type="button"
+                onClick={() => incSauce(s)}
+                className="h-7 w-7 rounded border border-black bg-black text-white text-sm leading-none flex items-center justify-center hover:opacity-90"
+                aria-label={`Dodaj porcję: ${s}`}
+              >
+                +
+              </button>
+            </div>
           </div>
-        </div>
-      );
-    })}
-  </div>
+        );
+      })}
+    </div>
 
-  <p className="text-[11px] text-black/60 mt-1">
-    Sosy są liczone po 2 zł za porcję.
-  </p>
-</div>
+    <p className="text-[11px] text-black/60 mt-1">
+      Sosy są liczone po 2 zł za porcję.
+    </p>
+  </div>
+)}
 
 {isSashimi && (
   <div>
@@ -2884,12 +2955,11 @@ useEffect(() => {
         setLoyaltyLoading(true);
 
         const { data, error } = await supabaseAuth
-          .from("orders")
-          .select(
-            "total_price, discount_amount, delivery_cost, status, loyalty_choice"
-          )
-          .eq("restaurant_id", restaurantId)
-          .eq("user", session.user.id);
+  .from("orders")
+  .select("total_price, discount_amount, delivery_cost, status, loyalty_choice")
+  .eq("restaurant_id", restaurantId)
+  .eq("user", session.user.id)
+  .in("status", [...LOYALTY_ELIGIBLE_STATUSES] as any);
 
         if (cancelled) return;
 
@@ -2930,7 +3000,11 @@ let spent = 0;  // spalone naklejki na nagrody
   earned += computeEarnedStickersFromBase(base);
 });
 
-const stickers = Math.max(0, earned - spent);
+const stickers = Math.min(
+  LOYALTY_REWARD_PERCENT_COUNT,
+  Math.max(0, earned - spent)
+);
+
 setLoyaltyStickers(stickers);
 setLoyaltyChoice("keep");
       } catch (e) {
@@ -3651,10 +3725,16 @@ const orderPayload: any = {
     selectedOption === "delivery" ? "Płatność wyłącznie gotówką u kierowcy" : null,
   chopsticks_qty: Math.max(0, Math.min(10, Number(chopsticksQty) || 0)),
   reservation_id: reservationId || null,
-  loyalty_choice:
-  canUseLoyalty4 && loyaltyChoice === "use_4" ? "use_4" : null,
-  loyalty_stickers_before:
-    typeof loyaltyStickers === "number" ? loyaltyStickers : null,
+  loyalty_choice: !isLoggedIn
+  ? null
+  : hasAutoLoyaltyDiscount
+  ? "use_8"
+  : canUseLoyalty4 && loyaltyChoice === "use_4"
+  ? "use_4"
+  : "keep",
+
+loyalty_stickers_before:
+  isLoggedIn && typeof loyaltyStickers === "number" ? loyaltyStickers : null,
   // NOWE: zapisujemy godzinę również dla "Na wynos"
   client_delivery_time,
 };

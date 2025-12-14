@@ -138,9 +138,14 @@ const LOYALTY_ELIGIBLE_STATUSES = ["accepted", "completed", "placed"];
 // ile naklejek przyznajemy po zakończeniu zamówienia (kwotowo)
 function computeEarnedStickersFromBase(baseWithoutDelivery: number): number {
   const base = Number(baseWithoutDelivery || 0);
+
+  // < 50 zł = 0
   if (base < LOYALTY_MIN_ORDER_BASE) return 0;
-  // 50 zł = 1 naklejka, 100 zł = 2 itd., maks 8
-  return Math.min(8, Math.floor(base / LOYALTY_MIN_ORDER_BASE));
+
+  // 50–200 = 1, >200–300 = 2, >300 = 3
+  if (base <= 200) return 1;
+  if (base <= 300) return 2;
+  return 3;
 }
 
 // aktualne saldo z konta lojalnościowego
@@ -952,12 +957,13 @@ const deliveryCostFinal =
 // Baza rabatów (kody + lojalność) – tylko produkty + opakowanie
 const discountBase = baseWithoutDelivery;
 
-// ile naklejek to zamówienie da po completed
-const earnedOnComplete =
+// ile naklejek to zamówienie da po accepted/completed (wg progów 50/200/300)
+let earnedOnComplete =
   n.user_id ? computeEarnedStickersFromBase(discountBase) : 0;
 
 let loyalty_stickers_before = 0;
 let loyalty_stickers_after = 0;
+let loyalty_stickers_used = 0; // <- NOWE (use_4/use_8)
 let loyalty_applied = false;
 let loyalty_reward_type: string | null = null;
 let loyalty_reward_value: number | null = null;
@@ -969,7 +975,6 @@ if (n.user_id) {
   loyalty_stickers_before = balanceBefore;
 
   const rawChoice = (n.loyalty_choice as LoyaltyChoice | null) || "keep";
-  let spentNow = 0;
   let balanceAfterSpend = balanceBefore;
 
   if (rawChoice === "use_4") {
@@ -979,7 +984,7 @@ if (n.user_id) {
       loyalty_applied = true;
       loyalty_reward_type = "roll_free";
       loyalty_reward_value = LOYALTY_REWARD_ROLL_COUNT;
-      spentNow = LOYALTY_REWARD_ROLL_COUNT;
+      loyalty_stickers_used = LOYALTY_REWARD_ROLL_COUNT;
       balanceAfterSpend = r.after;
     }
   } else if (rawChoice === "use_8") {
@@ -989,15 +994,19 @@ if (n.user_id) {
       loyalty_applied = true;
       loyalty_reward_type = "percent";
       loyalty_reward_value = LOYALTY_PERCENT;
-      spentNow = LOYALTY_REWARD_PERCENT_COUNT;
+      loyalty_stickers_used = LOYALTY_REWARD_PERCENT_COUNT;
       balanceAfterSpend = r.after;
 
       loyalty_discount_amount =
-        Math.max(0, Math.round(discountBase * (LOYALTY_PERCENT / 100) * 100)) / 100;
+        Math.max(0, Math.round(discountBase * (LOYALTY_PERCENT / 100) * 100)) /
+        100;
     }
   }
 
-  // przewidywany stan po completed
+  // WAŻNE: jeśli klient wykorzystał nagrodę (4/8), to nie nabijamy naklejek na tym samym zamówieniu
+  if (loyalty_applied) earnedOnComplete = 0;
+
+  // przewidywany stan po accepted/completed
   loyalty_stickers_after = Math.min(
     LOYALTY_REWARD_PERCENT_COUNT,
     balanceAfterSpend + earnedOnComplete
@@ -1009,7 +1018,7 @@ if (n.user_id) {
       stickers_before: balanceBefore,
       stickers_after_projected: loyalty_stickers_after,
       earned_on_complete: earnedOnComplete,
-      spent_now: spentNow,
+      spent_now: loyalty_stickers_used,
       applied: loyalty_applied,
       reward_type: loyalty_reward_type,
       reward_value: loyalty_reward_value,
@@ -1021,6 +1030,7 @@ if (n.user_id) {
 }
 
 n.loyalty_choice = effectiveLoyaltyChoice;
+
 
 // Rabat końcowy: kody + lojalność
 const manualDiscountRaw = Number(n.discount_amount || 0);
@@ -1041,6 +1051,11 @@ n.total_price = serverTotal;
 if (n.user_id) {
   n.loyalty_stickers_before = loyalty_stickers_before;
   n.loyalty_stickers_after = loyalty_stickers_after;
+
+  // NOWE: zapis “ile użyto” i “ile to zamówienie ma nabić”
+  n.loyalty_stickers_used = n.legal_accept?.loyalty?.spent_now ?? 0;
+  n.loyalty_stickers_earned = n.legal_accept?.loyalty?.earned_on_complete ?? 0;
+
   n.loyalty_applied = loyalty_applied;
   n.loyalty_reward_type = loyalty_reward_type;
   n.loyalty_reward_value = loyalty_reward_value;
@@ -1224,9 +1239,11 @@ const kitchen_note = buildKitchenNote(normalizedItems as any);
         chopsticks_qty: n.chopsticks_qty,
         kitchen_note,
         loyalty_choice: n.loyalty_choice ?? "keep",
-        loyalty_stickers_before: n.loyalty_stickers_before ?? null,
-        loyalty_stickers_after: n.loyalty_stickers_after ?? null,
-        loyalty_applied: n.loyalty_applied ?? false,
+loyalty_stickers_used: n.loyalty_stickers_used ?? 0,
+loyalty_stickers_earned: n.loyalty_stickers_earned ?? 0,
+loyalty_stickers_before: n.loyalty_stickers_before ?? null,
+loyalty_stickers_after: n.loyalty_stickers_after ?? null,
+loyalty_applied: n.loyalty_applied ?? false,
         loyalty_reward_type: n.loyalty_reward_type ?? null,
         loyalty_reward_value: n.loyalty_reward_value ?? null,
         loyalty_min_order: n.loyalty_min_order ?? LOYALTY_MIN_ORDER_BASE,
