@@ -596,6 +596,80 @@ const parseSetAddonsFromAddons = (
   return { plain, setMeta, tartarBases };
 };
 
+const cleanSwapText = (s: string) =>
+  (s || "")
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, " ");
+
+const stripLeadingQty = (s: string) =>
+  cleanSwapText(s).replace(/^\s*\d+\s*[x×]\s*/i, "");
+
+const stripSushiTypePrefix = (s: string) =>
+  cleanSwapText(s).replace(
+    /^(futomaki|hosomaki|uramaki|maki|nigiri|gunkan)\s+/i,
+    ""
+  );
+
+const swapCompareKey = (s: string) =>
+  stripSushiTypePrefix(stripLeadingQty(s)).toLowerCase();
+
+const isNoOpSwapLoose = (from?: string, to?: string) => {
+  const a = swapCompareKey(from || "");
+  const b = swapCompareKey(to || "");
+  return !!a && !!b && a === b;
+};
+
+const parseToFromLabel = (label: string) => {
+  const t = cleanSwapText(label);
+  if (!t) return { to: "", from: "" };
+
+  // obsłuż "→" i "->"
+  if (t.includes("→")) {
+    const [left, right] = t.split("→").map((x) => cleanSwapText(x));
+    return { from: left || "", to: right || "" };
+  }
+  if (t.includes("->")) {
+    const [left, right] = t.split("->").map((x) => cleanSwapText(x));
+    return { from: left || "", to: right || "" };
+  }
+
+  return { from: "", to: t };
+};
+
+const looksLikeAutoSwapSummary = (txt: string) => {
+  const t = (txt || "").trim();
+  if (!t) return false;
+
+  const arrows = (t.match(/→/g) || []).length + (t.match(/->/g) || []).length;
+  if (arrows === 0) return false;
+
+  // typowe dla generatora: wiele zamian + separatory/ilości
+  if (arrows >= 2) return true;
+  if (t.includes(";") || t.includes("\n")) return true;
+  if (/\b\d+\s*[x×]\s*\S+/.test(t)) return true;
+
+  return false;
+};
+
+const formatSetSwapChosen = (s: any) => {
+  const qty =
+    typeof s?.qty === "number"
+      ? s.qty
+      : typeof s?.qty === "string"
+      ? parseInt(String(s.qty).replace(/[^\d]/g, ""), 10)
+      : undefined;
+
+  const chosen = cleanSwapText(s?.to || "");
+  if (!chosen) return "";
+
+  const prefix =
+    typeof qty === "number" && Number.isFinite(qty) && qty > 1 ? `${qty}× ` : "";
+
+  return `${prefix}${chosen}`;
+};
+
+
 const normalizeProduct = (raw: Any) => {
   // jeżeli przychodzi już "spłaszczony" obiekt z _raw – używamy oryginału
   const source: Any =
@@ -698,8 +772,9 @@ const isNoOpSwap = (from?: string, to?: string) => {
   const setSwaps: SetSwapDetail[] = (rawSetSwaps as any[])
     .map((s) => {
       if (!s) return null;
-      const from = typeof s.from === "string" ? s.from.trim() : "";
-      const to = typeof s.to === "string" ? s.to.trim() : "";
+
+      const fromRaw = typeof s.from === "string" ? s.from.trim() : "";
+      const toRaw = typeof s.to === "string" ? s.to.trim() : "";
       const rawQty = (s as any).qty;
 
       const qtyNum =
@@ -709,19 +784,23 @@ const isNoOpSwap = (from?: string, to?: string) => {
           ? parseInt(rawQty.replace(/[^\d]/g, ""), 10)
           : undefined;
 
-      if (!from && !to) return null;
+      // fallback: jeśli nie ma "to", spróbuj wyciągnąć z label
+      const lbl = typeof (s as any).label === "string" ? String((s as any).label) : "";
+      const parsed = lbl ? parseToFromLabel(lbl) : { from: "", to: "" };
 
-      if (isNoOpSwap(from, to)) return null;
+      const from = cleanSwapText(fromRaw || parsed.from || "");
+      const to = cleanSwapText(toRaw || parsed.to || "");
 
-      let core = "";
-      if (from && to) core = `${from} → ${to}`;
-      else if (to) core = `na: ${to}`;
-      else core = `z: ${from}`;
+      // musimy mieć docelową (wybraną) rolkę, inaczej nie ma czego pokazać
+      if (!to) return null;
+
+      // usuń pseudo-zamiany typu "Futomaki X" -> "X"
+      if (isNoOpSwapLoose(from, to)) return null;
 
       const label =
-        typeof qtyNum === "number" && !Number.isNaN(qtyNum) && qtyNum > 0
-          ? `${qtyNum}× ${core}`
-          : core;
+        typeof qtyNum === "number" && Number.isFinite(qtyNum) && qtyNum > 0
+          ? `${qtyNum}× ${to}`
+          : to;
 
       return {
         qty: qtyNum,
@@ -785,11 +864,23 @@ const addons = collapseLabelsWithQty(isSet ? plain : [...plain, ...swapLabels]);
       source.product.description) ||
     undefined;
 
-  const note =
+  const noteCandidate =
+    (typeof srcOptions?.note === "string" && srcOptions.note) ||
+    (typeof srcOptions?.customer_note === "string" && srcOptions.customer_note) ||
+    (typeof srcOptions?.client_note === "string" && srcOptions.client_note) ||
+    (typeof srcOptions?.comment === "string" && srcOptions.comment) ||
+    (typeof (source as any).item_note === "string" && (source as any).item_note) ||
+    (typeof (source as any).customer_note === "string" && (source as any).customer_note) ||
+    (typeof (source as any).client_note === "string" && (source as any).client_note) ||
     (typeof source.note === "string" && source.note) ||
     (typeof source.comment === "string" && source.comment) ||
-    (typeof srcOptions?.note === "string" && srcOptions.note) ||
     undefined;
+
+  // jeśli to wygląda jak auto-podsumowanie zamian (a mamy setSwaps) – nie pokazujemy tego jako "Notatka"
+  const note =
+    noteCandidate && setSwaps.length > 0 && looksLikeAutoSwapSummary(noteCandidate)
+      ? undefined
+      : noteCandidate;
 
   return {
     name,
@@ -2222,9 +2313,11 @@ const isNonEmptyString = (v: unknown): v is string =>
             >
               <div className="text-[12px] font-semibold text-slate-800">Zamiany w zestawie</div>
               <ul className="mt-1 ml-5 list-disc space-y-0.5 text-[12px] text-slate-700">
-                {setSwaps.map((s: any, i: number) => (
-                  <li key={i}>{formatSwapHuman(s)}</li>
-                ))}
+                {setSwaps.map((s: any, i: number) => {
+  const txt = formatSetSwapChosen(s);
+  if (!txt) return null;
+  return <li key={i}>{txt}</li>;
+})}
               </ul>
             </div>
           )}
@@ -2303,14 +2396,41 @@ const isNonEmptyString = (v: unknown): v is string =>
 
             {isSet && p.setMeta && (
               <>
-                <div className="mt-1">
+                <div className="mt-2">
   <b>Zamiany w zestawie:</b>{" "}
   {p.setSwaps && p.setSwaps.length > 0 ? (
-    <ul className="ml-5 mt-1 list-disc">
-      {p.setSwaps.map((s: any, i: number) => (
-        <li key={i}>{s.label}</li>
-      ))}
-    </ul>
+    <div className="mt-2 overflow-hidden rounded-xl border border-slate-200">
+      <div className="grid grid-cols-[72px_1fr_1fr] bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-700">
+        <div>Ilość</div>
+        <div>Wybrano</div>
+        <div className="text-slate-500">Zamiast</div>
+      </div>
+
+      <div className="divide-y divide-slate-200">
+        {p.setSwaps.map((s: any, i: number) => {
+          const qty =
+            typeof s?.qty === "number"
+              ? s.qty
+              : typeof s?.qty === "string"
+              ? parseInt(String(s.qty).replace(/[^\d]/g, ""), 10)
+              : 1;
+
+          const chosen = cleanSwapText(s?.to || "");
+          const from = cleanSwapText(s?.from || "");
+
+          return (
+            <div
+              key={i}
+              className="grid grid-cols-[72px_1fr_1fr] px-3 py-2 text-[12px]"
+            >
+              <div>{qty > 1 ? `${qty}×` : "1×"}</div>
+              <div className="font-medium text-slate-900">{chosen || "—"}</div>
+              <div className="text-slate-500">{from || "—"}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   ) : (
     <span>brak</span>
   )}
