@@ -1185,9 +1185,7 @@ const enablePush = useCallback(async () => {
 
     if (!VAPID_PUBLIC_KEY) {
       setPushStatus("error");
-      setPushError(
-        "Brak klucza VAPID (NEXT_PUBLIC_VAPID_PUBLIC_KEY). Skonfiguruj go w env."
-      );
+      setPushError("Brak klucza VAPID (NEXT_PUBLIC_VAPID_PUBLIC_KEY). Skonfiguruj go w env.");
       return;
     }
 
@@ -1197,30 +1195,32 @@ const enablePush = useCallback(async () => {
       return;
     }
 
-    // jeśli SW jeszcze nie ma, zarejestruj (w praktyce robi to ClientWrapper)
+    // SW: użyj istniejącego albo zarejestruj
     const reg =
       (await navigator.serviceWorker.getRegistration()) ||
       (await navigator.serviceWorker.register("/sw.js"));
 
-    // jeśli już jest subskrypcja – nie dubluj
+    // nie dubluj subskrypcji
     const existing = await reg.pushManager.getSubscription();
-    if (existing) {
-      console.log("[push] istniejąca subskrypcja", existing.endpoint);
-      setPushStatus("subscribed");
-      return;
-    }
 
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-    });
+    const sub =
+      existing ??
+      (await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      }));
 
-    console.log("[push] nowa subskrypcja", sub.endpoint);
+    // PushSubscription ma toJSON() – ale bezpiecznie wymuś "czysty" JSON
+    const payload =
+      typeof (sub as any).toJSON === "function"
+        ? (sub as any).toJSON()
+        : JSON.parse(JSON.stringify(sub));
 
-    const res = await fetch("/api/push/subscribe", {
+    const res = await fetch("/api/admin/push/subscribe", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(sub),
+      credentials: "include", // ważne (cookie restaurant_id/slug)
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
@@ -1231,7 +1231,6 @@ const enablePush = useCallback(async () => {
       return;
     }
 
-    console.log("[push] subscribe OK");
     setPushStatus("subscribed");
   } catch (e) {
     console.error("[push] enablePush error", e);
@@ -1239,7 +1238,6 @@ const enablePush = useCallback(async () => {
     setPushError("Nie udało się włączyć powiadomień.");
   }
 }, []);
-
 
   const [page, setPage] = useState(1);
   const perPage = 10;
@@ -1270,6 +1268,49 @@ const enablePush = useCallback(async () => {
     setRestaurantSlug(urlSlug);
     setBooted(true);
   }, [urlSlug]);
+
+  // Push: po BOOT (gdy cookies restauracji są już ustawione) dosyłamy istniejącą subskrypcję do backendu
+useEffect(() => {
+  if (!booted) return;
+  if (typeof window === "undefined") return;
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+
+  let cancelled = false;
+
+  (async () => {
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) return;
+
+      const sub = await reg.pushManager.getSubscription();
+      if (!sub) return;
+
+      const res = await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(sub),
+      });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        console.warn("[push] sync existing FAIL", res.status, txt);
+        if (!cancelled) {
+          // nie psujemy statusu "subscribed" (bo w przeglądarce jest), tylko pokazujemy info
+          setPushError(
+            "Powiadomienia są włączone, ale nie udało się zsynchronizować subskrypcji z bazą. Kliknij „Włącz powiadomienia” ponownie."
+          );
+        }
+      }
+    } catch (e) {
+      console.warn("[push] sync existing error", e);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [booted, restaurantSlug]);
 
  /* AUDIO – dźwięk nowego zamówienia */
 const newOrderAudio = useRef<HTMLAudioElement | null>(null);
