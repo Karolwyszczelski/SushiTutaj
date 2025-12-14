@@ -312,7 +312,37 @@ const ADDON_LABEL_KEYS = [
   "sos_name",
 ];
 
-const ADDON_QTY_KEYS = ["qty", "quantity", "count", "amount", "times", "x"];
+const ADDON_QTY_KEYS = ["qty", "quantity", "count", "times", "amount", "x"];
+
+const PRICE_LIKE_KEYS = [
+  "price",
+  "unit_price",
+  "total_price",
+  "amount_price",
+  "value_price",
+  "cost",
+  "fee",
+  "surcharge",
+  "dopłata",
+];
+
+const hasPriceLike = (obj: Any) =>
+  PRICE_LIKE_KEYS.some((k) => obj && obj[k] != null && obj[k] !== "");
+
+const readAddonQty = (obj: Any): number | null => {
+  // qty/quantity/count/times traktujemy jako ilość zawsze,
+  // amount/x tylko jeśli obiekt NIE wygląda na cenowy (żeby nie robić Tempura ×2 gdy 2 to dopłata)
+  const priceLike = hasPriceLike(obj);
+
+  for (const k of ADDON_QTY_KEYS) {
+    if ((k === "amount" || k === "x") && priceLike) continue;
+
+    const n = asPosInt(obj?.[k]);
+    if (n != null) return n;
+  }
+  return null;
+};
+
 
 const asPosInt = (v: any): number | null => {
   const n = Number(v);
@@ -323,6 +353,13 @@ const asPosInt = (v: any): number | null => {
 
 const hasQtySuffix = (s: string) => /\b(?:x|×)\s*\d+\b/i.test(s);
 
+const stripNoteBeforePipe = (v?: string | null) => {
+  if (!v) return undefined;
+  const left = String(v).split("|")[0].trim();
+  return left || undefined;
+};
+
+
 const normalizeLabelKey = (s: string) =>
   (s || "")
     .normalize("NFKC")
@@ -330,30 +367,55 @@ const normalizeLabelKey = (s: string) =>
     .replace(/\s+/g, " ")
     .toLowerCase();
 
+const extractExplicitQty = (label: string) => {
+  const t = (label || "").normalize("NFKC").trim().replace(/\s+/g, " ");
+  // obsłuż "x2", "×2", "x 2", "× 2"
+  const m = t.match(/\b(?:x|×)\s*(\d+)\b/i);
+  if (!m) return { base: t, qty: 1, hasExplicit: false };
+
+  const qty = Math.max(1, parseInt(m[1], 10) || 1);
+  const base = t.replace(m[0], "").trim();
+  return { base, qty, hasExplicit: true };
+};
+
+/**
+ * Dedupe po "bazowej nazwie" dodatku.
+ * - NIE sumuje duplikatów z różnych pól (bo to zwykle ten sam wybór zapisany 2×).
+ * - Jeśli gdziekolwiek przyjdzie jawne ×N (lub qty), bierze największe N.
+ */
 const collapseLabelsWithQty = (labels: string[]): string[] => {
-  const map = new Map<string, { label: string; count: number }>();
+  const map = new Map<string, { base: string; qty: number; hasExplicit: boolean }>();
   const order: string[] = [];
 
   for (const raw of labels || []) {
-    const label = (raw || "").trim().replace(/\s+/g, " ");
-    if (!label) continue;
+    const cleaned = (raw || "").trim().replace(/\s+/g, " ");
+    if (!cleaned) continue;
 
-    // jeśli etykieta już ma ×N / xN, nie “doliczamy” z duplikatów
-    const key = normalizeLabelKey(label);
+    const { base, qty, hasExplicit } = extractExplicitQty(cleaned);
+    const key = normalizeLabelKey(base);
+
+    if (!key) continue;
+
     if (!map.has(key)) {
-      map.set(key, { label, count: 1 });
+      map.set(key, { base, qty: hasExplicit ? qty : 1, hasExplicit });
       order.push(key);
-    } else {
-      // nie zwiększaj “count”, jeśli label już zawiera ×N (żeby nie robić “×2 ×2”)
-      if (!hasQtySuffix(map.get(key)!.label)) map.get(key)!.count += 1;
+      continue;
     }
+
+    // jeśli już mamy wpis:
+    const cur = map.get(key)!;
+
+    // jeżeli nowy ma jawne ×N, a stary nie miał – przyjmij ×N
+    if (hasExplicit && (!cur.hasExplicit || qty > cur.qty)) {
+      map.set(key, { base: cur.base || base, qty, hasExplicit: true });
+    }
+    // jeśli oba bez jawnego ×N – nic nie rób (nie robimy sztucznego ×2)
   }
 
   return order.map((k) => {
     const row = map.get(k)!;
-    if (row.count <= 1) return row.label;
-    if (hasQtySuffix(row.label)) return row.label;
-    return `${row.label} ×${row.count}`;
+    if (row.hasExplicit && row.qty > 1) return `${row.base} ×${row.qty}`;
+    return row.base;
   });
 };
 
@@ -374,9 +436,7 @@ const collectAddonLabels = (val: any): string[] => {
         .map((k) => (typeof obj[k] === "string" ? obj[k].trim() : ""))
         .find(Boolean) || "") as string;
 
-    const qty =
-      (ADDON_QTY_KEYS.map((k) => asPosInt(obj[k])).find((n) => n != null) ??
-        null) as number | null;
+    const qty = readAddonQty(obj);
 
     if (label) {
       if (qty && qty > 1 && !hasQtySuffix(label)) return [`${label} ×${qty}`];
@@ -607,7 +667,7 @@ const stripLeadingQty = (s: string) =>
 
 const stripSushiTypePrefix = (s: string) =>
   cleanSwapText(s).replace(
-    /^(futomaki|hosomaki|uramaki|maki|nigiri|gunkan)\s+/i,
+    /^(futomaki|hosomaki|uramaki|maki|nigiri|gunkan|california)\s+/i,
     ""
   );
 
@@ -708,22 +768,10 @@ const normalizeProduct = (raw: Any) => {
   const deep = deepFindName(source);
   const name = (shallow[0] || deep || "(bez nazwy)") as string;
 
-  const isSet = /\b(zestaw|set)\b/i.test(name);
+  const isSet =
+  /\b(zestaw|set)\b/i.test(name) ||
   /^set\b/i.test(name) ||
   /zestaw\s+\d+/i.test(name);
-
-  const normSwap = (s: string) =>
-  (s || "")
-    .normalize("NFKC")
-    .trim()
-    .replace(/\s+/g, " ")
-    .toLowerCase();
-
-const isNoOpSwap = (from?: string, to?: string) => {
-  const a = normSwap(from || "");
-  const b = normSwap(to || "");
-  return !!a && !!b && a === b; // np. "ogórek" === "ogórek"
-};
 
 
   const price = toNumber(
@@ -752,7 +800,7 @@ const isNoOpSwap = (from?: string, to?: string) => {
       const to = typeof s.to === "string" ? s.to.trim() : "";
       if (!from && !to) return null;
 
-      if (isNoOpSwap(from, to)) return null;
+      if (isNoOpSwapLoose(from, to)) return null;
 
       let label: string;
       if (from && to) label = `Zamiana: ${from} → ${to}`;
@@ -793,6 +841,7 @@ const isNoOpSwap = (from?: string, to?: string) => {
 
       let from = cleanSwapText(typeof (s as any).from === "string" ? (s as any).from : "");
       let to = cleanSwapText(typeof (s as any).to === "string" ? (s as any).to : "");
+
 
       // 1) Czasem backend wkłada "FROM → TO" do pola `to` – rozbijamy
       if (!from && to && hasArrow(to)) {
@@ -874,20 +923,64 @@ const isNoOpSwap = (from?: string, to?: string) => {
       : setSwapsFilled;
 
   // --- DODATKI ---
-  const rawAddons = [
+  const sourceAddonLabels = [
   ...collectAddonLabels(source.addons),
   ...collectAddonLabels(source.extras),
   ...collectAddonLabels(source.sauces ?? source.sosy ?? source.sos),
-
-  ...collectAddonLabels(srcOptions?.addons),
-  ...collectAddonLabels(srcOptions?.extras),
-  ...collectAddonLabels(srcOptions?.sauces ?? srcOptions?.sosy ?? srcOptions?.sos),
-
   ...collectAddonLabels(source.selected_addons),
   ...collectAddonLabels(source.toppings),
 ]
   .map((s) => (s || "").trim())
   .filter((s) => s && s !== "0");
+
+const optionsAddonLabels = [
+  ...collectAddonLabels(srcOptions?.addons),
+  ...collectAddonLabels(srcOptions?.extras),
+  ...collectAddonLabels(srcOptions?.sauces ?? srcOptions?.sosy ?? srcOptions?.sos),
+]
+  .map((s) => (s || "").trim())
+  .filter((s) => s && s !== "0");
+
+  // preferuj top-level (source.*), a z options dobierz tylko brakujące (bez dubli)
+// UWAGA: nie robimy Set() na całej liście, bo Set “zjada” potencjalne x2 –
+// dedupujemy tylko options względem source.
+function mergeAddonLists(source: string[] = [], options: string[] = []): string[] {
+  const out: string[] = [];
+  const seenBase = new Set<string>();
+
+  const keyOf = (label: string) => {
+    const cleaned = (label || "").trim().replace(/\s+/g, " ");
+    if (!cleaned) return "";
+    // ignoruj “×N / xN” w kluczu porównania
+    const { base } = extractExplicitQty(cleaned);
+    return normalizeLabelKey(base);
+  };
+
+  // 1) source: zostawiamy jak jest (nawet jeśli się powtarza)
+  for (const s of source) {
+    const cleaned = (s || "").trim().replace(/\s+/g, " ");
+    if (!cleaned || cleaned === "0") continue;
+    out.push(cleaned);
+    const k = keyOf(cleaned);
+    if (k) seenBase.add(k);
+  }
+
+  // 2) options: dodaj tylko jeśli nie ma już w source (po bazowej nazwie)
+  for (const s of options) {
+    const cleaned = (s || "").trim().replace(/\s+/g, " ");
+    if (!cleaned || cleaned === "0") continue;
+    const k = keyOf(cleaned);
+    if (!k || seenBase.has(k)) continue;
+    out.push(cleaned);
+    seenBase.add(k);
+  }
+
+  return out;
+}
+
+
+// preferuj top-level (source.*), a z options dobierz tylko brakujące (bez dubli)
+const rawAddons = mergeAddonLists(sourceAddonLabels, optionsAddonLabels);
 
 // UWAGA: nie robimy Set() – bo Set zjada x2
 const { plain: plainRaw, setMeta: setMetaRaw, tartarBases } =
@@ -906,7 +999,8 @@ const setMeta: SetMeta | null = setMetaRaw
     }
   : null;
 
-const addons = collapseLabelsWithQty(isSet ? plain : [...plain, ...swapLabels]);
+// addony tylko addony (swapy pokazujemy osobno w UI)
+const addons = collapseLabelsWithQty(plain);
 
   const ingredients = collectStrings(source.ingredients).length
     ? collectStrings(source.ingredients)
@@ -918,6 +1012,7 @@ const addons = collapseLabelsWithQty(isSet ? plain : [...plain, ...swapLabels]);
           source.ingredients_list ??
           source.product?.ingredients
       );
+
 
   const description =
     (typeof source.description === "string" && source.description) ||
@@ -939,10 +1034,14 @@ const addons = collapseLabelsWithQty(isSet ? plain : [...plain, ...swapLabels]);
     undefined;
 
   // jeśli to wygląda jak auto-podsumowanie zamian (a mamy setSwaps) – nie pokazujemy tego jako "Notatka"
-  const note =
-  isSet && noteCandidate && looksLikeAutoSwapSummary(noteCandidate)
+  const noteLeft = stripNoteBeforePipe(noteCandidate);
+
+// jeśli po lewej coś jest — zawsze pokazujemy (to jest “prawdziwa” notatka klienta)
+const note =
+  noteLeft ??
+  (isSet && noteCandidate && looksLikeAutoSwapSummary(noteCandidate)
     ? undefined
-    : noteCandidate;
+    : (noteCandidate || "").trim() || undefined);
 
   return {
     name,
@@ -2285,8 +2384,7 @@ const isNonEmptyString = (v: unknown): v is string =>
     ((p as any).setSwaps as Array<{ qty?: number; from?: string; to?: string; label: string }> | undefined) || [];
 
   // dodatki / sosy bez swapów (swapy pokazujemy osobno)
-  const swapLabelSet = new Set<string>(((p as any).swaps as string[] | undefined) || []);
-  const addonsOnly = (p.addons || []).filter((a: string) => !swapLabelSet.has(a));
+  const addonsOnly = p.addons || [];
 
   const hasMetaBlock =
   addonsOnly.length > 0 ||
@@ -2566,23 +2664,25 @@ const isNonEmptyString = (v: unknown): v is string =>
                     }
                   }
 
-                  // szczegóły zamian – używamy structured swapDetails
-                  const swapDetails =
-                    (p as any).swapDetails as
-                      | { from?: string; to?: string; label: string }[]
-                      | undefined;
+                 // szczegóły zamian w ZESTAWIE – bierzemy z p.setSwaps (to jest canonical dla zestawów)
+const setSwaps =
+  (p as any).setSwaps as
+    | { qty?: number; from?: string; to?: string; label: string }[]
+    | undefined;
 
-                  if (swapDetails && swapDetails.length) {
-                    for (const s of swapDetails) {
-                      const target = (s.to || s.from || "").trim();
-                      if (!target) continue;
-                      const ri = ensure(target);
-                      if (!ri) continue;
-                      if (s.from && s.to && s.from !== s.to) {
-                        ri.swappedFrom = s.from;
-                      }
-                    }
-                  }
+if (setSwaps && setSwaps.length) {
+  for (const s of setSwaps) {
+    const target = (s.to || "").trim();
+    if (!target) continue;
+    const ri = ensure(target);
+    if (!ri) continue;
+
+    const from = (s.from || "").trim();
+    if (from && from !== target) {
+      ri.swappedFrom = from;
+    }
+  }
+}
 
                   const rows = Array.from(map.values());
                   if (!rows.length) return null;

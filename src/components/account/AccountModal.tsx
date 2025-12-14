@@ -718,7 +718,7 @@ useEffect(() => {
   <br />• <b>od 200 zł</b> → 2 naklejki
   <br />• <b>od 300 zł</b> → 3 naklejki
   <br /><br />
-                <b>4 naklejki</b> = darmowa rolka, <b>8 naklejek</b> = <b>−20%</b> na zamówienie.
+                <b>4 naklejki</b> = darmowa rolka, <b>8 naklejek</b> = <b>−30%</b> na zamówienie.
               </p>
 
               {loyaltyLoading ? (
