@@ -1,29 +1,48 @@
 "use client";
 
-import React from "react";
+import React, { useId, useMemo } from "react";
 
 interface RadialIconProps {
   percentage: number; // 0–100
-  size?: number;      // szerokość / wysokość w px
+  size?: number; // px
+  label?: string; // np. "Nowe zamówienia"
+  showText?: boolean; // domyślnie true
 }
 
 /**
  * Kompaktowy „gauge” kołowy do kart KPI w dashboardzie.
- * - 0–49%  → turkus
- * - 50–79% → żółty
- * - 80–100% → róż/czerwony
+ * Uwaga: używamy unikalnych ID gradientów (useId), żeby wiele ikon na stronie nie „kradło” sobie defs.
  */
-export function RadialIcon({ percentage, size = 48 }: RadialIconProps) {
-  const pct = Math.max(0, Math.min(100, percentage ?? 0));
+export function RadialIcon({
+  percentage,
+  size = 48,
+  label,
+  showText = true,
+}: RadialIconProps) {
+  const uid = useId();
 
+  const pct = useMemo(() => {
+    const n = Number(percentage);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(100, n));
+  }, [percentage]);
+
+  // stałe w układzie viewBox 100x100
   const radius = 42;
   const strokeWidth = 10;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (circumference * pct) / 100;
 
-  let strokeColor = "#22d3ee"; // cyan-400
-  if (pct >= 50 && pct < 80) strokeColor = "#facc15"; // amber-400
-  if (pct >= 80) strokeColor = "#fb7185"; // rose-400
+  const strokeColor = useMemo(() => {
+    if (pct >= 80) return "#fb7185"; // rose-400
+    if (pct >= 50) return "#facc15"; // amber-400
+    return "#22d3ee"; // cyan-400
+  }, [pct]);
+
+  const trackId = `radial-track-${uid}`;
+  const progressId = `radial-progress-${uid}`;
+
+  const aria = label ? `${label}: ${Math.round(pct)}%` : `${Math.round(pct)}%`;
 
   return (
     <svg
@@ -31,22 +50,22 @@ export function RadialIcon({ percentage, size = 48 }: RadialIconProps) {
       height={size}
       viewBox="0 0 100 100"
       role="img"
-      aria-label={`${pct}%`}
+      aria-label={aria}
+      focusable="false"
     >
       <defs>
-        {/* tło „tracku” */}
-        <linearGradient id="radial-track" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={trackId} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#020617" />
           <stop offset="100%" stopColor="#0f172a" />
         </linearGradient>
-        {/* delikatny gradient na pasku postępu */}
-        <linearGradient id="radial-progress" x1="0" y1="1" x2="1" y2="0">
+
+        <linearGradient id={progressId} x1="0" y1="1" x2="1" y2="0">
           <stop offset="0%" stopColor={strokeColor} />
           <stop offset="100%" stopColor="#ffffff" stopOpacity={0.85} />
         </linearGradient>
       </defs>
 
-      {/* zewnętrzny cień / aura */}
+      {/* aura */}
       <circle
         cx="50"
         cy="50"
@@ -62,18 +81,18 @@ export function RadialIcon({ percentage, size = 48 }: RadialIconProps) {
         cx="50"
         cy="50"
         r={radius}
-        fill="url(#radial-track)"
+        fill={`url(#${trackId})`}
         stroke="#1f2937" // slate-800
         strokeWidth={strokeWidth}
       />
 
-      {/* pasek postępu */}
+      {/* progress */}
       <circle
         cx="50"
         cy="50"
         r={radius}
         fill="none"
-        stroke="url(#radial-progress)"
+        stroke={`url(#${progressId})`}
         strokeWidth={strokeWidth}
         strokeDasharray={circumference}
         strokeDashoffset={offset}
@@ -81,27 +100,28 @@ export function RadialIcon({ percentage, size = 48 }: RadialIconProps) {
         transform="rotate(-90 50 50)"
       />
 
-      {/* wewnętrzny krążek pod tekst */}
+      {/* inner */}
       <circle
         cx="50"
         cy="50"
         r={radius - strokeWidth}
         fill="#020617"
-        opacity={0.9}
+        opacity={0.92}
       />
 
-      {/* wartość procentowa */}
-      <text
-        x="50"
-        y="50"
-        textAnchor="middle"
-        dominantBaseline="central"
-        fill="#e5e7eb"
-        fontSize="18"
-        fontWeight="600"
-      >
-        {Math.round(pct)}%
-      </text>
+      {showText && (
+        <text
+          x="50"
+          y="50"
+          textAnchor="middle"
+          dominantBaseline="central"
+          fill="#e5e7eb"
+          fontSize="18"
+          fontWeight="600"
+        >
+          {Math.round(pct)}%
+        </text>
+      )}
     </svg>
   );
 }

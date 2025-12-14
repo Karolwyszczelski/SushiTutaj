@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -39,6 +39,20 @@ function toPln(v: number | undefined | null): string {
   return PLN.format(Math.round(val));
 }
 
+function digestStats(d: StatsResponse | null | undefined) {
+  const ordersPerDay = Object.entries(d?.ordersPerDay ?? {}).sort(([a], [b]) =>
+    a.localeCompare(b)
+  );
+  const avgFulfillmentTime = Object.entries(d?.avgFulfillmentTime ?? {}).sort(
+    ([a], [b]) => a.localeCompare(b)
+  );
+  const popularProducts = Object.entries(d?.popularProducts ?? {}).sort(
+    ([a], [b]) => a.localeCompare(b)
+  );
+  const kpis = d?.kpis ?? {};
+  return JSON.stringify({ ordersPerDay, avgFulfillmentTime, popularProducts, kpis });
+}
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -52,53 +66,47 @@ export default function DashboardPage() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+
   const router = useRouter();
 
+  const STATS_POLL_MS = 60_000;
+  const LIVE_POLL_MS = 10_000;
+
+  const statsDigestRef = useRef<string>("");
+  const liveDigestRef = useRef<string>("");
+  const statsBusyRef = useRef(false);
+  const liveBusyRef = useRef(false);
+
+  // STATS: rzadziej + update tylko gdy realna zmiana
   useEffect(() => {
     let stop = false;
 
     const loadStats = async () => {
+      if (stop || document.visibilityState !== "visible") return;
+      if (statsBusyRef.current) return;
+      statsBusyRef.current = true;
+
       try {
-        const res = await fetch(`/api/orders/stats?t=${Date.now()}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(`/api/orders/stats`, { cache: "no-store" });
         const d = (await res.json()) as StatsResponse;
-        if (!stop) setStats(d ?? {});
-      } catch {
-        if (!stop) setStats({});
+
+        const dg = digestStats(d ?? {});
+        if (!stop && dg !== statsDigestRef.current) {
+          statsDigestRef.current = dg;
+          setStats(d ?? {});
+          setLastUpdatedAt(new Date());
+        }
+      } catch (e) {
+        console.error("Dashboard: błąd /api/orders/stats", e);
       } finally {
         if (!stop) setLoading(false);
+        statsBusyRef.current = false;
       }
     };
 
-    const loadLiveCounts = async () => {
-      try {
-        const r = await fetch(
-          `/api/orders/current?limit=200&offset=0&t=${Date.now()}`,
-          { cache: "no-store" }
-        );
-        const j = await r.json();
-        const arr: any[] = Array.isArray(j?.orders) ? j.orders : [];
-        const newOrders = arr.filter(
-          (o) => o.status === "new" || o.status === "placed"
-        ).length;
-        const currentOrders = arr.filter(
-          (o) => o.status === "accepted"
-        ).length;
-        if (!stop) setLive({ newOrders, currentOrders, reservations: 0 });
-      } catch {
-        /* ignore */
-      }
-    };
-
-    const tick = async () => {
-      await Promise.all([loadStats(), loadLiveCounts()]);
-    };
-
-    tick();
-    const iv = setInterval(() => {
-      if (document.visibilityState === "visible") tick();
-    }, 10000);
+    loadStats();
+    const iv = setInterval(loadStats, STATS_POLL_MS);
 
     return () => {
       stop = true;
@@ -106,7 +114,53 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const safeEntries = (o?: Record<string, number>) => Object.entries(o ?? {});
+  // LIVE: częściej + update tylko gdy liczby się zmienią
+  useEffect(() => {
+    let stop = false;
+
+    const loadLiveCounts = async () => {
+      if (stop || document.visibilityState !== "visible") return;
+      if (liveBusyRef.current) return;
+      liveBusyRef.current = true;
+
+      try {
+        const r = await fetch(`/api/orders/current?limit=200&offset=0`, {
+          cache: "no-store",
+        });
+        const j = await r.json();
+        const arr: any[] = Array.isArray(j?.orders) ? j.orders : [];
+
+        const newOrders = arr.filter(
+          (o) => o.status === "new" || o.status === "placed"
+        ).length;
+
+        const currentOrders = arr.filter((o) => o.status === "accepted").length;
+
+        const next = { newOrders, currentOrders, reservations: 0 };
+        const dg = JSON.stringify(next);
+
+        if (!stop && dg !== liveDigestRef.current) {
+          liveDigestRef.current = dg;
+          setLive(next);
+        }
+      } catch (e) {
+        console.error("Dashboard: błąd /api/orders/current", e);
+      } finally {
+        liveBusyRef.current = false;
+      }
+    };
+
+    loadLiveCounts();
+    const iv = setInterval(loadLiveCounts, LIVE_POLL_MS);
+
+    return () => {
+      stop = true;
+      clearInterval(iv);
+    };
+  }, []);
+
+  const safeEntries = (o?: Record<string, number>) =>
+    Object.entries(o ?? {}).sort(([a], [b]) => a.localeCompare(b));
 
   const dailyOrdersData = useMemo(
     () =>
@@ -164,6 +218,19 @@ export default function DashboardPage() {
         })()
       : undefined);
 
+  const todayAvgFulfillment =
+    (stats?.avgFulfillmentTime ? stats.avgFulfillmentTime[todayKey] : undefined) ??
+    undefined;
+
+  const last7AvgFulfillment = useMemo(() => {
+    const entries = Object.entries(stats?.avgFulfillmentTime ?? {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .slice(-7);
+    if (!entries.length) return undefined;
+    const sum = entries.reduce((s, [, v]) => s + (Number(v) || 0), 0);
+    return Math.round(sum / entries.length);
+  }, [stats]);
+
   const todayRevenue = k.todayRevenue;
   const monthRevenue = k.monthRevenue;
   const todayReservations = k.todayReservations;
@@ -210,6 +277,15 @@ export default function DashboardPage() {
     },
   ];
 
+  const maxDishOrders = Math.max(1, ...topDishesData.map((x) => x.orders || 0));
+
+  const monthProgressPct = useMemo(() => {
+    const now = new Date();
+    const day = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    return Math.round((day / daysInMonth) * 100);
+  }, []);
+
   return (
     <div className="min-h-screen bg-[#050509] px-4 py-6 text-slate-100 sm:px-6 lg:px-10">
       {/* Nagłówek */}
@@ -221,6 +297,14 @@ export default function DashboardPage() {
           <p className="mt-1 text-sm text-slate-400">
             Podsumowanie zamówień i czasu realizacji dla Twojej restauracji.
           </p>
+          {lastUpdatedAt && (
+            <p className="mt-1 text-xs text-slate-500">
+              Ostatnia aktualizacja:{" "}
+              <span className="text-slate-300">
+                {lastUpdatedAt.toLocaleTimeString("pl-PL")}
+              </span>
+            </p>
+          )}
         </div>
         <div className="rounded-full border border-red-500/40 bg-red-500/10 px-4 py-1.5 text-xs font-medium uppercase tracking-[0.16em] text-red-300">
           Sushi Tutaj · Dashboard
@@ -272,9 +356,7 @@ export default function DashboardPage() {
             </div>
             <div className="rounded-full bg-slate-900 px-3 py-1 text-xs text-slate-300">
               Dziś:{" "}
-              <span className="font-semibold text-slate-50">
-                {todayOrders}
-              </span>
+              <span className="font-semibold text-slate-50">{todayOrders}</span>
             </div>
           </div>
 
@@ -320,7 +402,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Czas realizacji / statystyki miesiąca */}
+        {/* Czas realizacji */}
         <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-5 shadow-xl shadow-black/40">
           <div className="mb-4 flex items-center justify-between gap-2">
             <div>
@@ -334,10 +416,35 @@ export default function DashboardPage() {
             <div className="rounded-full bg-slate-900 px-3 py-1 text-xs text-slate-300">
               Śr. w miesiącu:{" "}
               <span className="font-semibold text-emerald-300">
-                {monthAvgFulfillment != null
-                  ? `${monthAvgFulfillment} min`
-                  : "—"}
+                {monthAvgFulfillment != null ? `${monthAvgFulfillment} min` : "—"}
               </span>
+            </div>
+          </div>
+
+          <div className="mb-4 grid grid-cols-3 gap-3 text-xs text-slate-300">
+            <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                Śr. czas dziś
+              </p>
+              <p className="mt-1 text-xl font-semibold text-emerald-300">
+                {todayAvgFulfillment != null
+                  ? `${Math.round(todayAvgFulfillment)} min`
+                  : "—"}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                Śr. czas 7 dni
+              </p>
+              <p className="mt-1 text-xl font-semibold text-slate-50">
+                {last7AvgFulfillment != null ? `${last7AvgFulfillment} min` : "—"}
+              </p>
+            </div>
+
+            <div className="flex flex-col items-center justify-center rounded-xl border border-slate-800 bg-slate-900/80 p-3">
+              <RadialIcon percentage={monthProgressPct} size={40} />
+              <p className="mt-1 text-[10px] text-slate-500">Postęp miesiąca</p>
             </div>
           </div>
 
@@ -358,21 +465,12 @@ export default function DashboardPage() {
                 {toPln(monthRevenue)}
               </p>
             </div>
-            <div className="flex flex-col items-center justify-center rounded-xl border border-slate-800 bg-slate-900/80 p-3">
-              <RadialIcon
-                percentage={Math.min(
-                  100,
-                  Math.max(
-                    0,
-                    Math.round(
-                      (monthOrders / Math.max(1, monthOrders)) * 100
-                    )
-                  )
-                )}
-                size={40}
-              />
-              <p className="mt-1 text-[10px] text-slate-500">
-                Wypełnienie miesiąca (relatywne)
+            <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-3">
+              <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
+                Śr. czas (miesiąc)
+              </p>
+              <p className="mt-1 text-xl font-semibold text-slate-50">
+                {monthAvgFulfillment != null ? `${monthAvgFulfillment} min` : "—"}
               </p>
             </div>
           </div>
@@ -402,36 +500,42 @@ export default function DashboardPage() {
               <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-400">
                 Najczęściej zamawiane dania
               </h2>
-              <p className="mt-1 text-xs text-slate-400">
-                TOP pozycji z ostatniego okresu
-              </p>
+              <p className="mt-1 text-xs text-slate-400">TOP pozycje</p>
             </div>
           </div>
 
           {loading ? (
             <p className="text-xs text-slate-500">Ładowanie listy…</p>
           ) : topDishesData.length === 0 ? (
-            <p className="text-xs text-slate-500">
-              Brak danych do wyświetlenia.
-            </p>
+            <p className="text-xs text-slate-500">Brak danych do wyświetlenia.</p>
           ) : (
             <ul className="divide-y divide-slate-800 text-sm text-slate-200">
-              {topDishesData.map((d, i) => (
-                <li
-                  key={i}
-                  className="flex items-center justify-between py-2"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-[11px] text-slate-300">
-                      {i + 1}
-                    </span>
-                    <span>{d.dish}</span>
-                  </div>
-                  <span className="text-sm font-semibold text-slate-50">
-                    {d.orders} zam.
-                  </span>
-                </li>
-              ))}
+              {topDishesData.map((d, i) => {
+                const share = Math.round(((d.orders || 0) / maxDishOrders) * 100);
+                return (
+                  <li key={i} className="py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[11px] text-slate-300">
+                          {i + 1}
+                        </span>
+                        <span className="truncate">{d.dish}</span>
+                      </div>
+                      <span className="shrink-0 text-sm font-semibold text-slate-50">
+                        {d.orders} zam.
+                      </span>
+                    </div>
+
+                    <div className="mt-2 h-2 w-full rounded-full bg-slate-900 overflow-hidden">
+                      <div
+                        className="h-full bg-red-500/70"
+                        style={{ width: `${share}%` }}
+                        aria-label={`${share}%`}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -439,19 +543,14 @@ export default function DashboardPage() {
         {/* Ustawienia */}
         <div className="relative flex flex-col overflow-hidden rounded-2xl border border-red-600/60 bg-gradient-to-br from-red-600 via-red-500 to-rose-600 p-5 shadow-2xl shadow-red-900/40">
           <div className="absolute -right-6 -top-10 opacity-30">
-            <Image
-              src="/settings2.png"
-              alt="Ustawienia"
-              width={120}
-              height={120}
-            />
+            <Image src="/settings2.png" alt="Ustawienia" width={120} height={120} />
           </div>
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-[0.16em] text-rose-50">
             Ustawienia systemu
           </h2>
           <p className="mb-4 text-sm text-rose-50/90">
-            Skonfiguruj godziny otwarcia, strefy dostaw, program
-            lojalnościowy oraz powiadomienia.
+            Skonfiguruj godziny otwarcia, strefy dostaw, program lojalnościowy oraz
+            powiadomienia.
           </p>
           <button
             type="button"
