@@ -208,7 +208,7 @@ export default function AccountModal({
     setErr(null);
     setMsg(null);
     try {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" })
       setMsg("Wylogowano z konta.");
       setTab("auth");
     } catch (e: any) {

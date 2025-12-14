@@ -271,7 +271,7 @@ const statusJustCompleted =
       if (!procErr) {
   const { data: fresh, error: freshErr } = await (supabaseAdmin as any)
     .from("orders")
-    .select("loyalty_awarded, loyalty_stickers_before, loyalty_stickers_after, loyalty_processed_at")
+.select("loyalty_awarded, loyalty_stickers_before, loyalty_stickers_after, loyalty_awarded_at")
     .eq("id", orderId)
     .maybeSingle();
 

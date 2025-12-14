@@ -174,7 +174,7 @@ export default function Sidebar() {
   );
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" })
     router.push("/admin/login");
   };
 

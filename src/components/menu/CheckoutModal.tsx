@@ -1821,14 +1821,14 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
 
   return (
     <div className="border border-black/10 bg-white p-3">
-      <div className="flex justify-between items-center font-semibold mb-2">
-        <span className="text-black">
-          {displayTitle} x{prod.quantity || 1}
-        </span>
-        <span className="text-black">
-          {lineTotal.toFixed(2).replace(".", ",")} zł
-        </span>
-      </div>
+     <div className="flex items-center justify-between gap-2 font-semibold mb-2 min-w-0">
+  <span className="text-black min-w-0 flex-1 truncate">
+    {displayTitle} x{prod.quantity || 1}
+  </span>
+  <span className="text-black shrink-0">
+    {lineTotal.toFixed(2).replace(".", ",")} zł
+  </span>
+</div>
 
       <div className="text-xs text-black/80 space-y-3">
         {isSet && setRows.length > 0 && (
@@ -1958,7 +1958,7 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
 
   return (
     <div key={i} className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
+  <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 min-w-0">
         <span className="px-2 py-1 rounded bg-gray-50 border border-gray-200">
           {row.qty}× {row.cat}
         </span>
@@ -1966,9 +1966,9 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
         {/* DLA KAŻDEJ ROLKI (także California) jest select – ale dla California pool jest przefiltrowany */}
         <span className="text-black/70">zamień:</span>
         <select
-          className="border border-black/15 rounded px-2 py-1 bg-white"
-          value={current}
-          onChange={(e) => doSetSwap(row.from, e.target.value)}
+          className="border border-black/15 rounded px-2 py-2 bg-white w-full sm:w-auto max-w-full"
+      value={current}
+      onChange={(e) => doSetSwap(row.from, e.target.value)}
         >
           {selectOptions.map((n) => (
             <option key={n} value={n}>
@@ -2124,58 +2124,72 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
         )}
 
         {showSauces && (
-  <div>
-    <div className="font-semibold mb-1">Sosy:</div>
+  <div className="mt-2">
+    <div className="font-semibold mb-2">Sosy</div>
 
-    <div className="flex flex-wrap gap-2">
-      {saucesForProduct.map((s) => {
-        const qty = getSauceQty(s);
+    <div className="overflow-hidden rounded-2xl border border-black/10 bg-white">
+      <div className="grid grid-cols-[1fr_120px] items-center px-3 py-2 bg-gray-50 text-[11px] font-semibold text-black/70">
+        <span>Sos</span>
+        <span className="text-right">Ilość</span>
+      </div>
 
-        return (
-          <div
-            key={s}
-            className={clsx(
-              "flex items-center gap-2 rounded border px-2 py-1",
-              qty > 0 ? "border-black bg-white" : "border-gray-200 bg-white"
-            )}
-          >
-            <span className="text-xs text-black whitespace-nowrap">{s}</span>
+      <div className="divide-y divide-black/5">
+        {saucesForProduct.map((s) => {
+          const qty = getSauceQty(s);
 
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => decSauce(s)}
-                disabled={qty === 0}
-                className={clsx(
-                  "h-7 w-7 rounded border text-sm leading-none flex items-center justify-center",
-                  qty === 0
-                    ? "opacity-40 cursor-not-allowed border-gray-200"
-                    : "border-gray-300 hover:bg-gray-50"
-                )}
-                aria-label={`Usuń porcję: ${s}`}
-              >
-                –
-              </button>
+          return (
+            <div
+              key={s}
+              className={clsx(
+                "grid grid-cols-[1fr_120px] items-center gap-2 px-3 py-2",
+                qty > 0 ? "bg-white" : "bg-white"
+              )}
+            >
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-black leading-snug break-words">
+                  {s}
+                </div>
+                <div className="text-[11px] text-black/60">
+                  2,00 zł / porcja
+                </div>
+              </div>
 
-              <span className="min-w-[20px] text-center text-[11px] text-black/70">
-                {qty}
-              </span>
+              <div className="flex items-center justify-end gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => decSauce(s)}
+                  disabled={qty === 0}
+                  className={clsx(
+                    "h-9 w-9 rounded-xl border text-base leading-none flex items-center justify-center",
+                    qty === 0
+                      ? "opacity-40 cursor-not-allowed border-gray-200 bg-white"
+                      : "border-gray-300 hover:bg-gray-50 bg-white"
+                  )}
+                  aria-label={`Usuń porcję: ${s}`}
+                >
+                  –
+                </button>
 
-              <button
-                type="button"
-                onClick={() => incSauce(s)}
-                className="h-7 w-7 rounded border border-black bg-black text-white text-sm leading-none flex items-center justify-center hover:opacity-90"
-                aria-label={`Dodaj porcję: ${s}`}
-              >
-                +
-              </button>
+                <span className="w-8 text-center text-sm font-semibold text-black/70 tabular-nums">
+                  {qty}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => incSauce(s)}
+                  className="h-9 w-9 rounded-xl border border-black bg-black text-white text-base leading-none flex items-center justify-center hover:opacity-90"
+                  aria-label={`Dodaj porcję: ${s}`}
+                >
+                  +
+                </button>
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
 
-    <p className="text-[11px] text-black/60 mt-1">
+    <p className="text-[11px] text-black/60 mt-2">
       Sosy są liczone po 2 zł za porcję.
     </p>
   </div>
@@ -3875,8 +3889,8 @@ return (
   className="w-full max-w-5xl bg-white text-black shadow-2xl grid grid-rows-[auto,1fr] h-screen h-[100dvh] lg:h-auto lg:max-h-[90vh]"
   onMouseDown={(e) => e.stopPropagation()}
 >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-black/10">
-          <h2 className="text-xl font-semibold">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4 border-b border-black/10 min-w-0">
+  <h2 className="text-base sm:text-xl font-semibold min-w-0 truncate">
             Zamówienie — {restaurantCityLabel}
           </h2>
           {!orderSent && (
