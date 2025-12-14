@@ -299,6 +299,136 @@ const collectStrings = (val: any): string[] => {
   return [];
 };
 
+const ADDON_LABEL_KEYS = [
+  "label",
+  "name",
+  "title",
+  "value",
+  "option",
+  "variant",
+  "sauce",
+  "sos",
+  "sauce_name",
+  "sos_name",
+];
+
+const ADDON_QTY_KEYS = ["qty", "quantity", "count", "amount", "times", "x"];
+
+const asPosInt = (v: any): number | null => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  const i = Math.floor(n);
+  return i > 0 ? i : null;
+};
+
+const hasQtySuffix = (s: string) => /\b(?:x|×)\s*\d+\b/i.test(s);
+
+const normalizeLabelKey = (s: string) =>
+  (s || "")
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+
+const collapseLabelsWithQty = (labels: string[]): string[] => {
+  const map = new Map<string, { label: string; count: number }>();
+  const order: string[] = [];
+
+  for (const raw of labels || []) {
+    const label = (raw || "").trim().replace(/\s+/g, " ");
+    if (!label) continue;
+
+    // jeśli etykieta już ma ×N / xN, nie “doliczamy” z duplikatów
+    const key = normalizeLabelKey(label);
+    if (!map.has(key)) {
+      map.set(key, { label, count: 1 });
+      order.push(key);
+    } else {
+      // nie zwiększaj “count”, jeśli label już zawiera ×N (żeby nie robić “×2 ×2”)
+      if (!hasQtySuffix(map.get(key)!.label)) map.get(key)!.count += 1;
+    }
+  }
+
+  return order.map((k) => {
+    const row = map.get(k)!;
+    if (row.count <= 1) return row.label;
+    if (hasQtySuffix(row.label)) return row.label;
+    return `${row.label} ×${row.count}`;
+  });
+};
+
+const collectAddonLabels = (val: any): string[] => {
+  if (!val) return [];
+  if (typeof val === "string") return [val];
+
+  if (Array.isArray(val)) {
+    return val.flatMap((v) => collectAddonLabels(v)).filter(Boolean);
+  }
+
+  if (typeof val === "object") {
+    const obj: Any = val;
+
+    // forma: { label/name/title..., qty: 2 }
+    const label =
+      (ADDON_LABEL_KEYS
+        .map((k) => (typeof obj[k] === "string" ? obj[k].trim() : ""))
+        .find(Boolean) || "") as string;
+
+    const qty =
+      (ADDON_QTY_KEYS.map((k) => asPosInt(obj[k])).find((n) => n != null) ??
+        null) as number | null;
+
+    if (label) {
+      if (qty && qty > 1 && !hasQtySuffix(label)) return [`${label} ×${qty}`];
+      return [label];
+    }
+
+    // forma mapy: { "Sos czosnkowy": 2, "Imbir": 1 }
+    const ignore = new Set([
+      ...ADDON_QTY_KEYS,
+      "id",
+      "sku",
+      "price",
+      "unit_price",
+      "total_price",
+      "amount_price",
+      "note",
+      "comment",
+      "type",
+    ]);
+
+    const out: string[] = [];
+    for (const [k, v] of Object.entries(obj)) {
+      if (!k || ignore.has(k)) continue;
+
+      if (v === true || v === 1 || v === "1") {
+        out.push(k);
+        continue;
+      }
+
+      const q = asPosInt(v);
+      if (q !== null) {
+        out.push(q > 1 && !hasQtySuffix(k) ? `${k} ×${q}` : k);
+        continue;
+      }
+
+      if (typeof v === "string" && v.trim()) {
+        out.push(v.trim());
+        continue;
+      }
+
+      if (typeof v === "object") out.push(...collectAddonLabels(v));
+    }
+
+    if (out.length) return out;
+
+    if (obj.items && Array.isArray(obj.items)) return collectAddonLabels(obj.items);
+  }
+
+  return [];
+};
+
+
 const deepFindName = (root: Any): string | undefined => {
   const skipKeys = new Set([
     "addons",
@@ -605,21 +735,38 @@ const isNoOpSwap = (from?: string, to?: string) => {
 
   // --- DODATKI ---
   const rawAddons = [
-    ...collectStrings(source.addons),
-    ...collectStrings(source.extras),
-    ...collectStrings(srcOptions?.addons),
-    ...collectStrings(source.selected_addons),
-    ...collectStrings(source.toppings),
-  ]
-    .map((s) => (s || "").trim())
-    .filter((s) => s && s !== "0");
+  ...collectAddonLabels(source.addons),
+  ...collectAddonLabels(source.extras),
+  ...collectAddonLabels(source.sauces ?? source.sosy ?? source.sos),
 
-  const uniqueAddons = Array.from(new Set(rawAddons));
+  ...collectAddonLabels(srcOptions?.addons),
+  ...collectAddonLabels(srcOptions?.extras),
+  ...collectAddonLabels(srcOptions?.sauces ?? srcOptions?.sosy ?? srcOptions?.sos),
 
-  const { plain, setMeta, tartarBases } =
-    parseSetAddonsFromAddons(uniqueAddons);
+  ...collectAddonLabels(source.selected_addons),
+  ...collectAddonLabels(source.toppings),
+]
+  .map((s) => (s || "").trim())
+  .filter((s) => s && s !== "0");
 
-  const addons = isSet ? plain : [...plain, ...swapLabels];
+// UWAGA: nie robimy Set() – bo Set zjada x2
+const { plain: plainRaw, setMeta: setMetaRaw, tartarBases } =
+  parseSetAddonsFromAddons(rawAddons);
+
+// sklej duplikaty do “×N” (np. Sos czosnkowy ×2)
+const plain = collapseLabelsWithQty(plainRaw);
+
+const setMeta: SetMeta | null = setMetaRaw
+  ? {
+      ...setMetaRaw,
+      rollExtras: (setMetaRaw.rollExtras || []).map((r) => ({
+        ...r,
+        extras: collapseLabelsWithQty(r.extras || []),
+      })),
+    }
+  : null;
+
+const addons = collapseLabelsWithQty(isSet ? plain : [...plain, ...swapLabels]);
 
   const ingredients = collectStrings(source.ingredients).length
     ? collectStrings(source.ingredients)
@@ -1890,6 +2037,38 @@ const calcEarnedStickers = (o: Order) => {
   return rest > 0 ? `${shown.join(", ")} (+${rest})` : shown.join(", ");
 };
 
+const limitList = <T,>(arr: T[], max: number) => {
+  const list = Array.isArray(arr) ? arr : [];
+  return {
+    shown: list.slice(0, max),
+    rest: Math.max(0, list.length - max),
+  };
+};
+
+const formatSwapHuman = (s: any) => {
+  const from = typeof s?.from === "string" ? s.from.trim() : "";
+  const to = typeof s?.to === "string" ? s.to.trim() : "";
+  const qty =
+    typeof s?.qty === "number"
+      ? s.qty
+      : typeof s?.qty === "string"
+      ? parseInt(String(s.qty).replace(/[^\d]/g, ""), 10)
+      : undefined;
+
+  const prefix =
+    typeof qty === "number" && Number.isFinite(qty) && qty > 1 ? `${qty}× ` : "";
+
+  if (from && to) return `${prefix}${from} → ${to}`;
+  if (to) return `${prefix}→ ${to}`;
+  if (from) return `${prefix}${from}`;
+
+  // fallback
+  return typeof s?.label === "string" ? s.label : "";
+};
+
+const isNonEmptyString = (v: unknown): v is string =>
+  typeof v === "string" && v.trim().length > 0;
+
 
   const ProductItem: React.FC<{
   raw: any;
@@ -1898,75 +2077,66 @@ const calcEarnedStickers = (o: Order) => {
   const p = normalizeProduct(raw);
   const isSet = !!p.isSet && !!p.setMeta;
 
-  // NOWE: uporządkowane zamiany w zestawie,
-  // które bierzemy z normalizeProduct (pole setSwaps)
+  // zamiany poza zestawami (bardziej “ludzkie” linie)
+  const swapDetails =
+    ((p as any).swapDetails as Array<{ from?: string; to?: string; label: string }> | undefined) || [];
+
+  const swapsHuman: string[] = swapDetails.length
+  ? swapDetails.map((s) => formatSwapHuman(s)).filter(isNonEmptyString)
+  : Array.isArray((p as any).swaps)
+  ? (p as any).swaps.filter(isNonEmptyString)
+  : [];
+
+  // zamiany w zestawie (structured)
   const setSwaps =
-    ((p as any).setSwaps as { label: string }[] | undefined) || [];
-  const hasSetSwaps = isSet && setSwaps.length > 0;
+    ((p as any).setSwaps as Array<{ qty?: number; from?: string; to?: string; label: string }> | undefined) || [];
+
+  // dodatki / sosy BEZ swapów (bo swapy pokazujemy osobno)
+  const swapLabelSet = new Set((p as any).swaps || []);
+  const addonsOnly = (p.addons || []).filter((a: string) => !swapLabelSet.has(a));
+
+  const { shown: shownAddons, rest: restAddons } = limitList(addonsOnly, 5);
+  const { shown: shownSwaps, rest: restSwaps } = limitList<string>(swapsHuman, 4);
+  const { shown: shownSetSwaps, rest: restSetSwaps } = limitList(setSwaps, 4);
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm text-slate-900">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm text-slate-900">
+      {/* GÓRA: nazwa + cena */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{p.name}</div>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Informacje ogólne
+          </div>
+          <div className="mt-1 truncate text-sm font-semibold">{p.name}</div>
 
-          <div className="mt-0.5 text-[12px] text-slate-700">
-            Ilość: <b>{p.quantity}</b>
-           {/* DODATKI / ZAMIANY – wersja skrócona */}
-{!isSet && p.addons.length > 0 && (
-  <>
-    {" "}
-    <span className="text-slate-400"> · </span> Dodatki:{" "}
-    {p.addons.join(", ")}
-  </>
-)}
+          <div className="mt-1 text-[12px] text-slate-800">
+            Ilość: <b className="text-slate-900">{p.quantity}</b>
           </div>
 
+          {/* Zestaw – krótkie info w osobnych liniach */}
           {isSet && p.setMeta && (
-            <div className="mt-0.5 text-[11px] text-slate-600">
-              Zestaw:
-              {p.setMeta.setUpgrade && " powiększony"}
-              {p.setMeta.bakedWholeSet &&
-                `${p.setMeta.setUpgrade ? ", " : " "}pieczony cały`}
-              {!p.setMeta.bakedWholeSet &&
-                p.setMeta.bakedRolls.length > 0 && (
-                  <>
-                    {" "}
-                    · Pieczone rolki: {p.setMeta.bakedRolls.join(", ")}
-                  </>
-                )}
+            <div className="mt-2 space-y-1 text-[12px] text-slate-700">
+              <div className="font-semibold text-slate-800">Zestaw</div>
+
+              {p.setMeta.setUpgrade && <div>• Powiększenie zestawu</div>}
+
+              {p.setMeta.bakedWholeSet ? (
+                <div>• Wersja pieczona: cały zestaw</div>
+              ) : p.setMeta.bakedRolls.length > 0 ? (
+                <div>
+                  • Pieczone rolki:{" "}
+                  <span className="text-slate-800">{p.setMeta.bakedRolls.join(", ")}</span>
+                </div>
+              ) : null}
+
               {p.setMeta.rollExtras.length > 0 && (
-                <>
-                  {" "}
-                  · Dodatki w rolkach: {p.setMeta.rollExtras.length}{" "}
-                  {p.setMeta.rollExtras.length === 1
-                    ? "pozycja"
-                    : "pozycje"}
-                </>
+                <div>
+                  • Dodatki w rolkach:{" "}
+                  <span className="text-slate-800">{p.setMeta.rollExtras.length}</span>
+                  {p.setMeta.rollExtras.length === 1 ? " pozycja" : " pozycje"}
+                </div>
               )}
             </div>
-          )}
-
-          {p.ingredients.length > 0 && (
-            <div className="mt-0.5 text-[12px] text-slate-700">
-              Skład: {p.ingredients.join(", ")}
-            </div>
-          )}
-
-          {/* Notatkę pokazujemy tylko jeśli nie mamy już ładnych zamian */}
-          {p.note && (!isSet || !hasSetSwaps) && (
-            <div className="mt-0.5 text-[12px] italic text-slate-800">
-              Notatka: {p.note}
-            </div>
-          )}
-
-          {onDetails && (
-            <button
-              onClick={() => onDetails(p)}
-              className="mt-2 text-xs font-medium text-sky-700 underline"
-            >
-              Szczegóły pozycji
-            </button>
           )}
         </div>
 
@@ -1974,6 +2144,73 @@ const calcEarnedStickers = (o: Order) => {
           {p.price.toFixed(2)} zł
         </div>
       </div>
+
+      {/* Dodatki / sosy */}
+      {shownAddons.length > 0 && (
+        <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2">
+          <div className="text-[12px] font-semibold text-slate-800">Dodatki / sosy</div>
+          <ul className="mt-1 ml-5 list-disc space-y-0.5 text-[12px] text-slate-700">
+            {shownAddons.map((a: string, i: number) => (
+              <li key={i}>{a}</li>
+            ))}
+          </ul>
+
+          {(restAddons > 0 || restSwaps > 0 || restSetSwaps > 0) && (
+            <div className="mt-1 text-[11px] text-slate-500">
+              {restAddons > 0 ? `+${restAddons} dodatków` : ""}
+              {restAddons > 0 && (restSwaps > 0 || restSetSwaps > 0) ? " · " : ""}
+              {restSwaps > 0 ? `+${restSwaps} zamian` : ""}
+              {(restAddons > 0 || restSwaps > 0) && restSetSwaps > 0 ? " · " : ""}
+              {restSetSwaps > 0 ? `+${restSetSwaps} zamian w zestawie` : ""}
+              {" — "}zobacz w „Szczegóły pozycji”.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Zamiany (poza zestawami) */}
+      {!isSet && shownSwaps.length > 0 && (
+        <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2">
+          <div className="text-[12px] font-semibold text-amber-900">Zamiany</div>
+          <ul className="mt-1 ml-5 list-disc space-y-0.5 text-[12px] text-amber-900">
+            {shownSwaps.map((s, i) => (
+  <li key={i}>{s}</li>
+))}
+          </ul>
+        </div>
+      )}
+
+      {/* Zamiany w zestawie */}
+      {isSet && shownSetSwaps.length > 0 && (
+        <div className="mt-3 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2">
+          <div className="text-[12px] font-semibold text-rose-900">Zamiany w zestawie</div>
+          <ul className="mt-1 ml-5 list-disc space-y-0.5 text-[12px] text-rose-900">
+            {shownSetSwaps.map((s: any, i: number) => (
+              <li key={i}>{formatSwapHuman(s)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Notatka (zostaje) */}
+      {p.note && (
+        <div className="mt-3 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
+          <div className="text-[12px] font-semibold text-slate-800">Notatka</div>
+          <div className="mt-0.5 text-[12px] italic text-slate-800 whitespace-pre-line">
+            {p.note}
+          </div>
+        </div>
+      )}
+
+      {/* Szczegóły */}
+      {onDetails && (
+        <button
+          onClick={() => onDetails(p)}
+          className="mt-3 inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
+        >
+          Szczegóły pozycji <span aria-hidden>→</span>
+        </button>
+      )}
     </div>
   );
 };
@@ -1985,7 +2222,7 @@ const calcEarnedStickers = (o: Order) => {
     // zawsze normalizujemy na bazie oryginalnego _raw
     const p = normalizeProduct(product?._raw || product);
     const title = p.quantity > 1 ? `${p.name} x${p.quantity}` : p.name;
-    const isSet = !!p.isSet && !!p.setMeta;
+    const isSet = !!p.isSet;
 
     return (
       <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center">

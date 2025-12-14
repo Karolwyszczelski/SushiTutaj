@@ -2936,102 +2936,53 @@ useEffect(() => {
 }, [restaurantSlug, isCheckoutOpen]);
 
      useEffect(() => {
-    // jeśli modal zamknięty, user niezalogowany albo brak restauracji – czyścimy stan
-    if (
-      !isCheckoutOpen ||
-      !isLoggedIn ||
-      !session?.user?.id ||
-      !restaurantId
-    ) {
-      setLoyaltyStickers(null);
+  // jeśli modal zamknięty albo user niezalogowany – czyścimy stan
+  if (!isCheckoutOpen || !isLoggedIn || !session?.user?.id) {
+    setLoyaltyStickers(null);
+    setLoyaltyChoice("keep");
+    return;
+  }
+
+  let cancelled = false;
+
+  const load = async () => {
+    try {
+      setLoyaltyLoading(true);
+
+      const { data, error } = await supabaseAuth
+        .from("loyalty_accounts")
+        .select("stickers")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+      if (error) throw error;
+
+      const stickers = Math.max(
+        0,
+        Math.min(LOYALTY_REWARD_PERCENT_COUNT, Number(data?.stickers ?? 0))
+      );
+
+      setLoyaltyStickers(stickers);
       setLoyaltyChoice("keep");
-      return;
-    }
-
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        setLoyaltyLoading(true);
-
-        const { data, error } = await supabaseAuth
-  .from("orders")
-  .select("total_price, discount_amount, delivery_cost, status, loyalty_choice")
-  .eq("restaurant_id", restaurantId)
-  .eq("user", session.user.id)
-  .in("status", [...LOYALTY_ELIGIBLE_STATUSES] as any);
-
-        if (cancelled) return;
-
-        if (error || !data) {
-          console.error("Loyalty: błąd pobierania orders", error);
-          setLoyaltyStickers(0);
-          setLoyaltyChoice("keep");
-          return;
-        }
-
-        let earned = 0; // naliczone naklejki (zależne od kwoty)
-let spent = 0;  // spalone naklejki na nagrody
-
-(data as any[]).forEach((o) => {
-  const status = String(o.status || "").toLowerCase();
-  if (!LOYALTY_ELIGIBLE_STATUSES.includes(status as any)) return;
-
-  const choice = (o as any).loyalty_choice as LoyaltyChoice | null;
-
-  const total = Number(o.total_price || 0);
-  const discount = Number(o.discount_amount || 0);
-  const delivery = Number(o.delivery_cost || 0);
-
-  // baza = produkty + opakowanie (bez dostawy, z rabatem cofniętym)
-  const base = total + discount - delivery;
-
-  // Zamówienie z nagrodą: nie nalicza nowych naklejek, tylko spala
-  if (choice === "use_4") {
-    spent += 4;
-    return;
-  }
-  if (choice === "use_8") {
-    spent += 8;
-    return;
-  }
-
-  // TU JEST KLUCZ: ilość naklejek zależy od kwoty (50=1, 100=2, ...)
-  earned += computeEarnedStickersFromBase(base);
-});
-
-const stickers = Math.min(
-  LOYALTY_REWARD_PERCENT_COUNT,
-  Math.max(0, earned - spent)
-);
-
-setLoyaltyStickers(stickers);
-setLoyaltyChoice("keep");
-      } catch (e) {
-        console.error("Loyalty: wyjątek podczas ładowania", e);
-        if (!cancelled) {
-          setLoyaltyStickers(0);
-          setLoyaltyChoice("keep");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoyaltyLoading(false);
-        }
+    } catch (e) {
+      console.error("Loyalty: błąd pobierania loyalty_accounts", e);
+      if (!cancelled) {
+        setLoyaltyStickers(0);
+        setLoyaltyChoice("keep");
       }
-    };
+    } finally {
+      if (!cancelled) setLoyaltyLoading(false);
+    }
+  };
 
-    load();
+  load();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    isCheckoutOpen,
-    isLoggedIn,
-    restaurantId,
-    session?.user?.id,
-    supabaseAuth,
-  ]);
+  return () => {
+    cancelled = true;
+  };
+}, [isCheckoutOpen, isLoggedIn, session?.user?.id, supabaseAuth]);
+
 
   const [submitting, setSubmitting] = useState(false);
   const [confirmCityOk, setConfirmCityOk] = useState(false);

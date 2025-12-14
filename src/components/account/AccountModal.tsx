@@ -216,10 +216,18 @@ export default function AccountModal({
     }
   };
 
-  // pobierz stan programu lojalnościowego
-  useEffect(() => {
-    const fetchLoyalty = async () => {
-      if (!user) return;
+  // pobierz stan programu lojalnościowego (jedno źródło prawdy: loyalty_accounts.stickers)
+useEffect(() => {
+  // jeśli modal zamknięty albo user niezalogowany – czyścimy stan
+  if (!open || tab !== "loyalty" || !user?.id) {
+    setLoyaltyStickers(null);
+    return;
+  }
+
+  let cancelled = false;
+
+  const load = async () => {
+    try {
       setLoyaltyLoading(true);
 
       const { data, error } = await supabase
@@ -228,18 +236,26 @@ export default function AccountModal({
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (!error && data) {
-        setLoyaltyStickers((data as any).stickers ?? 0);
-      } else {
-        setLoyaltyStickers(0);
-      }
-      setLoyaltyLoading(false);
-    };
+      if (cancelled) return;
+      if (error) throw error;
 
-    if (tab === "loyalty" && user) {
-      fetchLoyalty();
+      const stickers = Math.max(0, Number(data?.stickers ?? 0));
+      setLoyaltyStickers(stickers);
+    } catch (e) {
+      console.error("Loyalty(AccountModal): błąd pobierania loyalty_accounts", e);
+      if (!cancelled) setLoyaltyStickers(0);
+    } finally {
+      if (!cancelled) setLoyaltyLoading(false);
     }
-  }, [tab, user, supabase]);
+  };
+
+  load();
+
+  return () => {
+    cancelled = true;
+  };
+}, [open, tab, user?.id, supabase]);
+
 
   /* ---------------- PANEL: PROFIL ---------------- */
   const saveProfile = async () => {
