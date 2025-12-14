@@ -1,4 +1,5 @@
 // src/lib/push.ts
+import "server-only";
 import webpush from "web-push";
 import { createClient } from "@supabase/supabase-js";
 
@@ -12,6 +13,9 @@ const VAPID_SUBJECT =
   process.env.VAPID_SUBJECT ||
   "mailto:admin@example.com";
 
+if (!SUPABASE_URL) throw new Error("[push] Brak NEXT_PUBLIC_SUPABASE_URL");
+if (!SERVICE_KEY) throw new Error("[push] Brak SUPABASE_SERVICE_ROLE_KEY");
+
 const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false },
 });
@@ -23,7 +27,6 @@ if (VAPID_PUBLIC && VAPID_PRIVATE) {
 }
 
 export type PushPayload = {
-  /** np. "order" | "error" | "system" – używasz z create.ts */
   type?: string;
   title?: string;
   body?: string;
@@ -33,32 +36,30 @@ export type PushPayload = {
 type AdminPushSubscriptionRow = {
   id: string;
   endpoint: string | null;
-  subscription: any; // tekst (JSON) albo JSONB
+  subscription: any; // TEXT(JSON) albo JSONB
 };
+
+const short = (s?: string | null, n = 80) =>
+  !s ? "" : s.length > n ? s.slice(0, n) + "…" : s;
 
 export async function sendPushForRestaurant(
   restaurantId: string,
   payload: PushPayload
 ): Promise<void> {
-  if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
-    console.warn("[push] VAPID nie skonfigurowany – pomijam push");
-    return;
-  }
+  if (!VAPID_PUBLIC || !VAPID_PRIVATE) return;
 
-  const { data: subs, error } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("admin_push_subscriptions")
     .select("id, endpoint, subscription")
     .eq("restaurant_id", restaurantId);
 
   if (error) {
-    console.error("[push] błąd pobierania subskrypcji:", error);
+    console.error("[push] błąd pobierania subskrypcji:", error.message);
     return;
   }
 
-  if (!subs || subs.length === 0) {
-    console.log("[push] brak subskrypcji dla restauracji", restaurantId);
-    return;
-  }
+  const subs = (data as AdminPushSubscriptionRow[]) || [];
+  if (!subs.length) return;
 
   const basePayload = {
     type: payload.type ?? "order",
@@ -72,51 +73,64 @@ export async function sendPushForRestaurant(
 
   const payloadJson = JSON.stringify(basePayload);
 
+  // zbierz martwe ID i usuń je hurtem po wysyłce
+  const deadIds: string[] = [];
+
   await Promise.all(
-    (subs as AdminPushSubscriptionRow[]).map(async (row) => {
+    subs.map(async (row) => {
       try {
         let sub: any = row.subscription;
 
-        // w bazie masz TEXT z JSON-em – obsługujemy też JSONB na przyszłość
         if (typeof sub === "string") {
           try {
             sub = JSON.parse(sub);
-          } catch (e) {
-            console.error(
-              "[push] niepoprawne JSON w subscription, id:",
-              row.id
-            );
+          } catch {
+            console.warn("[push] niepoprawny JSON subscription, id:", row.id);
+            deadIds.push(row.id);
             return;
           }
         }
 
-        if (!sub || !sub.endpoint) {
-          // śmieciowy wpis – czyścimy
-          await supabaseAdmin
-            .from("admin_push_subscriptions")
-            .delete()
-            .eq("id", row.id);
+        if (!sub?.endpoint) {
+          deadIds.push(row.id);
           return;
         }
 
         await webpush.sendNotification(sub, payloadJson);
-        console.log("[push] wysłano powiadomienie do", sub.endpoint);
+        console.log("[push] sent ->", short(sub.endpoint));
       } catch (err: any) {
-        console.error(
-          "[push] błąd wysyłki do",
-          row.endpoint,
-          err?.statusCode,
-          err?.message || err
+        const status = Number(
+          err?.statusCode ?? err?.status ?? err?.status_code ?? NaN
         );
 
-        // 404 / 410 = martwa subskrypcja – usuwamy
-        if (err?.statusCode === 404 || err?.statusCode === 410) {
-          await supabaseAdmin
-            .from("admin_push_subscriptions")
-            .delete()
-            .eq("id", row.id);
+        // 404/410 = unsubscribed/expired (typowe dla FCM: https://fcm.googleapis.com/...) :contentReference[oaicite:1]{index=1}
+        if (status === 404 || status === 410) {
+          console.warn("[push] dead subscription ->", short(row.endpoint), status);
+          deadIds.push(row.id);
+          return;
         }
+
+        console.error(
+          "[push] send error ->",
+          short(row.endpoint),
+          status,
+          err?.message || err
+        );
       }
     })
   );
+
+  if (deadIds.length) {
+    const unique = Array.from(new Set(deadIds));
+    const { error: delErr } = await supabaseAdmin
+      .from("admin_push_subscriptions")
+      .delete()
+      .in("id", unique);
+
+    if (delErr) {
+      console.error("[push] cleanup delete error:", delErr.message);
+    } else {
+      console.log("[push] cleanup deleted:", unique.length);
+    }
+  }
 }
