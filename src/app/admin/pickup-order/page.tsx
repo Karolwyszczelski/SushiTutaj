@@ -626,8 +626,7 @@ const normalizeProduct = (raw: Any) => {
   const deep = deepFindName(source);
   const name = (shallow[0] || deep || "(bez nazwy)") as string;
 
-  const isSet =
-  /^zestaw\b/i.test(name) ||
+  const isSet = /\b(zestaw|set)\b/i.test(name);
   /^set\b/i.test(name) ||
   /zestaw\s+\d+/i.test(name);
 
@@ -2075,29 +2074,28 @@ const isNonEmptyString = (v: unknown): v is string =>
   onDetails?: (p: any) => void;
 }> = ({ raw, onDetails }) => {
   const p = normalizeProduct(raw);
-  const isSet = !!p.isSet && !!p.setMeta;
+  const isSet = !!p.isSet;
 
-  // zamiany poza zestawami (bardziej “ludzkie” linie)
+  // zamiany poza zestawami
   const swapDetails =
     ((p as any).swapDetails as Array<{ from?: string; to?: string; label: string }> | undefined) || [];
 
   const swapsHuman: string[] = swapDetails.length
-  ? swapDetails.map((s) => formatSwapHuman(s)).filter(isNonEmptyString)
-  : Array.isArray((p as any).swaps)
-  ? (p as any).swaps.filter(isNonEmptyString)
-  : [];
+    ? swapDetails.map((s) => formatSwapHuman(s)).filter(isNonEmptyString)
+    : Array.isArray((p as any).swaps)
+      ? (p as any).swaps.filter(isNonEmptyString)
+      : [];
 
   // zamiany w zestawie (structured)
   const setSwaps =
     ((p as any).setSwaps as Array<{ qty?: number; from?: string; to?: string; label: string }> | undefined) || [];
 
-  // dodatki / sosy BEZ swapów (bo swapy pokazujemy osobno)
-  const swapLabelSet = new Set((p as any).swaps || []);
+  // dodatki / sosy bez swapów (swapy pokazujemy osobno)
+  const swapLabelSet = new Set<string>(((p as any).swaps as string[] | undefined) || []);
   const addonsOnly = (p.addons || []).filter((a: string) => !swapLabelSet.has(a));
 
-  const { shown: shownAddons, rest: restAddons } = limitList(addonsOnly, 5);
-  const { shown: shownSwaps, rest: restSwaps } = limitList<string>(swapsHuman, 4);
-  const { shown: shownSetSwaps, rest: restSetSwaps } = limitList(setSwaps, 4);
+  const hasMetaBlock =
+    addonsOnly.length > 0 || swapsHuman.length > 0 || setSwaps.length > 0 || !!p.note;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm text-slate-900">
@@ -2113,7 +2111,7 @@ const isNonEmptyString = (v: unknown): v is string =>
             Ilość: <b className="text-slate-900">{p.quantity}</b>
           </div>
 
-          {/* Zestaw – krótkie info w osobnych liniach */}
+          {/* Zestaw – krótkie info (jeśli jest setMeta) */}
           {isSet && p.setMeta && (
             <div className="mt-2 space-y-1 text-[12px] text-slate-700">
               <div className="font-semibold text-slate-800">Zestaw</div>
@@ -2145,60 +2143,66 @@ const isNonEmptyString = (v: unknown): v is string =>
         </div>
       </div>
 
-      {/* Dodatki / sosy */}
-      {shownAddons.length > 0 && (
+      {/* SZARY BLOK: dodatki/sosy + zamiany + notatka (wszystko pod sobą) */}
+      {hasMetaBlock && (
         <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2">
-          <div className="text-[12px] font-semibold text-slate-800">Dodatki / sosy</div>
-          <ul className="mt-1 ml-5 list-disc space-y-0.5 text-[12px] text-slate-700">
-            {shownAddons.map((a: string, i: number) => (
-              <li key={i}>{a}</li>
-            ))}
-          </ul>
+          {/* Dodatki / sosy */}
+          {addonsOnly.length > 0 && (
+            <>
+              <div className="text-[12px] font-semibold text-slate-800">Dodatki / sosy</div>
+              <ul className="mt-1 ml-5 list-disc space-y-0.5 text-[12px] text-slate-700">
+                {addonsOnly.map((a: string, i: number) => (
+                  <li key={i}>{a}</li>
+                ))}
+              </ul>
+            </>
+          )}
 
-          {(restAddons > 0 || restSwaps > 0 || restSetSwaps > 0) && (
-            <div className="mt-1 text-[11px] text-slate-500">
-              {restAddons > 0 ? `+${restAddons} dodatków` : ""}
-              {restAddons > 0 && (restSwaps > 0 || restSetSwaps > 0) ? " · " : ""}
-              {restSwaps > 0 ? `+${restSwaps} zamian` : ""}
-              {(restAddons > 0 || restSwaps > 0) && restSetSwaps > 0 ? " · " : ""}
-              {restSetSwaps > 0 ? `+${restSetSwaps} zamian w zestawie` : ""}
-              {" — "}zobacz w „Szczegóły pozycji”.
+          {/* Zamiany (poza zestawami) */}
+          {swapsHuman.length > 0 && (
+            <div className={addonsOnly.length > 0 ? "mt-2 border-t border-slate-200 pt-2" : ""}>
+              <div className="text-[12px] font-semibold text-slate-800">Zamiany</div>
+              <ul className="mt-1 ml-5 list-disc space-y-0.5 text-[12px] text-slate-700">
+                {swapsHuman.map((s: string, i: number) => (
+                  <li key={i}>{s}</li>
+                ))}
+              </ul>
             </div>
           )}
-        </div>
-      )}
 
-      {/* Zamiany (poza zestawami) */}
-      {!isSet && shownSwaps.length > 0 && (
-        <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2">
-          <div className="text-[12px] font-semibold text-amber-900">Zamiany</div>
-          <ul className="mt-1 ml-5 list-disc space-y-0.5 text-[12px] text-amber-900">
-            {shownSwaps.map((s, i) => (
-  <li key={i}>{s}</li>
-))}
-          </ul>
-        </div>
-      )}
+          {/* Zamiany w zestawie (LINIA PO LINII, bez "+1 … zobacz…") */}
+          {setSwaps.length > 0 && (
+            <div
+              className={
+                addonsOnly.length > 0 || swapsHuman.length > 0
+                  ? "mt-2 border-t border-slate-200 pt-2"
+                  : ""
+              }
+            >
+              <div className="text-[12px] font-semibold text-slate-800">Zamiany w zestawie</div>
+              <ul className="mt-1 ml-5 list-disc space-y-0.5 text-[12px] text-slate-700">
+                {setSwaps.map((s: any, i: number) => (
+                  <li key={i}>{formatSwapHuman(s)}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-      {/* Zamiany w zestawie */}
-      {isSet && shownSetSwaps.length > 0 && (
-        <div className="mt-3 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2">
-          <div className="text-[12px] font-semibold text-rose-900">Zamiany w zestawie</div>
-          <ul className="mt-1 ml-5 list-disc space-y-0.5 text-[12px] text-rose-900">
-            {shownSetSwaps.map((s: any, i: number) => (
-              <li key={i}>{formatSwapHuman(s)}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Notatka (zostaje) */}
-      {p.note && (
-        <div className="mt-3 rounded-xl bg-white px-3 py-2 ring-1 ring-slate-200">
-          <div className="text-[12px] font-semibold text-slate-800">Notatka</div>
-          <div className="mt-0.5 text-[12px] italic text-slate-800 whitespace-pre-line">
-            {p.note}
-          </div>
+          {/* Notatka pozycji (to co ludzie wpisują) */}
+          {p.note && (
+            <div
+              className={
+                addonsOnly.length > 0 || swapsHuman.length > 0 || setSwaps.length > 0
+                  ? "mt-2 border-t border-slate-200 pt-2"
+                  : ""
+              }
+            >
+              <div className="text-[12px] font-semibold text-slate-800">Notatka</div>
+              <div className="mt-0.5 whitespace-pre-line break-words text-[12px] italic text-slate-800">
+                {p.note}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
