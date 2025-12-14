@@ -866,13 +866,24 @@ const buildClientDeliveryTime = (
 const safeFetch = async (url: string, opts: RequestInit) => {
   const res = await fetch(url, { credentials: "same-origin", ...opts });
   const text = await res.text();
+
   let data: any;
   try {
     data = JSON.parse(text);
   } catch {
     data = { raw: text };
   }
-  if (!res.ok) throw new Error(data?.error || data?.message || `HTTP ${res.status}`);
+
+  if (!res.ok) {
+    const err: any = new Error(
+      data?.error || data?.message || `HTTP ${res.status}`
+    );
+    err.status = res.status;
+    err.code = data?.code;
+    err.data = data;
+    throw err;
+  }
+
   return data;
 };
 
@@ -2990,6 +3001,30 @@ useEffect(() => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [chopsticksQty, setChopsticksQty] = useState<number>(0);
 
+  const getTurnstileToken = useCallback((): string | null => {
+  if (!TURNSTILE_SITE_KEY) return null;
+  if (turnstileToken) return turnstileToken;
+
+  // awaryjnie: czasem stan nie nadąża, a widget ma już response
+  try {
+    const t = window.turnstile?.getResponse?.(tsIdRef.current);
+    return t ? String(t) : null;
+  } catch {
+    return null;
+  }
+}, [turnstileToken]);
+
+const resetTurnstile = useCallback(() => {
+  setTurnstileToken(null);
+  setTurnstileError(false);
+  try {
+    if (window.turnstile && tsIdRef.current) {
+      window.turnstile.reset(tsIdRef.current);
+    }
+  } catch {}
+}, []);
+
+
   // Turnstile – remove jako useCallback
   const removeTurnstile = useCallback(() => {
     try {
@@ -3074,14 +3109,16 @@ return () => {
 
   // Turnstile – efekt z pełnymi dependencies
   useEffect(() => {
-    if (!TURNSTILE_SITE_KEY || !tsReady) return;
-    if (isCheckoutOpen && checkoutStep === 3) {
-      renderTurnstile(tsMobileRef.current);
-      renderTurnstile(tsDesktopRef.current);
-      return () => removeTurnstile();
-    }
-    removeTurnstile();
-  }, [isCheckoutOpen, checkoutStep, tsReady, renderTurnstile, removeTurnstile]);
+  if (!TURNSTILE_SITE_KEY || !tsReady) return;
+
+  if (isCheckoutOpen && checkoutStep === 3 && !orderSent) {
+    renderTurnstile(tsMobileRef.current);
+    renderTurnstile(tsDesktopRef.current);
+    return () => removeTurnstile();
+  }
+
+  removeTurnstile();
+}, [isCheckoutOpen, checkoutStep, tsReady, orderSent, renderTurnstile, removeTurnstile]);
 
   const productsByName = useMemo(() => {
     const map = new Map<string, ProductDb>();
@@ -3614,10 +3651,12 @@ for (const it of items as any[]) {
 
 
     if (!guardEmail()) return;
-    if (TURNSTILE_SITE_KEY && !(await ensureFreshToken())) {
-      setErrorMessage("Weryfikacja formularza nie powiodła się.");
-      return;
-    }
+    const tsToken = getTurnstileToken();
+
+if (TURNSTILE_SITE_KEY && !tsToken) {
+  setErrorMessage("Zaznacz weryfikację antybot i spróbuj ponownie.");
+  return;
+}
 
     if (selectedOption === "delivery") {
       if (REQUIRE_AUTOCOMPLETE && !custCoords) {
@@ -3734,26 +3773,42 @@ loyalty_stickers_before:
         };
       });
 
-      await safeFetch(`/api/orders/create?restaurant=${encodeURIComponent(slug)}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "cf-turnstile-response": turnstileToken || "",
-          "x-restaurant-slug": slug,
-        },
-        body: JSON.stringify({ orderPayload, itemsPayload, turnstileToken, restaurant: slug }),
-      });
+     const tsToken = getTurnstileToken();
 
+await safeFetch(`/api/orders/create?restaurant=${encodeURIComponent(slug)}`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "cf-turnstile-response": tsToken || "",
+    "x-restaurant-slug": slug,
+  },
+  body: JSON.stringify({
+    orderPayload,
+    itemsPayload,
+    // najlepiej nie duplikować tokenu, ale jak zostawisz to też przeżyje
+    // turnstileToken: tsToken,
+    restaurant: slug,
+  }),
+});
       clearCart();
       setOrderSent(true);
     } catch (err: any) {
-      setErrorMessage(err.message || "Wystąpił błąd podczas składania zamówienia.");
-      try {
-        if (window.turnstile && tsIdRef.current) window.turnstile.reset(tsIdRef.current);
-      } catch {}
-    } finally {
-      setSubmitting(false);
-    }
+  // jeśli backend zwróci 409 + TURNSTILE_RETRY (timeout-or-duplicate)
+  if (err?.status === 409 || err?.code === "TURNSTILE_RETRY") {
+    setErrorMessage("Weryfikacja wygasła lub została użyta ponownie. Zweryfikuj się jeszcze raz i spróbuj.");
+    resetTurnstile();
+    return;
+  }
+
+  setErrorMessage(err?.message || "Wystąpił błąd podczas składania zamówienia.");
+  resetTurnstile();
+} finally {
+  setSubmitting(false);
+
+  // krytyczne: nie pozwól na ponowne wysłanie tego samego tokenu
+  // (na sukcesie też OK, ale możesz zamiast tego removeTurnstile() przy orderSent)
+  if (!orderSent) resetTurnstile();
+}
   };
 
  if (!isClient || !isCheckoutOpen) return null;

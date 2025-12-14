@@ -31,18 +31,66 @@ const CK_BASE = {
 const CK_ID = { ...CK_BASE, httpOnly: true };
 const CK_SLUG = { ...CK_BASE, httpOnly: false };
 
+function getSupabaseProjectRef(): string | null {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+    const host = new URL(url).hostname; // <ref>.supabase.co
+    const ref = host.split(".")[0];
+    return ref || null;
+  } catch {
+    return null;
+  }
+}
+
+function clearSupabaseAuthCookies(res: NextResponse) {
+  const ref = getSupabaseProjectRef();
+  if (!ref) return;
+
+  const base = {
+    path: "/",
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 0,
+  };
+
+  // auth-helpers potrafią chunkować cookie: ...auth-token, ...auth-token.0, .1, ...
+  res.cookies.set(`sb-${ref}-auth-token`, "", base);
+  for (let i = 0; i < 10; i++) {
+    res.cookies.set(`sb-${ref}-auth-token.${i}`, "", base);
+  }
+  res.cookies.set(`sb-${ref}-auth-token-code-verifier`, "", base);
+}
+
+
 export async function GET(req: Request) {
   const supabase = createRouteHandlerClient<Database>({ cookies });
 
   // Sesja (stabilniej niż getUser() po czasie)
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  let session: any = null;
 
-  const userId = session?.user?.id;
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+try {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  session = data.session;
+} catch (e: any) {
+  console.error("[orders.current] getSession error:", e?.message || e);
+
+  const res = NextResponse.json(
+    { error: "Unauthorized", code: "AUTH_REFRESH_TOKEN_MISSING" },
+    { status: 401, headers: { "Cache-Control": "no-store" } }
+  );
+
+  clearSupabaseAuthCookies(res);
+  return res;
+}
+
+const userId = session?.user?.id;
+if (!userId) {
+  return NextResponse.json(
+    { error: "Unauthorized", code: "NO_SESSION" },
+    { status: 401, headers: { "Cache-Control": "no-store" } }
+  );
+}
 
   const url = new URL(req.url);
   const scope = url.searchParams.get("scope") || "open";

@@ -619,51 +619,73 @@ export async function POST(req: Request) {
     }
 
     if (TURNSTILE_SECRET_KEY) {
-      const headerToken =
-        req.headers.get("cf-turnstile-response") ||
-        req.headers.get("CF-Turnstile-Response") ||
-        req.headers.get("x-turnstile-token");
-      const token =
-        raw?.turnstileToken ||
-        raw?.token ||
-        raw?.cf_turnstile_token ||
-        headerToken;
+  const headerToken =
+    req.headers.get("cf-turnstile-response") ||
+    req.headers.get("x-turnstile-token");
 
-      if (!token) {
-        return NextResponse.json(
-          { error: "Brak weryfikacji antybot." },
-          { status: 400 }
-        );
+  const token =
+    raw?.turnstileToken ||
+    raw?.token ||
+    raw?.cf_turnstile_token ||
+    headerToken;
+
+  if (!token) {
+    return NextResponse.json(
+      { error: "Brak weryfikacji antybot.", code: "TURNSTILE_MISSING" },
+      { status: 400 }
+    );
+  }
+
+  try {
+    const params = new URLSearchParams({
+      secret: TURNSTILE_SECRET_KEY,
+      response: String(token),
+    });
+
+    const ip = clientIp(req);
+    if (ip) params.set("remoteip", ip);
+
+    const ver = await fetch(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: params.toString(),
       }
-      try {
-        const ver = await fetch(
-          "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-          {
-            method: "POST",
-            headers: { "content-type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({
-              secret: TURNSTILE_SECRET_KEY,
-              response: String(token),
-              remoteip: clientIp(req) || "",
-            }).toString(),
-          }
-        );
-        const jr = await ver.json();
-        if (!jr?.success) {
-          console.error("[turnstile.verify] fail", jr?.["error-codes"] || jr);
-          return NextResponse.json(
-            { error: "Nieudana weryfikacja formularza." },
-            { status: 400 }
-          );
-        }
-      } catch (e) {
-        console.error("[turnstile.verify] error", e);
-        return NextResponse.json(
-          { error: "Błąd weryfikacji formularza." },
-          { status: 400 }
-        );
-      }
+    );
+
+    const jr = await ver.json();
+    const codes: string[] = Array.isArray(jr?.["error-codes"])
+      ? jr["error-codes"]
+      : [];
+
+    if (!jr?.success) {
+      console.error("[turnstile.verify] fail", codes.length ? codes : jr);
+
+      const retryable =
+        codes.includes("timeout-or-duplicate") ||
+        codes.includes("invalid-input-response");
+
+      return NextResponse.json(
+        {
+          error: retryable
+            ? "Weryfikacja wygasła lub została użyta ponownie. Odśwież weryfikację i spróbuj ponownie."
+            : "Nieudana weryfikacja formularza.",
+          code: retryable ? "TURNSTILE_RETRY" : "TURNSTILE_FAIL",
+          turnstile: { codes },
+        },
+        { status: retryable ? 409 : 400 }
+      );
     }
+  } catch (e: any) {
+    console.error("[turnstile.verify] error", e?.message || e);
+    return NextResponse.json(
+      { error: "Błąd weryfikacji formularza.", code: "TURNSTILE_ERROR" },
+      { status: 400 }
+    );
+  }
+}
+
 
     // 1.1) Ustal slug restauracji
     const url = new URL(req.url);
