@@ -957,7 +957,7 @@ const addons = collapseLabelsWithQty(isSet ? plain : [...plain, ...swapLabels]);
     swapDetails,
     setMeta: isSet && setMeta ? setMeta : null,
     tartarBases,
-    setSwaps, // <--- NOWE: uporządkowane zamiany w zestawie
+    setSwaps: setSwapsFinal, // <--- NOWE: uporządkowane zamiany w zestawie
     _raw: source,
   };
 };
@@ -1709,7 +1709,7 @@ const fetchOrders = useCallback(
           (o.status === "new" || o.status === "pending" || o.status === "placed") &&
           !prev.has(o.id)
       );
-      if (initializedRef.current && newOnes.length > 0) void playDing();
+      if (initializedRef.current && newOnes.length > 0) dingOnce();
 
       prevIdsRef.current = new Set(mapped.map((o) => o.id));
       initializedRef.current = true;
