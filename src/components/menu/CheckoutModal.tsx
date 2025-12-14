@@ -1,5 +1,4 @@
- "use client";
-
+"use client"
 
 import React, {
   useState,
@@ -61,8 +60,9 @@ function getRestaurantPhone(slug: string): string | null {
   return CITY_PHONE[s] || null;
 }
 
-/** WYMÓG: adres musi być wybrany z Autocomplete (posiadamy współrzędne) */
-const REQUIRE_AUTOCOMPLETE = true;
+/** Domyślne fallbacki (gdy brak configu z API) */
+const DEFAULT_REQUIRE_AUTOCOMPLETE = true;
+const DEFAULT_PACKAGING_COST = 3; // zł
 
 
 
@@ -1062,6 +1062,95 @@ const fmt = (r: Range) => `${pad(r[0])}:${pad(r[1])}–${pad(r[2])}:${pad(r[3])}
 const MIN_SCHEDULE_MINUTES = 60;
 
 const SLOT_STEP_MINUTES = 20; // co ile minut pokazujemy sloty
+
+type CheckoutConfig = {
+  tz?: string;
+  schedule?: Partial<Record<Day, Range>> & { default?: Range };
+  minScheduleMinutes?: number;
+  slotStepMinutes?: number;
+  packagingCost?: number;
+  requireAutocomplete?: boolean;
+};
+
+const normalizeRange = (v: any): Range | null => {
+  if (!Array.isArray(v) || v.length !== 4) return null;
+  const n = v.map((x) => Number(x));
+  if (n.some((x) => !Number.isFinite(x))) return null;
+  return [n[0], n[1], n[2], n[3]] as Range;
+};
+
+// Akceptuje camelCase i snake_case z backendu
+function normalizeCheckoutConfig(raw: any): CheckoutConfig | null {
+  if (!raw || typeof raw !== "object") return null;
+
+  const cfg: CheckoutConfig = {};
+
+  const sch = raw.schedule ?? raw.opening_hours ?? raw.city_schedule ?? null;
+  if (sch && typeof sch === "object") {
+    const out: any = {};
+    const def = normalizeRange(sch.default);
+    if (def) out.default = def;
+
+    for (const k of Object.keys(sch)) {
+      if (k === "default") continue;
+      const day = Number(k);
+      if (Number.isFinite(day) && day >= 0 && day <= 6) {
+        const r = normalizeRange((sch as any)[k]);
+        if (r) out[day] = r;
+      }
+    }
+
+    if (Object.keys(out).length) cfg.schedule = out;
+  }
+
+  const n = (x: any) => {
+    const v = Number(x);
+    return Number.isFinite(v) ? v : undefined;
+  };
+
+  cfg.minScheduleMinutes = n(raw.minScheduleMinutes ?? raw.min_schedule_minutes);
+  cfg.slotStepMinutes = n(raw.slotStepMinutes ?? raw.slot_step_minutes);
+  cfg.packagingCost = n(raw.packagingCost ?? raw.packaging_cost);
+
+  const ra = raw.requireAutocomplete ?? raw.require_autocomplete;
+  if (typeof ra === "boolean") cfg.requireAutocomplete = ra;
+
+  const tzRaw = raw.tz ?? raw.timezone;
+  if (typeof tzRaw === "string" && tzRaw.length > 3) cfg.tz = tzRaw;
+
+  return cfg;
+}
+
+function resolveScheduleForSlug(
+  slug: string,
+  cfg: CheckoutConfig | null
+): Partial<Record<Day, Range>> & { default?: Range } {
+  if (cfg?.schedule && Object.keys(cfg.schedule).length) return cfg.schedule;
+  return CITY_SCHEDULE[slug] ?? CITY_SCHEDULE["przasnysz"];
+}
+
+function todayRangeForSchedule(
+  schedule: Partial<Record<Day, Range>> & { default?: Range },
+  d = toZonedTime(new Date(), tz)
+): Range | null {
+  const r = schedule[d.getDay() as Day] ?? schedule.default ?? null;
+  return r ?? null;
+}
+
+function isOpenForSchedule(
+  schedule: Partial<Record<Day, Range>> & { default?: Range },
+  d = toZonedTime(new Date(), tz)
+) {
+  const r = todayRangeForSchedule(schedule, d);
+  if (!r) return { open: false, label: "zamknięte", range: null as Range | null };
+
+  const mins = d.getHours() * 60 + d.getMinutes();
+  const o = r[0] * 60 + r[1];
+  const c = r[2] * 60 + r[3];
+
+  return { open: mins >= o && mins <= c, label: fmt(r), range: r };
+}
+
 
 // HH:mm z minut
 const minutesToHHMM = (mins: number) =>
@@ -3023,6 +3112,9 @@ export default function CheckoutModal() {
 
   const [selectedOption, setSelectedOption] = useState<OrderOption | null>(null);
   const [deliveryTimeOption, setDeliveryTimeOption] = useState<"asap" | "schedule">("asap");
+const [scheduledTime, setScheduledTime] = useState<string>("");
+
+
 
   const [productsDb, setProductsDb] = useState<ProductDb[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
@@ -3055,10 +3147,32 @@ export default function CheckoutModal() {
   const thanksQrUrl = CITY_REVIEW_QR_URLS[restaurantSlug] || THANKS_QR_URL;
   const restaurantPhone = getRestaurantPhone(restaurantSlug);
 
-  const openInfo = useMemo(() => isOpenFor(restaurantSlug), [restaurantSlug]);
-  const timeMin = openInfo.range ? `${pad(openInfo.range[0])}:${pad(openInfo.range[1])}` : "12:00";
-  const timeMax = openInfo.range ? `${pad(openInfo.range[2])}:${pad(openInfo.range[3])}` : "23:59";
-  const [scheduledTime, setScheduledTime] = useState<string>(timeMin);
+  const [checkoutConfig, setCheckoutConfig] = useState<CheckoutConfig | null>(null);
+
+const requireAutocomplete =
+  checkoutConfig?.requireAutocomplete ?? DEFAULT_REQUIRE_AUTOCOMPLETE;
+
+const packagingUnit =
+  checkoutConfig?.packagingCost ?? DEFAULT_PACKAGING_COST;
+
+const minScheduleMinutes =
+  checkoutConfig?.minScheduleMinutes ?? MIN_SCHEDULE_MINUTES;
+
+const slotStepMinutes =
+  checkoutConfig?.slotStepMinutes ?? SLOT_STEP_MINUTES;
+
+
+const scheduleDef = useMemo(
+  () => resolveScheduleForSlug(restaurantSlug, checkoutConfig),
+  [restaurantSlug, checkoutConfig]
+);
+
+const openInfo = useMemo(
+  () => isOpenForSchedule(scheduleDef),
+  [scheduleDef]
+);
+
+
   /** Blokady godzin dla aktualnej restauracji */
 const [blockedTimes, setBlockedTimes] = useState<BlockedTime[]>([]);
 
@@ -3074,8 +3188,8 @@ const scheduleSlots = useMemo(() => {
   const closeMins = r[2] * 60 + r[3];
 
   // min: teraz + MIN_SCHEDULE_MINUTES, ale nie wcześniej niż otwarcie
-  const minAllowedRaw = Math.max(openMins, nowMins + MIN_SCHEDULE_MINUTES);
-  const step = SLOT_STEP_MINUTES;
+  const minAllowedRaw = Math.max(openMins, nowMins + minScheduleMinutes);
+const step = slotStepMinutes;
   const minAllowed = Math.ceil(minAllowedRaw / step) * step;
 
   if (minAllowed > closeMins) return [];
@@ -3097,7 +3211,7 @@ const scheduleSlots = useMemo(() => {
   }
 
   return out;
-}, [isCheckoutOpen, openInfo.range, blockedTimes]);
+}, [isCheckoutOpen, openInfo.range, blockedTimes, minScheduleMinutes, slotStepMinutes]);
 
 const canSchedule = scheduleSlots.length > 0;
 
@@ -3248,6 +3362,44 @@ useEffect(() => {
     cancelled = true;
   };
 }, [restaurantSlug, isCheckoutOpen]);
+
+useEffect(() => {
+  if (!restaurantSlug || !isCheckoutOpen) {
+    setCheckoutConfig(null);
+    return;
+  }
+
+  let cancelled = false;
+  const ac = new AbortController();
+
+  const load = async () => {
+    try {
+      // DOSTOSUJ ŚCIEŻKĘ jeśli masz inną.
+      const res = await fetch(
+        `/api/public/checkout-config?restaurant=${encodeURIComponent(restaurantSlug)}`,
+        { cache: "no-store", signal: ac.signal }
+      );
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const json = await res.json();
+      const cfg = normalizeCheckoutConfig(json);
+
+      if (!cancelled) setCheckoutConfig(cfg);
+    } catch {
+      // fallback: zostaje null, czyli leci Twoja obecna logika
+      if (!cancelled) setCheckoutConfig(null);
+    }
+  };
+
+  load();
+
+  return () => {
+    cancelled = true;
+    ac.abort();
+  };
+}, [restaurantSlug, isCheckoutOpen]);
+
 
      useEffect(() => {
   // jeśli modal zamknięty albo user niezalogowany – czyścimy stan
@@ -3493,9 +3645,9 @@ return () => {
 });
 return acc + (priceNum + addonsCost) * qty;
     }, 0);
-  }, [items, resolveProduct]);
+  }, [items, resolveProduct, restaurantSlug]);
 
-  const packagingCost = selectedOption ? 3 : 0;
+  const packagingCost = selectedOption ? packagingUnit : 0;
   const subtotal = baseTotal + packagingCost;
 
   const getItemLineTotal = useCallback(
@@ -3512,9 +3664,7 @@ return acc + (priceNum + addonsCost) * qty;
   restaurantSlug,
 });
 return (priceNum + addonsCost) * qty;
-    },
-    [resolveProduct]
-  );
+    }, [resolveProduct, restaurantSlug]);
 
   const isProductEligibleForPromo = useCallback(
     (prodDb: ProductDb, p: NonNullable<Promo>): boolean => {
@@ -3883,7 +4033,7 @@ return (priceNum + addonsCost) * qty;
       return;
     }
 
-    const chk = isOpenFor(restaurantSlug);
+    const chk = isOpenForSchedule(scheduleDef);
     if (!chk.open) {
       setErrorMessage(
         `Zamówienia dla ${restaurantCityLabel} przyjmujemy dziś ${chk.label}.`
@@ -3918,12 +4068,12 @@ return (priceNum + addonsCost) * qty;
   }
 
   const diffMinutes = (dt.getTime() - nowZoned.getTime()) / 60000;
-  if (diffMinutes < MIN_SCHEDULE_MINUTES) {
-    setErrorMessage(
-      `Przy wyborze realizacji „na godzinę” minimalny czas to ${MIN_SCHEDULE_MINUTES} minut od teraz.`
-    );
-    return;
-  }
+  if (diffMinutes < minScheduleMinutes) {
+  setErrorMessage(
+    `Przy wyborze realizacji „na godzinę” minimalny czas to ${minScheduleMinutes} minut od teraz.`
+  );
+  return;
+}
 
   // NOWE: sprawdzenie blokad godzin z panelu admina
   if (isDateTimeBlocked(dt, blockedTimes)) {
@@ -3962,7 +4112,7 @@ if (TURNSTILE_SITE_KEY && !tsToken) {
 }
 
     if (selectedOption === "delivery") {
-      if (REQUIRE_AUTOCOMPLETE && !custCoords) {
+      if (requireAutocomplete && !custCoords) {
         setErrorMessage(
           "Wybierz adres z listy (podpowiedzi Google), aby potwierdzić dostawę."
         );
@@ -4449,7 +4599,7 @@ return (
                               className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
                               value={street}
                               onChange={(e) => setStreet(e.target.value)}
-                              disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
+                              disabled={requireAutocomplete && !custCoords}
                             />
                             <div className="flex gap-2">
                               <input
@@ -4460,7 +4610,7 @@ return (
                                 onChange={(e) =>
                                   setFlatNumber(e.target.value)
                                 }
-                                disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
+                                disabled={requireAutocomplete && !custCoords}
                               />
                               <input
                                 type="text"
@@ -4470,7 +4620,7 @@ return (
                                 onChange={(e) =>
                                   setPostalCode(e.target.value)
                                 }
-                                disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
+                                disabled={requireAutocomplete && !custCoords}
                               />
                             </div>
                             <input
@@ -4479,14 +4629,14 @@ return (
                               className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
                               value={city}
                               onChange={(e) => setCity(e.target.value)}
-                              disabled={REQUIRE_AUTOCOMPLETE && !custCoords}
+                              disabled={requireAutocomplete && !custCoords}
                             />
-                            {REQUIRE_AUTOCOMPLETE && !custCoords && (
-                              <p className="text-xs text-red-600">
-                                Wpisanie adresu ręcznie jest zablokowane –
-                                wybierz pozycję z listy podpowiedzi Google.
-                              </p>
-                            )}
+                            {requireAutocomplete && !custCoords && (
+  <p className="text-xs text-red-600">
+    Wpisanie adresu ręcznie jest zablokowane –
+    wybierz pozycję z listy podpowiedzi Google.
+  </p>
+)}
                           </div>
                         </>
                       )}
@@ -4562,8 +4712,7 @@ return (
                                 (!street ||
                                   !postalCode ||
                                   !city ||
-                                  (REQUIRE_AUTOCOMPLETE &&
-                                    !custCoords)))
+                                  (requireAutocomplete && !custCoords)))
                             }
                             className={`px-4 py-2 rounded-xl text-white font-semibold ${accentBtn} disabled:opacity-50`}
                           >
@@ -4595,7 +4744,7 @@ return (
                               {selectedOption && (
                                 <div className="flex justify-between">
                                   <span>Opakowanie:</span>
-                                  <span>3.00 zł</span>
+                                  <span>{packagingUnit.toFixed(2)} zł</span>
                                 </div>
                               )}
                               {deliveryInfo && (
@@ -4896,7 +5045,7 @@ return (
                   {selectedOption && (
                     <div className="flex justify-between">
                       <span>Opakowanie:</span>
-                      <span>3.00 zł</span>
+                      <span>{packagingUnit.toFixed(2)} zł</span>
                     </div>
                   )}
                   {deliveryInfo && (

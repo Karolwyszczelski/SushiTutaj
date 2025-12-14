@@ -5,6 +5,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import { Pencil, Trash, ToggleRight, ChevronDown, Power } from "lucide-react";
 import debounce from "lodash.debounce";
 import AddonOptionsForm from "@/components/admin/settings/AddonOptionsForm";
+import CheckoutConfigForm from "@/components/admin/settings/CheckoutConfigForm";
 
 /* ========= Typy ========= */
 interface Product {
@@ -230,6 +231,7 @@ export default function AdminMenuPage() {
   const [editing, setEditing] = useState<Product | null>(null);
 
   const [showDrinkFlavors, setShowDrinkFlavors] = useState(false);
+  const [showCheckoutConfig, setShowCheckoutConfig] = useState(false);
 
   // Przyjmowanie zamówień globalnie – per restauracja (restaurants.active)
   const [orderingOpen, setOrderingOpen] = useState<boolean | null>(null);
@@ -573,6 +575,33 @@ export default function AdminMenuPage() {
       {showDrinkFlavors ? "Zwiń" : "Edytuj"}
     </button>
   </div>
+  {/* Konfiguracja checkout (sosy / reguły) */}
+<div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <div className="text-lg font-semibold text-slate-900">
+        Konfiguracja checkout (sosy / reguły)
+      </div>
+      <div className="mt-0.5 text-xs text-slate-600">
+        Restauracja może zmieniać logikę gratisowych sosów bez deploya.
+      </div>
+    </div>
+
+    <button
+      type="button"
+      onClick={() => setShowCheckoutConfig((v) => !v)}
+      className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+    >
+      {showCheckoutConfig ? "Zwiń" : "Edytuj"}
+    </button>
+  </div>
+
+  {showCheckoutConfig && (
+    <div className="mt-4">
+      <CheckoutConfigForm restaurantId={restaurantId} />
+    </div>
+  )}
+</div>
 
   {showDrinkFlavors && (
     <div className="mt-4">
