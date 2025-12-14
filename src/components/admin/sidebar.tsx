@@ -313,19 +313,19 @@ function SidebarInner() {
   return (
     <aside
       className={clsx(
-        "sticky top-0 z-30 h-[100dvh] bg-black text-white border-r border-gray-900 flex-none",
-        "transition-[width] duration-200 will-change-[width]",
-        collapsed ? "w-16" : "w-64"
-      )}
+  "sticky top-0 z-30 h-[100dvh] bg-white text-black border-r border-gray-200 flex-none",
+  "transition-[width] duration-200 will-change-[width]",
+  collapsed ? "w-16" : "w-64"
+)}
     >
-      <div className="flex items-center justify-between px-3 py-3 border-b border-gray-800">
+      <div className="flex items-center justify-between px-3 py-3 border-b border-gray-200">
         {!collapsed && (
           <div className="text-base font-semibold">Panel Admina</div>
         )}
         <button
           aria-label={collapsed ? "Rozwiń panel boczny" : "Zwiń panel boczny"}
           onClick={() => setCollapsed((c) => !c)}
-          className="p-1 rounded hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-yellow-500/30"
+className="p-1 rounded hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-yellow-500/30"
         >
           {collapsed ? (
             <ChevronRight className="h-5 w-5" />
@@ -346,10 +346,10 @@ function SidebarInner() {
                   <Link
                     href={withQs(href)}
                     className={clsx(
-                      "flex items-center gap-3 px-3 py-2 transition-colors",
-                      "hover:bg-gray-900",
-                      isActive && "bg-gray-900"
-                    )}
+  "flex items-center gap-3 px-3 py-2 transition-colors",
+  "hover:bg-gray-100",
+  isActive && "bg-gray-100"
+)}
                   >
                     <Icon className="h-5 w-5 flex-shrink-0" />
                     {!collapsed && <span className="truncate">{label}</span>}
@@ -366,7 +366,7 @@ function SidebarInner() {
           onClick={handleLogout}
           className={clsx(
             "w-full flex items-center gap-3 rounded px-3 py-2 transition",
-            "hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-yellow-500/30",
+            "hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-yellow-500/30",
             collapsed && "justify-center"
           )}
         >

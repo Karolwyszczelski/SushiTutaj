@@ -22,75 +22,148 @@ const toInt = (v: string | null, d: number) => {
   return Number.isFinite(n) ? n : d;
 };
 
+const CK_BASE = {
+  path: "/",
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+  maxAge: 60 * 60 * 24 * 30,
+};
+const CK_ID = { ...CK_BASE, httpOnly: true };
+const CK_SLUG = { ...CK_BASE, httpOnly: false };
+
 export async function GET(req: Request) {
-  // Klient Supabase (przekazujemy provider cookies z next/headers)
   const supabase = createRouteHandlerClient<Database>({ cookies });
 
-  // Użytkownik
-  const { data: u } = await supabase.auth.getUser();
-  const userId = u?.user?.id || null;
+  // Sesja (stabilniej niż getUser() po czasie)
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const userId = session?.user?.id;
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Parametry
   const url = new URL(req.url);
   const scope = url.searchParams.get("scope") || "open";
-  const limit = Math.max(
-    1,
-    Math.min(100, toInt(url.searchParams.get("limit"), 20))
-  );
+  const limit = Math.max(1, Math.min(100, toInt(url.searchParams.get("limit"), 20)));
   const offset = Math.max(0, toInt(url.searchParams.get("offset"), 0));
+
   const slugParam =
-    (url.searchParams.get("restaurant") || "").toLowerCase() || null;
+    (url.searchParams.get("restaurant") || "").toLowerCase().trim() || null;
+  const paramForced = !!slugParam;
 
-  // >>> cookies() jest Promise -> trzeba poczekać na wynik <<<
+  // cookies
   const cookieStore = await cookies();
-  let rid = normalizeUuid(cookieStore.get("restaurant_id")?.value || null);
+  const cookieRid = normalizeUuid(cookieStore.get("restaurant_id")?.value || null);
+  let rid: string | null = cookieRid;
+  let rslug: string | null =
+    cookieStore.get("restaurant_slug")?.value?.toLowerCase() ?? null;
 
-  // Slug -> id (jawny typ, by uniknąć `never`)
+  // 1) slug z query -> ID
   if (slugParam) {
     const { data: rows, error } = await supabase
       .from("restaurants")
-      .select("id")
+      .select("id, slug")
       .eq("slug", slugParam)
-      .returns<{ id: string }[]>() // ważne dla TS
-      .limit(1);
+      .limit(1)
+      .returns<{ id: string; slug: string | null }[]>();
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    const restId = rows?.[0]?.id || null;
-    if (!restId) {
+    const found = rows?.[0] ?? null;
+    if (!found?.id) {
       return NextResponse.json({ error: "Unknown restaurant" }, { status: 404 });
     }
-    rid = normalizeUuid(restId);
+
+    rid = normalizeUuid(found.id);
+    rslug = found.slug?.toLowerCase() ?? slugParam;
   }
 
-  // Fallback: ostatnia restauracja przypisana userowi (też jawny typ)
-  if (!rid) {
-    const { data: lastRows, error } = await supabase
+  // UWAGA: jeśli Database nie ma restaurant_admins -> TS będzie krzyczał (never).
+  // Tymczasowo używamy any TYLKO do tej tabeli.
+  const sbAny = supabase as any;
+
+  async function firstAssignedRestaurantId(uid: string) {
+    const { data, error } = await sbAny
       .from("restaurant_admins")
       .select("restaurant_id, added_at")
-      .eq("user_id", userId)
-      .order("added_at", { ascending: false })
-      .limit(1)
-      .returns<{ restaurant_id: string; added_at: string }[]>();
+      .eq("user_id", uid)
+      .order("added_at", { ascending: true })
+      .limit(1);
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return { rid: null as string | null, error };
+
+    const x = (data?.[0]?.restaurant_id as string | null) ?? null;
+    return { rid: normalizeUuid(x), error: null as any };
+  }
+
+  async function hasAccessToRestaurant(uid: string, restaurantId: string) {
+    const { data, error } = await sbAny
+      .from("restaurant_admins")
+      .select("restaurant_id")
+      .eq("user_id", uid)
+      .eq("restaurant_id", restaurantId)
+      .limit(1);
+
+    if (error) return { ok: false, error };
+    return { ok: (data?.length ?? 0) > 0, error: null as any };
+  }
+
+  // 2) brak rid -> weź pierwszy przypisany
+  if (!rid) {
+    const first = await firstAssignedRestaurantId(userId);
+    if (first.error) return NextResponse.json({ error: first.error.message }, { status: 500 });
+    if (!first.rid) {
+      return NextResponse.json({ error: "NO_RESTAURANT_FOR_ADMIN" }, { status: 404 });
     }
-
-    const lastId = lastRows?.[0]?.restaurant_id || null;
-    rid = normalizeUuid(lastId);
+    rid = first.rid;
+    rslug = null;
   }
 
   if (!rid) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "NO_RESTAURANT" }, { status: 404 });
   }
 
-  // Selekcja kolumn – z polami rabatu i lojalności
+  // 3) walidacja dostępu do rid
+  const access = await hasAccessToRestaurant(userId, rid);
+  if (access.error) return NextResponse.json({ error: access.error.message }, { status: 500 });
+
+  if (!access.ok) {
+    // ktoś podał slug ręcznie -> 403
+    if (paramForced) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // stare cookie -> fallback na pierwszy przypisany
+    const first = await firstAssignedRestaurantId(userId);
+    if (first.error) return NextResponse.json({ error: first.error.message }, { status: 500 });
+    if (!first.rid) {
+      return NextResponse.json({ error: "NO_RESTAURANT_FOR_ADMIN" }, { status: 404 });
+    }
+
+    rid = first.rid;
+    rslug = null;
+  }
+
+  if (!rid) {
+    return NextResponse.json({ error: "NO_RESTAURANT" }, { status: 404 });
+  }
+  const finalRestaurantId = rid;
+
+  // 4) dociągnij slug dla finalRestaurantId jeśli nie mamy
+  if (!rslug) {
+    const { data, error } = await supabase
+      .from("restaurants")
+      .select("slug")
+      .eq("id", finalRestaurantId)
+      .limit(1)
+      .returns<{ slug: string | null }[]>();
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    rslug = data?.[0]?.slug?.toLowerCase() ?? null;
+  }
+
   const sel = `
     id, created_at, status, total_price,
     name, selected_option,
@@ -98,7 +171,7 @@ export async function GET(req: Request) {
     delivery_cost, phone, address, street, flat_number, city,
     payment_method, payment_status,
     client_delivery_time, scheduled_delivery_at, deliveryTime,
-reservation_id, reservation_date, reservation_time,
+    reservation_id, reservation_date, reservation_time,
     chopsticks_qty,
     promo_code, discount_amount,
     loyalty_stickers_before, loyalty_stickers_after,
@@ -109,7 +182,7 @@ reservation_id, reservation_date, reservation_time,
   let q = supabase
     .from("orders")
     .select(sel as any, { count: "exact" })
-    .eq("restaurant_id", rid)
+    .eq("restaurant_id", finalRestaurantId)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -118,9 +191,7 @@ reservation_id, reservation_date, reservation_time,
   }
 
   const { data, error, count } = await q;
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const orders = (data ?? []).map((o: any) => ({
     id: o.id,
@@ -146,7 +217,6 @@ reservation_id, reservation_date, reservation_time,
     reservation_time: o.reservation_time ?? null,
     chopsticks_qty: o.chopsticks_qty ?? null,
 
-    // rabat / lojalność
     promo_code: o.promo_code ?? null,
     discount_amount: Number(o.discount_amount ?? 0) || 0,
     loyalty_stickers_before: o.loyalty_stickers_before ?? null,
@@ -154,15 +224,24 @@ reservation_id, reservation_date, reservation_time,
     loyalty_applied: !!o.loyalty_applied,
     loyalty_reward_type: o.loyalty_reward_type ?? null,
     loyalty_reward_value:
-      o.loyalty_reward_value != null
-        ? Number(o.loyalty_reward_value)
-        : null,
+      o.loyalty_reward_value != null ? Number(o.loyalty_reward_value) : null,
     loyalty_min_order:
       o.loyalty_min_order != null ? Number(o.loyalty_min_order) : null,
   }));
 
-  return NextResponse.json(
-    { orders, totalCount: count ?? orders.length, restaurant_id: rid },
+  const res = NextResponse.json(
+    { orders, totalCount: count ?? orders.length, restaurant_id: finalRestaurantId },
     { headers: { "Cache-Control": "no-store" } }
   );
+
+  // self-heal cookies
+  res.cookies.set("restaurant_id", finalRestaurantId, CK_ID);
+  if (rslug) {
+    res.cookies.set("restaurant_slug", rslug, CK_SLUG);
+  } else {
+    // zamiast delete() (czasem typy Next krzyczą) -> twarde czyszczenie
+    res.cookies.set("restaurant_slug", "", { ...CK_SLUG, maxAge: 0 });
+  }
+
+  return res;
 }

@@ -79,6 +79,20 @@ const isSpamPath = (pathname: string, req: NextRequest) => {
   return false;
 };
 
+/**
+ * Kopiuje cookies ustawione na `from` (np. po refreshu sesji) do `to` (redirect/JSON),
+ * żeby nie gubić odświeżenia tokenów przy redirectach.
+ */
+function carryCookies(from: NextResponse, to: NextResponse) {
+  try {
+    const all = from.cookies.getAll();
+    for (const c of all) to.cookies.set(c);
+  } catch {
+    // no-op
+  }
+  return to;
+}
+
 export async function middleware(req: NextRequest) {
   const host = req.headers.get("host") ?? "";
   const isPreview =
@@ -98,9 +112,7 @@ export async function middleware(req: NextRequest) {
   const pathname = normalizePath(req.nextUrl.pathname);
 
   // /gone zostawiamy w spokoju
-  if (pathname === "/gone") {
-    return NextResponse.next();
-  }
+  if (pathname === "/gone") return NextResponse.next();
 
   // spam / stare ścieżki WP
   if (isSpamPath(pathname, req)) {
@@ -109,85 +121,108 @@ export async function middleware(req: NextRequest) {
     return gone;
   }
 
-  // wszystko poza /admin* nie wymaga auth
+  // Interesuje nas auth tylko dla /admin*
   if (!pathname.startsWith("/admin")) return NextResponse.next();
 
-  // /admin/login — dostępne bez logowania
-  if (pathname === "/admin/login") return NextResponse.next();
-
+  // Najpierw przygotuj res i supabase (żeby móc odświeżać cookies sesji)
   const res = NextResponse.next();
   const supabase = createMiddlewareClient<Database>({ req, res });
+
+  // /admin/login — dostępne bez logowania, ale jeśli ktoś już zalogowany → kieruj do /admin
+  if (pathname === "/admin/login") {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (session) {
+      const url = new URL("/admin", req.nextUrl.origin);
+      return carryCookies(res, NextResponse.redirect(url));
+    }
+    return res;
+  }
+
+  // /admin* wymaga sesji
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
-  // brak sesji → 401/redirect
   if (!session) {
     if (isJsonRequest(req)) {
-      return new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
+      const out = new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
       });
+      return carryCookies(res, out);
     }
+
     const url = new URL("/admin/login", req.nextUrl.origin);
     url.searchParams.set("r", pathname);
-    return NextResponse.redirect(url);
+    return carryCookies(res, NextResponse.redirect(url));
   }
 
-  // sprawdzenie uprawnień w restaurant_admins
+  // Sprawdzenie uprawnień w restaurant_admins:
+  // PRIORYTET: rola dla aktualnej restauracji z cookie restaurant_id
+  const restaurantId = req.cookies.get("restaurant_id")?.value ?? null;
+
   let adminRole: string | null = null;
 
   try {
-    const { data, error } = await supabase
-      .from("restaurant_admins")
-      .select("role")
-      .eq("user_id", session.user.id)
-      .order("added_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    if (restaurantId) {
+      const { data, error } = await supabase
+        .from("restaurant_admins")
+        .select("role")
+        .eq("user_id", session.user.id)
+        .eq("restaurant_id", restaurantId)
+        .limit(1)
+        .maybeSingle();
 
-    if (error) {
-      // jeśli coś wywaliło, traktujemy jak brak uprawnień
-      console.error("[middleware] restaurant_admins error:", error.message);
+      if (!error) {
+        const row = (data ?? null) as { role?: string } | null;
+        adminRole = row?.role ?? null;
+      }
     }
 
-    // WA: jeżeli typy Database nie mają tej tabeli, `data` ma typ `never`
-    const row = (data ?? null) as { role?: string } | null;
-    adminRole = row?.role ?? null;
+    // fallback: jak nie ma cookie albo nie znalazło — wystarczy jakikolwiek wpis admina
+    if (!adminRole) {
+      const { data, error } = await supabase
+        .from("restaurant_admins")
+        .select("role")
+        .eq("user_id", session.user.id)
+        .order("added_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.error("[middleware] restaurant_admins error:", error.message);
+      } else {
+        const row = (data ?? null) as { role?: string } | null;
+        adminRole = row?.role ?? null;
+      }
+    }
   } catch (e: any) {
     console.error("[middleware] restaurant_admins exception:", e?.message ?? e);
   }
 
-  // użytkownik zalogowany, ale nie jest adminem żadnej restauracji
   if (!adminRole) {
     if (isJsonRequest(req)) {
-      return new NextResponse(JSON.stringify({ error: "Forbidden" }), {
+      const out = new NextResponse(JSON.stringify({ error: "Forbidden" }), {
         status: 403,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
       });
+      return carryCookies(res, out);
     }
-    return NextResponse.redirect(new URL("/", req.nextUrl.origin));
+    return carryCookies(res, NextResponse.redirect(new URL("/", req.nextUrl.origin)));
   }
 
   // routing /admin → odpowiedni panel
   if (pathname === "/admin") {
-    let dest = "/";
-
-    if (adminRole === "employee") {
-      dest = "/admin/EmployeePanel";
-    } else {
-      // owner / admin / inne role traktujemy jako pełny admin
-      dest = "/admin/AdminPanel";
-    }
-
-    if (dest !== pathname) {
-      return NextResponse.redirect(new URL(dest, req.nextUrl.origin));
-    }
+    const dest = adminRole === "employee" ? "/admin/EmployeePanel" : "/admin/AdminPanel";
+    return carryCookies(res, NextResponse.redirect(new URL(dest, req.nextUrl.origin)));
   }
 
-  // dodatkowe ograniczenie: "employee" nie wejdzie na AdminPanel, jeśli chcesz:
+  // (opcjonalnie) blokada wejścia employee na AdminPanel:
   // if (pathname.startsWith("/admin/AdminPanel") && adminRole === "employee") {
-  //   return NextResponse.redirect(new URL("/admin/EmployeePanel", req.nextUrl.origin));
+  //   return carryCookies(res, NextResponse.redirect(new URL("/admin/EmployeePanel", req.nextUrl.origin)));
   // }
 
   return res;

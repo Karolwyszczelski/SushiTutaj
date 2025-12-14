@@ -1,3 +1,4 @@
+// src/app/api/reservations/update/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,16 @@ const supabaseAdmin = createClient<Database>(
     },
   }
 );
+
+function normalizeUuid(v?: string | null) {
+  if (!v) return null;
+  const x = String(v).replace(/[<>\s'"]/g, "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    x
+  )
+    ? x
+    : null;
+}
 
 // prosty sender: Resend, a jeśli brak – SMTP URL z nodemailer
 async function sendEmail(to: string, subject: string, html: string) {
@@ -62,51 +73,100 @@ async function sendEmail(to: string, subject: string, html: string) {
 
 export async function POST(req: Request) {
   try {
-    const { id, action, admin_note } = await req.json(); // action: 'accept' | 'cancel'
+    const body = await req.json().catch(() => null);
+    const rawId = body?.id ?? null;
+    const action = body?.action ?? null; // 'accept' | 'cancel'
+    const admin_note = body?.admin_note ?? null;
 
-    if (!id || !["accept", "cancel"].includes(action)) {
-      return NextResponse.json({ error: "Bad request" }, { status: 400 });
-    }
+    const reservationId = normalizeUuid(rawId);
 
-    // 1) Supabase auth – użytkownik musi być zalogowany
-    const supabaseServer = createRouteHandlerClient<Database>({ cookies });
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseServer.auth.getUser();
-
-    if (userError || !user) {
+    if (!reservationId || !["accept", "cancel"].includes(action)) {
       return NextResponse.json(
-        { error: "Nie jesteś zalogowany" },
-        { status: 401 }
+        { error: "Bad request" },
+        { status: 400, headers: { "Cache-Control": "no-store" } }
       );
     }
 
-    // 2) restaurant_id z cookie ustawianego przez /api/restaurants/ensure-cookie
-    const cookieStore = await cookies(); // tak samo jak w Twojej wcześniejszej wersji
-    const cookieRestaurantId =
-      cookieStore.get("restaurant_id")?.value ?? null;
+    // 1) Auth: sesja (stabilniej niż getUser() po czasie)
+    const supabaseServer = createRouteHandlerClient<Database>({ cookies });
+    const {
+      data: { session },
+    } = await supabaseServer.auth.getSession();
 
-    if (!cookieRestaurantId) {
+    const userId = session?.user?.id ?? null;
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Nie jesteś zalogowany" },
+        { status: 401, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    // 2) restaurant_id z cookie (ustawiane przez ensure-cookie)
+    const cookieStore = await cookies();
+    const cookieRestaurantIdRaw = cookieStore.get("restaurant_id")?.value ?? null;
+    let restaurantId = normalizeUuid(cookieRestaurantIdRaw);
+
+    // Jeśli cookie zniknęło: fallback na pierwszy przypisany lokal admina
+    const sbAny = supabaseAdmin as any; // (tymczasowo, gdy typy Database nie mają restaurant_admins)
+    if (!restaurantId) {
+      const { data: rows, error } = await sbAny
+        .from("restaurant_admins")
+        .select("restaurant_id, added_at")
+        .eq("user_id", userId)
+        .order("added_at", { ascending: true })
+        .limit(1);
+
+      if (error) {
+        return NextResponse.json(
+          { error: error.message },
+          { status: 500, headers: { "Cache-Control": "no-store" } }
+        );
+      }
+
+      restaurantId = normalizeUuid(rows?.[0]?.restaurant_id ?? null);
+    }
+
+    if (!restaurantId) {
       return NextResponse.json(
         {
           error:
             "Brak przypisanej restauracji (cookie restaurant_id). Otwórz panel z poziomu wybranego lokalu.",
         },
-        { status: 403 }
+        { status: 403, headers: { "Cache-Control": "no-store" } }
       );
     }
 
-    const restaurantId = cookieRestaurantId;
+    // 3) WALIDACJA: user musi mieć przypisanie do tej restauracji
+    {
+      const { data: ra, error: raErr } = await sbAny
+        .from("restaurant_admins")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("restaurant_id", restaurantId)
+        .limit(1);
 
-    // 3) pobierz rezerwację tylko z tej restauracji
+      if (raErr) {
+        return NextResponse.json(
+          { error: raErr.message },
+          { status: 500, headers: { "Cache-Control": "no-store" } }
+        );
+      }
+
+      if (!ra || ra.length === 0) {
+        return NextResponse.json(
+          { error: "Forbidden" },
+          { status: 403, headers: { "Cache-Control": "no-store" } }
+        );
+      }
+    }
+
+    // 4) pobierz rezerwację tylko z tej restauracji (service role, ale po walidacji)
     const { data: r, error: e1 } = await supabaseAdmin
       .from("reservations")
       .select(
         "id, name, email, phone, guests, note, reservation_date, reservation_time, restaurant_id, status"
       )
-      .eq("id", id)
+      .eq("id", reservationId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
 
@@ -118,7 +178,7 @@ export async function POST(req: Request) {
           error:
             "Rezerwacja nie istnieje lub nie należy do restauracji przypisanej do tego konta admina",
         },
-        { status: 404 }
+        { status: 404, headers: { "Cache-Control": "no-store" } }
       );
     }
 
@@ -137,7 +197,7 @@ export async function POST(req: Request) {
     const { data: updated, error: e2 } = await supabaseAdmin
       .from("reservations")
       .update(update)
-      .eq("id", id)
+      .eq("id", reservationId)
       .eq("restaurant_id", restaurantId)
       .select("*")
       .maybeSingle();
@@ -150,27 +210,22 @@ export async function POST(req: Request) {
           error:
             "Nie udało się zaktualizować rezerwacji (być może została już usunięta)",
         },
-        { status: 409 }
+        { status: 409, headers: { "Cache-Control": "no-store" } }
       );
     }
 
-    // 4) e-mail do klienta
+    // 5) e-mail do klienta
     const subject =
       action === "accept"
         ? "Potwierdzenie rezerwacji"
         : "Anulowanie rezerwacji";
 
-    const when = `${r.reservation_date} ${String(r.reservation_time).slice(
-      0,
-      5
-    )}`;
+    const when = `${r.reservation_date} ${String(r.reservation_time).slice(0, 5)}`;
 
     const html =
       action === "accept"
         ? `<p>Dzień dobry ${r.name || ""},</p>
-           <p>Potwierdzamy rezerwację na ${when} dla ${
-             r.guests || 1
-           } os.</p>
+           <p>Potwierdzamy rezerwację na ${when} dla ${r.guests || 1} os.</p>
            <p>Do zobaczenia!</p>`
         : `<p>Dzień dobry ${r.name || ""},</p>
            <p>Rezerwacja na ${when} została anulowana.</p>
@@ -184,7 +239,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 5) SMS po akceptacji
+    // 6) SMS po akceptacji
     if (action === "accept" && r.phone) {
       const smsText = `Sushi Tutaj: potwierdzamy rezerwację ${when} dla ${
         r.guests || 1
@@ -196,12 +251,25 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ ok: true, reservation: updated });
+    // 7) jeśli fallback dobrał restaurantId, warto „samouzdrawiać” cookie (spójność panelu)
+    const res = NextResponse.json(
+      { ok: true, reservation: updated },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+    res.cookies.set("restaurant_id", restaurantId, {
+      path: "/",
+      sameSite: "lax",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 60 * 60 * 24 * 30,
+    });
+
+    return res;
   } catch (err: any) {
     console.error("POST /api/reservations/update error:", err);
     return NextResponse.json(
       { error: err?.message || "Server error" },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }
