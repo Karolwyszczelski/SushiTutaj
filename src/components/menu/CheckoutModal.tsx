@@ -434,6 +434,289 @@ function normalizePlain(input: string): string {
     .toLowerCase();
 }
 
+/* ================= SAUCE PRICING (FREE ALLOWANCES) ================= */
+
+// Jeśli kiedyś zrobisz różne ceny sosów – zmieniasz tylko tutaj.
+const SAUCE_PRICES: Record<string, number> = Object.fromEntries(
+  ALL_SAUCES.map((s) => [s, 2])
+);
+
+const sauceUnitPrice = (s: string) => {
+  const p = SAUCE_PRICES[s];
+  return Number.isFinite(p) ? Number(p) : 2;
+};
+
+const isSauceAddon = (a: string) => ALL_SAUCES.includes(a);
+
+// Priorytet “które sosy najpierw wpadają jako darmowe” przy regule COUNT.
+// (Jeśli ceny kiedyś się różnią – tu masz deterministykę.)
+const SAUCE_PRIORITY: string[] = [
+  "Sos sojowy",
+  "Teryiaki",
+  "Spicy Mayo",
+  "Mango",
+  "Sriracha",
+  "Żurawina",
+  "Sos czekoladowy",
+  "Sos toffi",
+];
+
+type SauceRule =
+  | { kind: "none"; eligible: string[]; hint?: string }
+  | { kind: "count"; eligible: string[]; freeCount: number; hint?: string }
+  | {
+      kind: "perSauce";
+      eligible: string[];
+      freeBySauce: Record<string, number>;
+      hint?: string;
+    };
+
+function getSaucesForProductName(name: string, restaurantSlug: string): string[] {
+  const city = (restaurantSlug || "").toLowerCase();
+  const full = normalizePlain(name || "");
+
+  // Frytki z batatów tylko Przasnysz / Szczytno (tak jak masz już w kodzie)
+  const isSweetPotato =
+    (city === "szczytno" || city === "przasnysz") &&
+    (full.includes("frytki z batat") || full.includes("frytki batat"));
+
+  return isSweetPotato
+    ? ["Spicy Mayo", "Teryiaki", "Sos czekoladowy", "Sos toffi"]
+    : BASE_SAUCES;
+}
+
+function parseSetNumber(namePlain: string): number | null {
+  // łapie: "zestaw 10", "zestaw10", "zestaw-10"
+  const m = namePlain.match(/\bzestaw[\s\-]*([0-9]{1,3})\b/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function getFreeCountForSetLike(namePlain: string): number | null {
+  // 100 szt / 100szt => 4
+  if (/\b100\s*szt\b/i.test(namePlain) || /\b100szt\b/i.test(namePlain)) return 4;
+
+  // Zestawy numerowane
+  const n = parseSetNumber(namePlain);
+  if (n != null) {
+    if (n >= 1 && n <= 7) return 1;
+    if (n >= 8 && n <= 12) return 2;
+    if (n === 13) return 3;
+  }
+
+  // Tutaj Specjal (łapiemy też literówki typu "turtaj")
+  if (namePlain.includes("tutaj specjal") || namePlain.includes("turtaj specjal")) return 2;
+
+  // Zestaw miesiąca
+  if (namePlain.includes("zestaw miesiaca") || namePlain.includes("zestaw miesiąca")) return 1;
+
+  // Nigiri set
+  if (namePlain.includes("nigiri set") || namePlain.includes("set nigiri")) return 1;
+
+  // Lunch 1/2/3
+  if (/\blunch[\s\-]*[123]\b/i.test(namePlain)) return 1;
+
+  // Vege set 1/2
+  if (/\bvege[\s\-]*set[\s\-]*[12]\b/i.test(namePlain)) return 1;
+
+  return null;
+}
+
+function getSauceRuleForItem(params: {
+  itemName: string;
+  subcatLc: string;
+  restaurantSlug: string;
+}): SauceRule {
+  const itemName = params.itemName || "";
+  const namePlain = normalizePlain(itemName);
+  const sub = (params.subcatLc || "").toLowerCase();
+  const saucesForProduct = getSaucesForProductName(itemName, params.restaurantSlug);
+
+  // Przystawki specjalne:
+  const isTempuraMix = namePlain.includes("tempura mix");
+  const isShrimpTempura =
+    namePlain.includes("krewetki w tempurze") ||
+    namePlain.includes("krewetka w tempurze");
+
+  if (isTempuraMix) {
+    return {
+      kind: "perSauce",
+      eligible: saucesForProduct,
+      freeBySauce: { Teryiaki: 1, "Spicy Mayo": 1 },
+      hint: "W cenie: 1× Teryiaki + 1× Spicy Mayo gratis.",
+    };
+  }
+
+  if (isShrimpTempura) {
+    return {
+      kind: "perSauce",
+      eligible: saucesForProduct,
+      freeBySauce: { Teryiaki: 1, "Spicy Mayo": 1 },
+      hint: "W cenie: 1× Teryiaki + 1× Spicy Mayo gratis.",
+    };
+  }
+
+  // Frytki z batatów: 1 wybrany sos gratis (z puli batatowej)
+  const isSweetPotato =
+    saucesForProduct.length === 4 &&
+    (namePlain.includes("frytki z batat") || namePlain.includes("frytki batat"));
+
+  if (isSweetPotato) {
+    return {
+      kind: "count",
+      eligible: saucesForProduct,
+      freeCount: 1,
+      hint: "W cenie: 1 wybrany sos gratis (z puli do batatów).",
+    };
+  }
+
+  // Zestawy / sety / lunche / “set-like”
+  const isSetLike =
+    sub === "zestawy" ||
+    namePlain.includes("zestaw") ||
+    namePlain.includes(" set ") ||
+    namePlain.includes("lunch") ||
+    /\bset\b/i.test(namePlain);
+
+  if (isSetLike) {
+    const free = getFreeCountForSetLike(namePlain);
+    const freeCount = free ?? 1; // bezpieczny default dla innych zestawów
+    return {
+      kind: "count",
+      eligible: saucesForProduct,
+      freeCount,
+      hint: `W cenie: ${freeCount} sos${freeCount === 1 ? "" : "y"} gratis.`,
+    };
+  }
+
+  // Rolki: 1× Sos sojowy gratis (per produkt/pozycję)
+  const isRollLike =
+    sub.includes("futo") ||
+    sub.includes("hoso") ||
+    sub.includes("california") ||
+    sub.includes("nigiri");
+
+  if (isRollLike) {
+    return {
+      kind: "perSauce",
+      eligible: saucesForProduct,
+      freeBySauce: { "Sos sojowy": 1 },
+      hint: "W cenie: 1× Sos sojowy gratis.",
+    };
+  }
+
+  // Reszta: brak darmowych sosów (ale jeśli ktoś doda – liczymy normalnie)
+  return { kind: "none", eligible: saucesForProduct };
+}
+
+function computeSauceCostFromAddons(addons: unknown, rule: SauceRule) {
+  const arr: string[] = Array.isArray(addons) ? (addons as any[]).filter((x) => typeof x === "string") : [];
+  const countsAll = new Map<string, number>();
+
+  for (const a of arr) {
+    if (!isSauceAddon(a)) continue;
+    countsAll.set(a, (countsAll.get(a) ?? 0) + 1);
+  }
+
+  // Sosy spoza eligible (gdyby kiedyś UI/baza dołożyła coś nietypowego)
+  const eligibleSet = new Set(rule.eligible);
+  let nonEligibleCost = 0;
+  for (const [s, q] of countsAll.entries()) {
+    if (eligibleSet.has(s)) continue;
+    nonEligibleCost += q * sauceUnitPrice(s);
+  }
+
+  // Teraz liczymy tylko eligible z uwzględnieniem darmowych
+  const countsEligible = new Map<string, number>();
+  for (const [s, q] of countsAll.entries()) {
+    if (!eligibleSet.has(s)) continue;
+    countsEligible.set(s, q);
+  }
+
+  const chargedBySauce: Record<string, number> = {};
+  const freeBySauce: Record<string, number> = {};
+
+  const applyCharge = (s: string, chargedQty: number, freeQty: number) => {
+    if (chargedQty > 0) chargedBySauce[s] = (chargedBySauce[s] ?? 0) + chargedQty;
+    if (freeQty > 0) freeBySauce[s] = (freeBySauce[s] ?? 0) + freeQty;
+  };
+
+  let eligibleCost = 0;
+
+  if (rule.kind === "none") {
+    for (const [s, q] of countsEligible.entries()) {
+      eligibleCost += q * sauceUnitPrice(s);
+      applyCharge(s, q, 0);
+    }
+    return { cost: eligibleCost + nonEligibleCost, chargedBySauce, freeBySauce };
+  }
+
+  if (rule.kind === "perSauce") {
+    for (const [s, q] of countsEligible.entries()) {
+      const free = Math.max(0, Number(rule.freeBySauce[s] ?? 0));
+      const freeUsed = Math.min(q, free);
+      const charged = Math.max(0, q - freeUsed);
+      eligibleCost += charged * sauceUnitPrice(s);
+      applyCharge(s, charged, freeUsed);
+    }
+    return { cost: eligibleCost + nonEligibleCost, chargedBySauce, freeBySauce };
+  }
+
+  // kind === "count"
+  let freeRemaining = Math.max(0, Number(rule.freeCount || 0));
+
+  // deterministyczna kolejność: priorytet + reszta
+  const ordered = [
+    ...SAUCE_PRIORITY.filter((s) => countsEligible.has(s)),
+    ...Array.from(countsEligible.keys()).filter((s) => !SAUCE_PRIORITY.includes(s)),
+  ];
+
+  for (const s of ordered) {
+    const q = countsEligible.get(s) ?? 0;
+    const freeUsed = Math.min(q, freeRemaining);
+    freeRemaining -= freeUsed;
+    const charged = Math.max(0, q - freeUsed);
+
+    eligibleCost += charged * sauceUnitPrice(s);
+    applyCharge(s, charged, freeUsed);
+  }
+
+  return { cost: eligibleCost + nonEligibleCost, chargedBySauce, freeBySauce };
+}
+
+function computeNonSauceAddonsCost(addons: unknown, product?: ProductDb | null): number {
+  const arr: string[] = Array.isArray(addons) ? (addons as any[]).filter((x) => typeof x === "string") : [];
+  let sum = 0;
+  for (const a of arr) {
+    if (isSauceAddon(a)) continue; // sosy liczymy osobno (bo są darmowe limity)
+    sum += computeAddonPrice(a, product ?? null);
+  }
+  return sum;
+}
+
+function computeAddonsCostWithSauces(params: {
+  addons: unknown;
+  product: ProductDb | null | undefined;
+  itemName: string;
+  subcat: string;
+  restaurantSlug: string;
+}): { addonsCost: number; sauceHint?: string } {
+  const rule = getSauceRuleForItem({
+    itemName: params.itemName,
+    subcatLc: (params.subcat || "").toLowerCase(),
+    restaurantSlug: params.restaurantSlug,
+  });
+
+  const nonSauce = computeNonSauceAddonsCost(params.addons, params.product ?? null);
+  const sauce = computeSauceCostFromAddons(params.addons, rule);
+
+  return { addonsCost: nonSauce + sauce.cost, sauceHint: rule.hint };
+}
+
+/* =================================================================== */
+
+
 /**
  * California „obłożona” – np. obłożona łososiem na wierzchu.
  * Używamy tego, żeby rozróżnić:
@@ -1303,10 +1586,15 @@ const ProductItem: React.FC<{
 
   const priceNum =
     typeof prod.price === "string" ? parseFloat(prod.price) : prod.price || 0;
-  const addonsCost = (prod.addons ?? []).reduce((sum: number, addon: string) => {
-    const unit = computeAddonPrice(addon, prodInfo || undefined);
-    return sum + unit;
-  }, 0);
+  const { addonsCost, sauceHint } = useMemo(() => {
+  return computeAddonsCostWithSauces({
+    addons: prod.addons ?? [],
+    product: prodInfo ?? null,
+    itemName: String(prodInfo?.name || prod.name || ""),
+    subcat: String(subcat || ""),
+    restaurantSlug,
+  });
+}, [prod.addons, prodInfo, prod.name, subcat, restaurantSlug]);
   const lineTotal = (priceNum + addonsCost) * (prod.quantity || 1);
 
   // Czy dany extra jest dozwolony dla tego produktu
@@ -2189,9 +2477,10 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
       </div>
     </div>
 
-    <p className="text-[11px] text-black/60 mt-2">
-      Sosy są liczone po 2 zł za porcję.
-    </p>
+    <p className="text-[11px] text-black/60 mt-1">
+  {sauceHint ? `${sauceHint} ` : ""}
+  Dodatkowe porcje liczymy wg cennika sosów (obecnie 2 zł / porcja).
+</p>
   </div>
 )}
 
@@ -3195,14 +3484,14 @@ return () => {
       const priceNum =
         typeof it.price === "string" ? parseFloat(it.price) : it.price || 0;
       const productDb = resolveProduct(it);
-      const addonsCost = (it.addons ?? []).reduce(
-        (sum: number, addon: string) => {
-          const unit = computeAddonPrice(addon, productDb || undefined);
-          return sum + unit;
-        },
-        0
-      );
-      return acc + (priceNum + addonsCost) * qty;
+      const { addonsCost } = computeAddonsCostWithSauces({
+  addons: it.addons ?? [],
+  product: productDb ?? null,
+  itemName: String(productDb?.name || it.name || ""),
+  subcat: String((productDb?.subcategory || "") as string),
+  restaurantSlug,
+});
+return acc + (priceNum + addonsCost) * qty;
     }, 0);
   }, [items, resolveProduct]);
 
@@ -3215,14 +3504,14 @@ return () => {
       const priceNum =
         typeof it.price === "string" ? parseFloat(it.price) : it.price || 0;
       const productDb = resolveProduct(it);
-      const addonsCost = (it.addons ?? []).reduce(
-        (sum: number, addon: string) => {
-          const unit = computeAddonPrice(addon, productDb || undefined);
-          return sum + unit;
-        },
-        0
-      );
-      return (priceNum + addonsCost) * qty;
+      const { addonsCost } = computeAddonsCostWithSauces({
+  addons: it.addons ?? [],
+  product: productDb ?? null,
+  itemName: String(productDb?.name || it.name || ""),
+  subcat: String((productDb?.subcategory || "") as string),
+  restaurantSlug,
+});
+return (priceNum + addonsCost) * qty;
     },
     [resolveProduct]
   );
