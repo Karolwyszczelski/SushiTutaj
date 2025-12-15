@@ -59,6 +59,8 @@ type ModifierRow = {
   is_active: boolean | null;
 };
 
+const notNull = <T,>(v: T | null | undefined): v is T => v != null;
+
 const byPos = (a: { position: number | null }, b: { position: number | null }) =>
   (a.position ?? 9999) - (b.position ?? 9999);
 
@@ -203,7 +205,7 @@ export async function GET(req: Request) {
           })),
         };
       })
-      .filter(Boolean)
+      .filter(notNull)
       .sort(byPos);
 
     const variant_groups: Record<string, any[]> = {};
@@ -233,7 +235,7 @@ export async function GET(req: Request) {
             })),
           };
         })
-        .filter(Boolean)
+        .filter(notNull)
         .sort(byPos);
 
       if (gs.length) variant_groups[v.id] = gs;
