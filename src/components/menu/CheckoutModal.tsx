@@ -150,6 +150,13 @@ function computeEarnedStickersFromBase(baseWithoutDelivery: number): number {
   return Math.min(LOYALTY_REWARD_PERCENT_COUNT, Math.floor(base / LOYALTY_MIN_ORDER_BASE));
 }
 
+// Zaokrąglanie opłaty za dostawę do "ładnych" kwot (np. 5.00 / 5.50 / 6.00)
+const roundUpToStep = (value: number, step = 0.5) => {
+  if (!Number.isFinite(value) || !Number.isFinite(step) || step <= 0) return 0;
+  const result = Math.ceil(value / step) * step;
+  return Math.round(result * 100) / 100; // bezpieczeństwo na floatach
+};
+
 
 /* Sushi sosy i dodatki */
 const BASE_SAUCES = [
@@ -247,23 +254,11 @@ const SET_UPGRADE_ADDON = "Powiększenie zestawu";
 
 /* NOWE: bazowe opcje do tatara – bez dopłaty */
 const TARTAR_BASES = [
-  "Podanie: na awokado",
-  "Podanie: na chipsach krewetkowych",
+  "Wyłożone: na awokado",
+  "Wyłożone: na chipsach krewetkowych",
 ];
 
-const TARTAR_DEFAULT_BASE = "Podanie: na awokado";
-
-const TARTAR_INFO_BY_BASE: Record<string, string[]> = {
-  "Podanie: na awokado": [
-    'Wykładamy spód foremki do tatara "ring" +/- połówką awokado.',
-    "Na to 180 g tatara.",
-  ],
-  "Podanie: na chipsach krewetkowych": [
-    'Wykładamy spód foremki do tatara "ring" cienką warstwą ryżu.',
-    "Na to 180 g tatara.",
-    "Chipsy krewetkowe (4–5 szt.).",
-  ],
-};
+const TARTAR_DEFAULT_BASE = "Wyłożone: na awokado";
 
 
 
@@ -2054,7 +2049,7 @@ const isTartar = useMemo(() => {
     [isTartar, prod.addons, prod.name, addAddon, removeAddon]
   );
 
-  // domyślnie: "na ryżu", jeśli użytkownik jeszcze nie wybrał
+  // domyślnie: "na awokado", jeśli użytkownik jeszcze nie wybrał
   useEffect(() => {
     if (!isTartar) return;
     if (currentTartarBase) return;
@@ -3202,10 +3197,7 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
 
                {isTartar && (
   <div className="mt-2">
-    <div className="font-semibold mb-1">TATAR ŁOSOŚ / TUŃCZYK</div>
-    <p className="text-[11px] text-black/60 mb-2">
-      Wybierz sposób podania (bez dopłaty): na chipsach krewetkowych albo na awokado.
-    </p>
+    <div className="font-semibold mb-2">TATAR ŁOSOŚ / TUŃCZYK</div>
 
     <div className="flex flex-wrap gap-2">
       {TARTAR_BASES.map((base) => {
@@ -3228,23 +3220,6 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
         );
       })}
     </div>
-
-    {(() => {
-      const activeBase = currentTartarBase || TARTAR_DEFAULT_BASE;
-      const lines = TARTAR_INFO_BY_BASE[activeBase] || [];
-      return (
-        <div className="mt-2 rounded-xl border border-black/10 bg-gray-50 px-3 py-2">
-          <div className="text-[11px] font-semibold text-black/70 mb-1">
-            Instrukcja podania:
-          </div>
-          <ul className="text-[11px] text-black/70 space-y-1">
-            {lines.map((l, idx) => (
-              <li key={idx}>• {l}</li>
-            ))}
-          </ul>
-        </div>
-      );
-    })()}
   </div>
 )}
       </div>
@@ -4121,7 +4096,8 @@ return (priceNum + addonsCost) * qty;
       setDeliveryMinRequired(zone.min_order_value || 0);
 
       const eta = `${zone.eta_min_minutes}-${zone.eta_max_minutes} min`;
-      setDeliveryInfo({ cost: Math.max(0, Math.round(cost * 100) / 100), eta });
+      const roundedDelivery = roundUpToStep(Math.max(0, cost), 0.5);
+setDeliveryInfo({ cost: roundedDelivery, eta });
     } catch {
       // opcjonalnie: setDeliveryInfo(null)
     }
