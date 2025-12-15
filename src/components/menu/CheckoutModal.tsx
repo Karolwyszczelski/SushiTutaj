@@ -261,7 +261,7 @@ const TARTAR_INFO_BY_BASE: Record<string, string[]> = {
   "Podanie: na chipsach krewetkowych": [
     'Wykładamy spód foremki do tatara "ring" cienką warstwą ryżu.',
     "Na to 180 g tatara.",
-    "Chipsy krewetkowe (4–5 szt.) dajemy obok (żeby nie zmiękły).",
+    "Chipsy krewetkowe (4–5 szt.).",
   ],
 };
 
