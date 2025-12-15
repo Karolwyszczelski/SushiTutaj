@@ -695,9 +695,10 @@ function getSauceRuleForItem(params: {
     };
   }
 
-  // Zestawy / sety / lunche / “set-like”
+    // Zestawy / specjały / sety / lunche / “set-like”
   const isSetLike =
     sub === "zestawy" ||
+    sub.includes("specja") || // "specjały" / "specjaly"
     namePlain.includes("zestaw") ||
     namePlain.includes(" set ") ||
     namePlain.includes("lunch") ||
@@ -705,30 +706,15 @@ function getSauceRuleForItem(params: {
 
   if (isSetLike) {
     const free = getFreeCountForSetLike(namePlain);
-    const freeCount = free ?? 1; // bezpieczny default dla innych zestawów
-    return {
-      kind: "count",
-      eligible: saucesForProduct,
-      freeCount,
-      hint: `W cenie: ${freeCount} sos${freeCount === 1 ? "" : "y"} gratis.`,
-    };
-  }
-
-  // Rolki: 1× Sos sojowy gratis (per produkt/pozycję)
-  const isRollLike =
-    sub.includes("futo") ||
-    sub.includes("hoso") ||
-    sub.includes("california") ||
-    sub.includes("nigiri");
-
-  if (isRollLike) {
+    const freeSoy = Math.max(0, free ?? 1); // default 1 dla innych setów
     return {
       kind: "perSauce",
       eligible: saucesForProduct,
-      freeBySauce: { "Sos sojowy": 1 },
-      hint: "W cenie: 1× Sos sojowy gratis.",
+      freeBySauce: { "Sos sojowy": freeSoy },
+      hint: `W cenie: ${freeSoy}× Sos sojowy gratis.`,
     };
   }
+
 
   // Reszta: brak darmowych sosów (ale jeśli ktoś doda – liczymy normalnie)
   return { kind: "none", eligible: saucesForProduct };
@@ -4794,7 +4780,7 @@ const LegalConsent = (
         href="/legal/regulamin"
         target="_blank"
         rel="noopener noreferrer"
-        className="underline"
+        className="underline text-[#de1d13] visited:text-[#de1d13] hover:opacity-80"
       >
         Regulamin
       </a>{" "}
@@ -4803,7 +4789,7 @@ const LegalConsent = (
         href="/legal/polityka-prywatnosci"
         target="_blank"
         rel="noopener noreferrer"
-        className="underline"
+        className="underline text-[#de1d13] visited:text-[#de1d13] hover:opacity-80"
       >
         Politykę prywatności
       </a>{" "}
