@@ -2882,6 +2882,11 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
         {showSauces && (
   <div className="mt-2">
     <div className="font-semibold mb-2">Sosy</div>
+    {/* info o sosach (przeniesione nad listę) */}
+<p className="text-[11px] text-black/60 -mt-1 mb-2">
+  {sauceHint ? `${sauceHint} ` : ""}
+  Dodatkowe porcje liczymy wg cennika sosów (obecnie 2 zł / porcja).
+</p>
         {shouldAutoPrefillFreeSauces && freeSaucesTotal > 0 && (
       <div className="mb-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2">
         <div className="text-[11px] font-semibold text-black">
@@ -2957,11 +2962,6 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
         })}
       </div>
     </div>
-
-    <p className="text-[11px] text-black/60 mt-1">
-  {sauceHint ? `${sauceHint} ` : ""}
-  Dodatkowe porcje liczymy wg cennika sosów (obecnie 2 zł / porcja).
-</p>
   </div>
 )}
 
