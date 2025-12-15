@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import React, {
   useState,
@@ -170,6 +170,61 @@ const ALL_SAUCES = [...BASE_SAUCES, ...BATATA_SAUCES];
 const EXTRAS = ["Tempura", "Płatek sojowy", "Tamago", "Ryba pieczona"];
 const SWAP_FEE_NAME = "Zamiana w zestawie";
 
+// ===== DB-DRIVEN OPTIONS (warianty / modyfikatory) =====
+const DBVAR_PREFIX = "DBVAR|"; // DBVAR|<variantId>|<priceCents>|<name>
+const DBMOD_PREFIX = "DBMOD|"; // DBMOD|<groupId>|<modifierId>|<priceCents>|<name>
+
+type DbVariant = { id: string; name: string; price_delta_cents: number; position?: number };
+type DbModifier = { id: string; name: string; price_delta_cents: number; position?: number };
+type DbGroup = {
+  id: string;
+  name: string;
+  min_select: number;
+  max_select: number;
+  is_required: boolean;
+  position?: number;
+  modifiers: DbModifier[];
+};
+type DbProductOptions = {
+  product_id: string;
+  variants: DbVariant[];
+  groups: DbGroup[];
+  variant_groups: Record<string, DbGroup[]>;
+};
+
+function buildDbVarAddon(v: DbVariant) {
+  const priceCents = Number(v.price_delta_cents || 0);
+  return `${DBVAR_PREFIX}${v.id}|${priceCents}|${v.name}`;
+}
+function parseDbVarAddon(a: string) {
+  if (!a?.startsWith(DBVAR_PREFIX)) return null;
+  const parts = a.split("|");
+  if (parts.length < 3) return null;
+  const variantId = parts[1];
+  const priceCents = Number(parts[2] || 0);
+  const name = parts.slice(3).join("|") || "";
+  return { variantId, priceCents, name };
+}
+
+function buildDbModAddon(groupId: string, m: DbModifier) {
+  const priceCents = Number(m.price_delta_cents || 0);
+  return `${DBMOD_PREFIX}${groupId}|${m.id}|${priceCents}|${m.name}`;
+}
+function parseDbModAddon(a: string) {
+  if (!a?.startsWith(DBMOD_PREFIX)) return null;
+  const parts = a.split("|");
+  if (parts.length < 4) return null;
+  const groupId = parts[1];
+  const modifierId = parts[2];
+  const priceCents = Number(parts[3] || 0);
+  const name = parts.slice(4).join("|") || "";
+  return { groupId, modifierId, priceCents, name };
+}
+
+const fmtPlnFromCents = (cents: number) =>
+  (Math.max(0, Number(cents || 0)) / 100).toFixed(2).replace(".", ",");
+
+
 /** Cennik dodatków (poza sosami) */
 const EXTRA_PRICES: Record<string, number> = {
   Tempura: 4,
@@ -193,9 +248,24 @@ const SET_UPGRADE_ADDON = "Powiększenie zestawu";
 /* NOWE: bazowe opcje do tatara – bez dopłaty */
 const TARTAR_BASES = [
   "Podanie: na awokado",
-  "Podanie: na ryżu",
   "Podanie: na chipsach krewetkowych",
 ];
+
+const TARTAR_DEFAULT_BASE = "Podanie: na awokado";
+
+const TARTAR_INFO_BY_BASE: Record<string, string[]> = {
+  "Podanie: na awokado": [
+    'Wykładamy spód foremki do tatara "ring" +/- połówką awokado.',
+    "Na to 180 g tatara.",
+  ],
+  "Podanie: na chipsach krewetkowych": [
+    'Wykładamy spód foremki do tatara "ring" cienką warstwą ryżu.',
+    "Na to 180 g tatara.",
+    "Chipsy krewetkowe (4–5 szt.) dajemy obok (żeby nie zmiękły).",
+  ],
+};
+
+
 
 /* Warianty pierożków Gyoza – bez dopłat, tylko informacja dla kuchni */
 const GYOZA_ADDON_PREFIX = "Gyoza: ";
@@ -944,6 +1014,15 @@ function isSushiSpecjalProduct(
 }
 
 function computeAddonPrice(addon: string, product?: ProductDb | null): number {
+   // DB: modyfikatory / warianty (cena w centach w samym stringu addona)
+  if (addon.startsWith(DBMOD_PREFIX)) {
+    const p = parseDbModAddon(addon);
+    return p ? (p.priceCents || 0) / 100 : 0;
+  }
+  if (addon.startsWith(DBVAR_PREFIX)) {
+    const p = parseDbVarAddon(addon);
+    return p ? (p.priceCents || 0) / 100 : 0;
+  }
   if (ALL_SAUCES.includes(addon)) return 2;
   if (addon === SWAP_FEE_NAME) return 5;
 
@@ -1544,12 +1623,14 @@ const ProductItem: React.FC<{
   productsDb: ProductDb[];
   optionsByCat: Record<string, string[]>;
   restaurantSlug: string;
+  dbOptionsByProductId: Record<string, DbProductOptions>;
   helpers: {
   addAddon: (name: string, addon: string, opts?: { allowDuplicate?: boolean }) => void;
   removeAddon: (name: string, addon: string, opts?: { removeOne?: boolean }) => void;
   swapIngredient: (name: string, from: string, to: string) => void;
   removeItem: (name: string) => void;
   removeWholeItem: (name: string) => void;
+  
 };
 }> = ({
   prod,
@@ -1557,6 +1638,7 @@ const ProductItem: React.FC<{
   productsDb,
   optionsByCat,
   restaurantSlug,
+  dbOptionsByProductId,
   helpers,
 }) => {
   const { addAddon, removeAddon, swapIngredient, removeItem, removeWholeItem } =
@@ -1672,6 +1754,112 @@ const ProductItem: React.FC<{
     );
     return (found?.to as string) || rowFrom;
   };
+
+    const productId =
+    (prodInfo?.id as string | undefined) ||
+    (prod.product_id as string | undefined) ||
+    (prod.id as string | undefined);
+
+  const dbCfg = productId ? dbOptionsByProductId[productId] : null;
+
+  const addonsArr: string[] = Array.isArray(prod.addons) ? (prod.addons as string[]) : [];
+
+  const currentDbVariantId = useMemo(() => {
+    const found = addonsArr.find((a) => typeof a === "string" && a.startsWith(DBVAR_PREFIX));
+    return found ? parseDbVarAddon(found)?.variantId ?? null : null;
+  }, [addonsArr]);
+
+  const activeDbGroups = useMemo(() => {
+    if (!dbCfg) return [] as DbGroup[];
+    const base = Array.isArray(dbCfg.groups) ? dbCfg.groups : [];
+    const vg = currentDbVariantId && dbCfg.variant_groups
+      ? (dbCfg.variant_groups[currentDbVariantId] || [])
+      : [];
+    // uniq po id
+    const m = new Map<string, DbGroup>();
+    for (const g of base) m.set(g.id, g);
+    for (const g of vg) m.set(g.id, g); // wariant może nadpisać
+    return Array.from(m.values()).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  }, [dbCfg, currentDbVariantId]);
+
+  const hasDbOptions = !!dbCfg && ((dbCfg.variants?.length || 0) > 0 || activeDbGroups.length > 0);
+
+  const clearDbVariant = () => {
+    for (const a of addonsArr) {
+      if (typeof a === "string" && a.startsWith(DBVAR_PREFIX)) removeAddon(prod.name, a);
+    }
+  };
+
+  const setDbVariant = (variantId: string) => {
+    if (!dbCfg?.variants?.length) return;
+
+    const target = dbCfg.variants.find((v) => v.id === variantId);
+    if (!target) return;
+
+    // zdejmij poprzedni wariant
+    clearDbVariant();
+
+    // usuń modyfikatory z grup wariantowych (żeby nie wisiały po zmianie wariantu)
+    const allVariantGroupIds = new Set<string>();
+    Object.values(dbCfg.variant_groups || {}).forEach((gs) => gs.forEach((g) => allVariantGroupIds.add(g.id)));
+    for (const a of addonsArr) {
+      const p = parseDbModAddon(a);
+      if (p && allVariantGroupIds.has(p.groupId)) removeAddon(prod.name, a);
+    }
+
+    // dodaj nowy
+    addAddon(prod.name, buildDbVarAddon(target));
+  };
+
+  const selectedCountInGroup = (groupId: string) =>
+    addonsArr.filter((a) => {
+      const p = parseDbModAddon(a);
+      return p?.groupId === groupId;
+    }).length;
+
+  const hasModifierInGroup = (groupId: string, modifierId: string) =>
+    addonsArr.some((a) => {
+      const p = parseDbModAddon(a);
+      return p?.groupId === groupId && p?.modifierId === modifierId;
+    });
+
+  const clearGroup = (groupId: string) => {
+    for (const a of addonsArr) {
+      const p = parseDbModAddon(a);
+      if (p?.groupId === groupId) removeAddon(prod.name, a);
+    }
+  };
+
+  const toggleDbModifier = (group: DbGroup, mod: DbModifier) => {
+    const key = buildDbModAddon(group.id, mod);
+    const on = hasModifierInGroup(group.id, mod.id);
+
+    const min = Math.max(0, Number(group.min_select || 0));
+    const max = Math.max(min, Number(group.max_select || min));
+
+    // radio (max<=1)
+    if (max <= 1) {
+      if (on) {
+        // można odznaczyć tylko jeśli min=0
+        if (min === 0) removeAddon(prod.name, key);
+        return;
+      }
+      clearGroup(group.id);
+      addAddon(prod.name, key);
+      return;
+    }
+
+    // multi
+    if (on) {
+      removeAddon(prod.name, key);
+      return;
+    }
+
+    const cnt = selectedCountInGroup(group.id);
+    if (cnt >= max) return; // blokada
+    addAddon(prod.name, key);
+  };
+
 
   const priceNum =
     typeof prod.price === "string" ? parseFloat(prod.price) : prod.price || 0;
@@ -1818,36 +2006,61 @@ const decSauce = useCallback(
 );
 
 
-  // Tatar: tylko w Szczytnie / Przasnyszu, przystawki + tatar z łososia/tuńczyka
- // Tatar: tylko w Szczytnie / Przasnyszu, przystawki + tatar z łososia/tuńczyka
- // Tatar: tylko w Szczytnie / Przasnyszu, przystawki + tatar z łososia/tuńczyka
-  const isTartar = useMemo(() => {
-    if (!prodInfo) return false;
+  // Tatar: globalnie (wszystkie miasta) — przystawki + tatar z łososia/tuńczyka
+const isTartar = useMemo(() => {
+  if (!prodInfo) return false;
 
-    const sub = (prodInfo.subcategory || "").toLowerCase();
-    // ważne: fragment "przystawk" łapie "Przystawka", "Przystawki" itd.
-    if (!sub.includes("przystawk")) return false;
+  const sub = (prodInfo.subcategory || "").toLowerCase();
+  if (!sub.includes("przystawk")) return false;
 
-    const city = (restaurantSlug || "").toLowerCase();
-    if (city !== "szczytno" && city !== "przasnysz") return false;
+  const text = `${prodInfo.name} ${prodInfo.description || ""}`.toLowerCase();
+  if (!text.includes("tatar")) return false;
 
-    const text = `${prodInfo.name} ${prodInfo.description || ""}`.toLowerCase();
-    if (!text.includes("tatar")) return false;
+  const hasFish =
+    text.includes("łosoś") ||
+    text.includes("łososia") ||
+    text.includes("losos") ||
+    text.includes("lososia") ||
+    text.includes("łososi") ||
+    text.includes("lososi") ||
+    text.includes("tuńczyk") ||
+    text.includes("tunczyk") ||
+    text.includes("tuńczyka") ||
+    text.includes("tunczyka");
 
-    const hasFish =
-      text.includes("łosoś") ||
-      text.includes("łososia") ||
-      text.includes("losos") ||
-      text.includes("lososia") ||
-      text.includes("łososi") ||
-      text.includes("lososi") ||
-      text.includes("tuńczyk") ||
-      text.includes("tunczyk") ||
-      text.includes("tuńczyka") ||
-      text.includes("tunczyka");
+  return hasFish;
+}, [prodInfo]);
 
-    return hasFish;
-  }, [prodInfo, restaurantSlug]);
+    // ===== TATAR: wybór sposobu podania (max 1, bez dopłaty) =====
+  const currentTartarBase = useMemo<string | null>(() => {
+    if (!isTartar) return null;
+    const arr: string[] = Array.isArray(prod.addons) ? (prod.addons as string[]) : [];
+    const found = arr.find((a) => typeof a === "string" && TARTAR_BASES.includes(a));
+    return found || null;
+  }, [isTartar, prod.addons]);
+
+  const setTartarBase = useCallback(
+    (base: string) => {
+      if (!isTartar) return;
+
+      // zdejmij poprzedni wybór
+      TARTAR_BASES.forEach((b) => {
+        if ((prod.addons ?? []).includes(b)) removeAddon(prod.name, b);
+      });
+
+      // ustaw nowy
+      addAddon(prod.name, base);
+    },
+    [isTartar, prod.addons, prod.name, addAddon, removeAddon]
+  );
+
+  // domyślnie: "na ryżu", jeśli użytkownik jeszcze nie wybrał
+  useEffect(() => {
+    if (!isTartar) return;
+    if (currentTartarBase) return;
+    addAddon(prod.name, TARTAR_DEFAULT_BASE);
+  }, [isTartar, currentTartarBase, addAddon, prod.name]);
+
 
    // Pierożki Gyoza – wybór wariantu (warzywne / z kurczakiem)
   const isGyoza = useMemo(
@@ -1899,10 +2112,39 @@ const decSauce = useCallback(
   return null;
 }, [prod, prodInfo]);
 
+// 1) Najpewniejsza detekcja: po subkategorii z DB (napoje = bez sosów)
+const drinkSubcatPlain = useMemo(
+  () =>
+    normalizePlain(
+      String(prodInfo?.subcategory || productSubcat || subcat || "")
+    ),
+  [prodInfo?.subcategory, productSubcat, subcat]
+);
+
+const isDrinkBySubcat = drinkSubcatPlain.includes("napoj"); // łapie "napoje", "napój", itd.
+
 const isDrink =
-  !!softDrink || isWater || isBubbleTea || isRamune || isJuice || isLipton;
+  isDrinkBySubcat ||
+  !!softDrink ||
+  isWater ||
+  isBubbleTea ||
+  isRamune ||
+  isJuice ||
+  isLipton;
 
 const showSauces = !isDrink && !isDessert;
+
+// 2) Bezpiecznik: jeśli to napój/deser, usuń sosy z addonów (żeby nie naliczało kosztu)
+useEffect(() => {
+  if (!isDrink && !isDessert) return;
+
+  const arr: string[] = Array.isArray(prod.addons) ? (prod.addons as string[]) : [];
+  for (const a of arr) {
+    if (!isSauceAddon(a)) continue;
+    // usuń każdą porcję (obsługa duplikatów)
+    removeAddon(prod.name, a, { removeOne: true });
+  }
+}, [isDrink, isDessert, prod.addons, prod.name, removeAddon]);
 
 
 const SOFT_DRINK_GROUP = useMemo<SoftDrinkGroup | null>(() => {
@@ -1915,18 +2157,28 @@ const SOFT_DRINK_GROUP = useMemo<SoftDrinkGroup | null>(() => {
         prefix: PEPSI_ADDON_PREFIX,
         variants: PEPSI_VARIANTS as readonly SoftDrinkVariant[],
       };
+
     case "fanta":
       return {
         title: "Wariant napoju",
         prefix: FANTA_ADDON_PREFIX,
         variants: FANTA_VARIANTS as readonly SoftDrinkVariant[],
       };
+
     case "sprite":
       return {
         title: "Wariant napoju",
         prefix: SPRITE_ADDON_PREFIX,
         variants: SPRITE_VARIANTS as readonly SoftDrinkVariant[],
       };
+
+    case "7up":
+      return {
+        title: "Wariant napoju",
+        prefix: SEVENUP_ADDON_PREFIX,
+        variants: SEVENUP_VARIANTS as readonly SoftDrinkVariant[],
+      };
+
     case "cola":
     default:
       return {
@@ -1934,15 +2186,9 @@ const SOFT_DRINK_GROUP = useMemo<SoftDrinkGroup | null>(() => {
         prefix: COLA_ADDON_PREFIX,
         variants: COLA_VARIANTS as readonly SoftDrinkVariant[],
       };
-      case "7up":
-  return {
-    title: "Wariant napoju",
-    prefix: SEVENUP_ADDON_PREFIX,
-    variants: SEVENUP_VARIANTS as readonly SoftDrinkVariant[],
-  };
-
   }
 }, [softDrink]);
+
 
 const isSashimi = useMemo(() => isSashimiProduct(prod, prodInfo), [prod, prodInfo]);
 
@@ -2955,15 +3201,52 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
         )}
 
                {isTartar && (
-          <div>
-            <div className="font-semibold mb-1">Sposób podania tatara</div>
-            <p className="text-[11px] text-black/60 mt-1">
-              Tatar wydajemy standardowo na ryżu. W lokalach w Przasnyszu i
-              Szczytnie dokładamy obok chipsy krewetkowe – nie musisz niczego
-              zaznaczać w zamówieniu.
-            </p>
+  <div className="mt-2">
+    <div className="font-semibold mb-1">TATAR ŁOSOŚ / TUŃCZYK</div>
+    <p className="text-[11px] text-black/60 mb-2">
+      Wybierz sposób podania (bez dopłaty): na chipsach krewetkowych albo na awokado.
+    </p>
+
+    <div className="flex flex-wrap gap-2">
+      {TARTAR_BASES.map((base) => {
+        const active = (currentTartarBase || TARTAR_DEFAULT_BASE) === base;
+        const label = base.replace(/^Podanie:\s*/i, "");
+        return (
+          <button
+            key={base}
+            type="button"
+            onClick={() => setTartarBase(base)}
+            className={clsx(
+              "px-2 py-1 rounded text-xs border",
+              active
+                ? "bg-black text-white border-black"
+                : "bg-white text-black hover:bg-gray-50 border-gray-200"
+            )}
+          >
+            {active ? `✓ ${label}` : label}
+          </button>
+        );
+      })}
+    </div>
+
+    {(() => {
+      const activeBase = currentTartarBase || TARTAR_DEFAULT_BASE;
+      const lines = TARTAR_INFO_BY_BASE[activeBase] || [];
+      return (
+        <div className="mt-2 rounded-xl border border-black/10 bg-gray-50 px-3 py-2">
+          <div className="text-[11px] font-semibold text-black/70 mb-1">
+            Instrukcja podania:
           </div>
-        )}
+          <ul className="text-[11px] text-black/70 space-y-1">
+            {lines.map((l, idx) => (
+              <li key={idx}>• {l}</li>
+            ))}
+          </ul>
+        </div>
+      );
+    })()}
+  </div>
+)}
       </div>
 
       <div className="flex justify-end items-center mt-2 gap-2 flex-wrap text-[15px]">
@@ -3115,7 +3398,6 @@ export default function CheckoutModal() {
 const [scheduledTime, setScheduledTime] = useState<string>("");
 
 
-
   const [productsDb, setProductsDb] = useState<ProductDb[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [restLoc, setRestLoc] = useState<{ lat: number; lng: number } | null>(null);
@@ -3138,6 +3420,42 @@ const [scheduledTime, setScheduledTime] = useState<string>("");
   const [outOfRange, setOutOfRange] = useState(false);
   const [custCoords, setCustCoords] = useState<{ lat: number; lng: number } | null>(null);
 
+  // 2C) Reset stanów dostawy przy przełączeniu na "Na wynos"
+const resetDeliveryState = useCallback(() => {
+  // wyliczenia dostawy / walidacje stref
+  setDeliveryInfo(null);
+  setOutOfRange(false);
+  setDeliveryMinOk(true);
+  setDeliveryMinRequired(0);
+
+  // koordynaty z Google (kluczowe, bo bez tego delivery powinno startować od zera)
+  setCustCoords(null);
+
+  // pola adresowe (żeby nie “wisiał” stary adres w tle)
+  setStreet("");
+  setPostalCode("");
+  setCity("");
+  setFlatNumber("");
+}, []);
+
+const handleSelectOption = useCallback(
+  (opt: OrderOption) => {
+    setSelectedOption(opt);
+
+    if (opt === "takeaway") {
+      resetDeliveryState();
+      // (opcjonalnie) jeśli chcesz, żeby "na godzinę" też się resetowało przy na wynos:
+      // setDeliveryTimeOption("asap");
+      // setScheduledTime("");
+    } else {
+      // (opcjonalnie) jeśli przechodzisz na dostawę, możesz czyścić pole uwag do odbioru:
+      // setOptionalAddress("");
+    }
+  },
+  [resetDeliveryState]
+);
+
+
   const sessionEmail = session?.user?.email || "";
   const effectiveEmail = (contactEmail || sessionEmail).trim();
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -3148,6 +3466,45 @@ const [scheduledTime, setScheduledTime] = useState<string>("");
   const restaurantPhone = getRestaurantPhone(restaurantSlug);
 
   const [checkoutConfig, setCheckoutConfig] = useState<CheckoutConfig | null>(null);
+
+    // DB options (warianty / modyfikatory) per produkt
+  const [dbOptionsByProductId, setDbOptionsByProductId] = useState<Record<string, DbProductOptions>>({});
+
+  useEffect(() => {
+    if (!restaurantSlug || !isCheckoutOpen) {
+      setDbOptionsByProductId({});
+      return;
+    }
+
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const res = await fetch(
+          `/api/public/product-options?restaurant=${encodeURIComponent(restaurantSlug)}`,
+          { cache: "no-store" }
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+
+        const arr: DbProductOptions[] = Array.isArray(json?.items) ? json.items : [];
+        const map: Record<string, DbProductOptions> = {};
+        for (const it of arr) {
+          if (it?.product_id) map[String(it.product_id)] = it;
+        }
+
+        if (!cancelled) setDbOptionsByProductId(map);
+      } catch {
+        if (!cancelled) setDbOptionsByProductId({});
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurantSlug, isCheckoutOpen]);
+
 
 const requireAutocomplete =
   checkoutConfig?.requireAutocomplete ?? DEFAULT_REQUIRE_AUTOCOMPLETE;
@@ -3728,8 +4085,10 @@ return (priceNum + addonsCost) * qty;
     [items, resolveProduct, isProductEligibleForPromo]
   );
 
-  const calcDelivery = async (custLat: number, custLng: number) => {
+  const calcDelivery = useCallback(
+  async (custLat: number, custLng: number) => {
     if (!restLoc) return;
+
     try {
       const resp = await fetch(
         `/api/distance?origin=${restLoc.lat},${restLoc.lng}&destination=${custLat},${custLng}`
@@ -3748,11 +4107,13 @@ return (priceNum + addonsCost) * qty;
         setDeliveryInfo({ cost: 0, eta: "Poza zasięgiem" });
         return;
       }
+
       setOutOfRange(false);
 
       const perKm =
         (zone.pricing_type ?? (zone.min_distance_km === 0 ? "flat" : "per_km")) === "per_km";
       let cost = perKm ? zone.cost * distance_km : zone.cost;
+
       if (zone.free_over != null && subtotal >= zone.free_over) cost = 0;
 
       const minOk = subtotal >= (zone.min_order_value || 0);
@@ -3761,8 +4122,13 @@ return (priceNum + addonsCost) * qty;
 
       const eta = `${zone.eta_min_minutes}-${zone.eta_max_minutes} min`;
       setDeliveryInfo({ cost: Math.max(0, Math.round(cost * 100) / 100), eta });
-    } catch {}
-  };
+    } catch {
+      // opcjonalnie: setDeliveryInfo(null)
+    }
+  },
+  [restLoc, zones, subtotal]
+);
+
 
   const onAddressSelect = (address: string, lat: number, lng: number) => {
     setStreet(address);
@@ -3772,6 +4138,17 @@ return (priceNum + addonsCost) * qty;
     }
   };
 
+  useEffect(() => {
+  if (selectedOption !== "delivery") return;
+  if (!custCoords) return;
+  calcDelivery(custCoords.lat, custCoords.lng);
+}, [selectedOption, custCoords, calcDelivery]);
+
+const deliveryCost =
+  selectedOption === "delivery" ? (deliveryInfo?.cost || 0) : 0;
+
+
+
   const discount = useMemo(() => {
     if (!promo) return 0;
     const base = computeDiscountBase(promo as NonNullable<Promo>);
@@ -3780,22 +4157,22 @@ return (priceNum + addonsCost) * qty;
       promo.type === "percent"
         ? base * (Number(promo.value) / 100)
         : Number(promo.value || 0);
-    const totalCap = baseTotal + packagingCost + (deliveryInfo?.cost || 0);
+   const totalCap = baseTotal + packagingCost + deliveryCost;
     return Math.max(0, Math.min(val, totalCap));
-  }, [promo, computeDiscountBase, baseTotal, packagingCost, deliveryInfo]);
+  }, [promo, computeDiscountBase, baseTotal, packagingCost, deliveryCost]);
 
   const canUseLoyalty4 =
   isLoggedIn &&
   typeof loyaltyStickers === "number" &&
   loyaltyStickers >= 4 &&
   loyaltyStickers < 8;
-  const hasAutoLoyaltyDiscount =
+  
+const hasAutoLoyaltyDiscount =
   isLoggedIn &&
   typeof loyaltyStickers === "number" &&
   loyaltyStickers >= 8;
 
-
-  const totalWithDelivery = Math.max(0, subtotal + (deliveryInfo?.cost || 0) - discount);
+const totalWithDelivery = Math.max(0, subtotal + deliveryCost - discount);
   const shouldHideOrderActions = Boolean(TURNSTILE_SITE_KEY && turnstileError);
 
   const productHelpers = {
@@ -4020,6 +4397,11 @@ return (priceNum + addonsCost) * qty;
     if (submitting) return;
     setErrorMessage(null);
 
+    if (!items || items.length === 0) {
+  setErrorMessage("Koszyk jest pusty.");
+  return;
+}
+
     if (!selectedOption) {
       setErrorMessage("Wybierz sposób odbioru.");
       return;
@@ -4154,7 +4536,7 @@ const orderPayload: any = {
   name,
   phone,
   contact_email: effectiveEmail,
-  delivery_cost: deliveryInfo?.cost || 0,
+  delivery_cost: selectedOption === "delivery" ? (deliveryInfo?.cost || 0) : 0,
   total_price: totalWithDelivery,
   discount_amount: discount || 0,
   promo_code: promo?.code || (promo && !promo.require_code ? "AUTO" : null),
@@ -4407,6 +4789,7 @@ return (
                               optionsByCat={optionsByCat}
                               restaurantSlug={restaurantSlug}
                               helpers={productHelpers}
+                              dbOptionsByProductId={dbOptionsByProductId}
                             />
                             <textarea
                               className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
@@ -4452,7 +4835,7 @@ return (
                         {OPTIONS.map(({ key, label, Icon }) => (
                           <button
                             key={key}
-                            onClick={() => setSelectedOption(key)}
+                            onClick={() => handleSelectOption(key)}
                             className={clsx(
                               "flex flex-col items-center justify-center border px-3 py-4 transition",
                               selectedOption === key
@@ -4747,14 +5130,12 @@ return (
                                   <span>{packagingUnit.toFixed(2)} zł</span>
                                 </div>
                               )}
-                              {deliveryInfo && (
-                                <div className="flex justify-between">
-                                  <span>Dostawa:</span>
-                                  <span>
-                                    {deliveryInfo.cost.toFixed(2)} zł
-                                  </span>
-                                </div>
-                              )}
+                              {selectedOption === "delivery" && deliveryInfo && (
+  <div className="flex justify-between">
+    <span>Dostawa:</span>
+    <span>{deliveryInfo.cost.toFixed(2)} zł</span>
+  </div>
+)}
                             </div>
 
                             {/* LOYALTY – MOBILE */}
@@ -4959,6 +5340,7 @@ return (
                                 optionsByCat={optionsByCat}
                                 restaurantSlug={restaurantSlug}
                                 helpers={productHelpers}
+                                dbOptionsByProductId={dbOptionsByProductId}
                               />
                               <textarea
                                 className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"

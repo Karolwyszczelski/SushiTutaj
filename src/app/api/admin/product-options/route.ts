@@ -25,16 +25,13 @@ const ALLOWED_KEYS = new Set([
 ]);
 
 function clean(s: unknown, max = 64) {
-  return String(s ?? "")
-    .trim()
-    .slice(0, max);
+  return String(s ?? "").trim().slice(0, max);
 }
 
 async function requireSession() {
   const supabase = createRouteHandlerClient<Database>({ cookies });
   const { data } = await supabase.auth.getSession();
-  if (!data?.session) return null;
-  return data.session;
+  return data?.session ?? null;
 }
 
 async function resolveRestaurantIdBySlug(slug: string) {
@@ -50,7 +47,9 @@ async function resolveRestaurantIdBySlug(slug: string) {
 
 export async function GET(req: Request) {
   const session = await requireSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const { searchParams } = new URL(req.url);
   const restaurantSlug = clean(searchParams.get("restaurant"), 128);
@@ -77,7 +76,9 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const session = await requireSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const body = await req.json().catch(() => ({}));
   const restaurantSlug = clean(body.restaurantSlug, 128);
@@ -118,7 +119,9 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   const session = await requireSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const body = await req.json().catch(() => ({}));
   const id = clean(body.id, 64);
@@ -141,16 +144,18 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   const session = await requireSession();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const { searchParams } = new URL(req.url);
   const id = clean(searchParams.get("id"), 64);
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
   const { error } = await supabaseAdmin
-  .from("restaurant_addon_options" as any)
-  .delete()
-  .eq("id", id);
+    .from("restaurant_addon_options" as any)
+    .delete()
+    .eq("id", id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ ok: true });

@@ -1,9 +1,15 @@
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
+import React, { FormEvent, useEffect, useMemo, useState } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { Database } from "@/types/supabase";
 
 export default function ResetPasswordToast() {
+  const supabase = useMemo(
+    () => createClientComponentClient<Database>(),
+    []
+  );
+
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
@@ -11,23 +17,48 @@ export default function ResetPasswordToast() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Odpalenie popupu na /?auth=password-reset
+  // Najpierw: pozwól Supabase przechwycić sesję z linku recovery.
+  // Dopiero potem: czyść URL (w tym hash).
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const url = new URL(window.location.href);
-    const params = url.searchParams;
+    let cancelled = false;
 
-    if (params.get("auth") === "password-reset") {
-      setOpen(true);
+    (async () => {
+      const url = new URL(window.location.href);
+      const params = url.searchParams;
 
-      // czyścimy parametr z URL, aby popup nie wracał po odświeżeniu
+      const shouldOpen =
+        params.get("auth") === "password-reset" || url.hash.includes("type=recovery");
+
+      if (shouldOpen && !cancelled) setOpen(true);
+
+      // 1) Złap sesję z URL (obsługa obu wariantów: ?code=... lub #access_token=...)
+      const code = params.get("code");
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (error) console.error("[exchangeCodeForSession]", error);
+      } else {
+        // To wymusza inicjalizację klienta i obsługę tokenów z hasha, jeśli są
+        const { error } = await supabase.auth.getSession();
+        if (error) console.error("[getSession]", error);
+      }
+
+      // 2) Dopiero teraz czyść URL (usuń query + hash z tokenami)
       params.delete("auth");
-      const newUrl =
+      params.delete("code");
+      params.delete("token_hash");
+      params.delete("type");
+
+      const cleanUrl =
         url.pathname + (params.toString() ? `?${params.toString()}` : "");
-      window.history.replaceState({}, "", newUrl);
-    }
-  }, []);
+      window.history.replaceState({}, "", cleanUrl);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -37,7 +68,6 @@ export default function ResetPasswordToast() {
       setErrorMsg("Hasło musi mieć co najmniej 8 znaków.");
       return;
     }
-
     if (password !== password2) {
       setErrorMsg("Hasła nie są takie same.");
       return;
@@ -45,16 +75,24 @@ export default function ResetPasswordToast() {
 
     setLoading(true);
 
-    const supabase = createClientComponentClient();
+    // Guard: bez sesji recovery updateUser nie zadziała
+    const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+    const session = sessionData?.session;
 
-    const { error } = await supabase.auth.updateUser({
-      password,
-    });
+    if (sessionErr || !session) {
+      setLoading(false);
+      setErrorMsg(
+        "Brak aktywnej sesji resetu hasła. Otwórz link z maila ponownie (link mógł wygasnąć)."
+      );
+      return;
+    }
+
+    const { error } = await supabase.auth.updateUser({ password });
 
     setLoading(false);
 
     if (error) {
-      console.error(error);
+      console.error("[updateUser]", error);
       setErrorMsg(
         "Nie udało się ustawić nowego hasła. Link mógł wygasnąć – poproś o nowy reset hasła."
       );
@@ -62,6 +100,9 @@ export default function ResetPasswordToast() {
     }
 
     setSuccess(true);
+
+    // Opcjonalnie (często polecane po recover): wyloguj po zmianie hasła
+    // await supabase.auth.signOut();
   };
 
   const handleClose = () => {
@@ -77,9 +118,7 @@ export default function ResetPasswordToast() {
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 px-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-6">
-        <h1 className="text-2xl font-semibold mb-2 text-center">
-          Ustaw nowe hasło
-        </h1>
+        <h1 className="text-2xl font-semibold mb-2 text-center">Ustaw nowe hasło</h1>
         <p className="text-sm text-gray-600 mb-4 text-center">
           Link z maila został zweryfikowany. Wpisz nowe hasło do swojego konta.
         </p>
@@ -106,9 +145,7 @@ export default function ResetPasswordToast() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium mb-1">
-                Nowe hasło
-              </label>
+              <label className="block text-sm font-medium mb-1">Nowe hasło</label>
               <input
                 type="password"
                 autoComplete="new-password"
@@ -120,9 +157,7 @@ export default function ResetPasswordToast() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1">
-                Powtórz hasło
-              </label>
+              <label className="block text-sm font-medium mb-1">Powtórz hasło</label>
               <input
                 type="password"
                 autoComplete="new-password"
