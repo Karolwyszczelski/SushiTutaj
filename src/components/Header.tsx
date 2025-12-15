@@ -243,7 +243,7 @@ export default function Header() {
               {citiesOpen && (
                 <ul
                   role="listbox"
-                  className="absolute right-0 mt-2 min-w-48 rounded-xl border border-black/30 bg-[#0b0b0b] shadow-[0_10px_22px_rgba(0,0,0,.40)]"
+                  className="absolute right-0 mt-2 min-w-48 rounded-xl border border-black/30 bg-white shadow-[0_10px_22px_rgba(0,0,0,.40)]"
                 >
                   {CITIES.map((c) => (
                     <li key={c.slug}>

@@ -975,8 +975,7 @@ const now = nowPL(now0);     // komponenty w PL do grafiku/blokad
         serverCost = 0;
       }
 
-      const rounded = Math.max(0, Math.round(serverCost * 100) / 100);
-      n.delivery_cost = rounded;
+      n.delivery_cost = roundUpToStep(Math.max(0, serverCost), 0.5);
     }
 
       // 2.9) Program lojalnościowy (Opcja A – saldo z loyalty_accounts + rezerwacja nagrody) + finalne przeliczenie total_price

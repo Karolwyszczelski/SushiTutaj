@@ -2,10 +2,14 @@
 import { create } from "zustand";
 
 export interface CartItem {
+  /** Stabilne ID linii koszyka (nie myli pozycji o tej samej nazwie) */
+  lineId?: string;
+
   /** ID produktu z bazy (Supabase) – opcjonalne */
   id?: string;
   /** Alias na ID produktu – używane przy payloadzie zamówienia */
   product_id?: string;
+
   /** Nazwa bazowa (np. oryginalna rolka w zestawie) – opcjonalnie */
   baseName?: string;
 
@@ -16,10 +20,13 @@ export interface CartItem {
   /** Ilość sztuk w koszyku */
   quantity?: number;
 
-  /** Dodatki (sosy, „Ryba pieczona”, Tempura itd.) */
+  /** Dodatki (możliwe duplikaty, jeśli allowDuplicate=true) */
   addons?: string[];
   /** Zamiany składników / rolek w zestawie */
   swaps?: { from: string; to: string }[];
+
+  /** Podpis konfiguracji – do łączenia identycznych pozycji */
+  signature?: string;
 }
 
 interface CartState {
@@ -29,14 +36,22 @@ interface CartState {
   checkoutStep: number;
 
   addItem: (item: CartItem) => void;
-  removeItem: (name: string) => void;
-  removeWholeItem: (name: string) => void;
+  removeItem: (key: string) => void; // key = lineId (zalecane) albo name (legacy)
+  removeWholeItem: (key: string) => void; // jw.
 
-  addAddon: (name: string, addon: string, opts?: { allowDuplicate?: boolean }) => void;
-removeAddon: (name: string, addon: string, opts?: { removeOne?: boolean }) => void;
-  /** Zamiana składnika/rolki w zestawie – nadpisuje istniejącą zamianę dla danego `from` */
-  swapIngredient: (name: string, from: string, to: string) => void;
-  removeSwap: (name: string, swapIndex: number) => void;
+  addAddon: (
+    key: string,
+    addon: string,
+    opts?: { allowDuplicate?: boolean }
+  ) => void;
+  removeAddon: (
+    key: string,
+    addon: string,
+    opts?: { removeOne?: boolean }
+  ) => void;
+
+  swapIngredient: (key: string, from: string, to: string) => void;
+  removeSwap: (key: string, swapIndex: number) => void;
 
   toggleCart: () => void;
   clearCart: () => void;
@@ -47,6 +62,69 @@ removeAddon: (name: string, addon: string, opts?: { removeOne?: boolean }) => vo
   closeCheckoutModal: () => void;
 }
 
+/** Bezpieczny generator ID (client-side) */
+const genLineId = () => {
+  try {
+    // @ts-ignore
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  } catch {}
+  return `li_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`;
+};
+
+const canonAddons = (addons?: string[]) => {
+  const arr = Array.isArray(addons) ? addons.slice() : [];
+  // sort utrzymuje duplikaty i daje stabilny podpis
+  return arr.map(String).sort((a, b) => a.localeCompare(b)).join("|");
+};
+
+const canonSwaps = (swaps?: { from: string; to: string }[]) => {
+  const arr = Array.isArray(swaps) ? swaps.slice() : [];
+  return arr
+    .map((s) => `${String(s?.from ?? "")}→${String(s?.to ?? "")}`)
+    .sort((a, b) => a.localeCompare(b))
+    .join("|");
+};
+
+const makeSignature = (item: CartItem) => {
+  const pid = item.product_id || item.id || "";
+  const base = item.baseName || "";
+  const name = item.name || "";
+  const a = canonAddons(item.addons);
+  const s = canonSwaps(item.swaps);
+  return [pid, base, name, a, s].join("::");
+};
+
+const ensureNormalized = (items: CartItem[]) => {
+  // uzupełnij lineId/signature oraz złącz identyczne po signature
+  const mapped = items.map((it) => {
+    const lineId = it.lineId || genLineId();
+    const addons = Array.isArray(it.addons) ? it.addons : [];
+    const swaps = Array.isArray(it.swaps) ? it.swaps : [];
+    const quantity = it.quantity ?? 1;
+    const signature = makeSignature({ ...it, lineId, addons, swaps, quantity });
+    return { ...it, lineId, addons, swaps, quantity, signature };
+  });
+
+  const bySig = new Map<string, CartItem>();
+  for (const it of mapped) {
+    const sig = it.signature || makeSignature(it);
+    const existing = bySig.get(sig);
+    if (!existing) {
+      bySig.set(sig, it);
+    } else {
+      bySig.set(sig, {
+        ...existing,
+        quantity: (existing.quantity || 1) + (it.quantity || 1),
+      });
+    }
+  }
+  return Array.from(bySig.values());
+};
+
+/** Dopasowanie: najpierw lineId, potem name (legacy) */
+const matchKey = (item: CartItem, key: string) =>
+  item.lineId === key || item.name === key;
+
 const useCartStore = create<CartState>((set) => ({
   items: [],
   isOpen: false,
@@ -55,103 +133,95 @@ const useCartStore = create<CartState>((set) => ({
 
   addItem: (item) =>
     set((state) => {
-      // Łączymy pozycje po nazwie – jeśli nazwa ta sama, zwiększamy quantity
-      const existing = state.items.find((i) => i.name === item.name);
-      if (existing) {
-        return {
-          items: state.items.map((i) =>
-            i.name === item.name
-              ? {
-                  ...i,
-                  quantity: (i.quantity || 1) + (item.quantity || 1),
-                }
-              : i
-          ),
-        };
-      }
-
-      // Nowa pozycja w koszyku
-      return {
-        items: [
-          ...state.items,
-          {
-            ...item,
-            quantity: item.quantity || 1,
-            addons: item.addons || [],
-            swaps: item.swaps || [],
-          },
-        ],
+      const incoming: CartItem = {
+        ...item,
+        lineId: item.lineId || genLineId(),
+        quantity: item.quantity ?? 1,
+        addons: Array.isArray(item.addons) ? item.addons : [],
+        swaps: Array.isArray(item.swaps) ? item.swaps : [],
       };
+      incoming.signature = makeSignature(incoming);
+
+      const normalized = ensureNormalized([...state.items, incoming]);
+      return { items: normalized };
     }),
 
-  removeItem: (name) =>
+  removeItem: (key) =>
     set((state) => {
-      const updatedItems = state.items.reduce<CartItem[]>((acc, item) => {
-        if (item.name === name) {
-          const newQuantity = (item.quantity || 1) - 1;
-          if (newQuantity > 0) {
-            acc.push({ ...item, quantity: newQuantity });
-          }
-        } else {
-          acc.push(item);
+      let removed = false;
+
+      const next = state.items.reduce<CartItem[]>((acc, it) => {
+        if (!removed && matchKey(it, key)) {
+          removed = true;
+          const q = (it.quantity ?? 1) - 1;
+          if (q > 0) acc.push({ ...it, quantity: q });
+          return acc;
         }
+        acc.push(it);
         return acc;
       }, []);
-      return { items: updatedItems };
+
+      return { items: ensureNormalized(next) };
     }),
 
-  removeWholeItem: (name) =>
+  removeWholeItem: (key) =>
     set((state) => ({
-      items: state.items.filter((item) => item.name !== name),
+      items: ensureNormalized(state.items.filter((it) => !matchKey(it, key))),
     })),
 
-  addAddon: (name, addon, opts) =>
-  set((state) => ({
-    items: state.items.map((i) => {
-      if (i.name !== name) return i;
+  addAddon: (key, addon, opts) =>
+    set((state) => {
+      const next = state.items.map((it) => {
+        if (!matchKey(it, key)) return it;
 
-      const addons = Array.isArray(i.addons) ? i.addons : [];
-      const exists = addons.includes(addon);
+        const addons = Array.isArray(it.addons) ? it.addons : [];
+        const exists = addons.includes(addon);
 
-      // domyślnie jak było: bez duplikatów
-      // allowDuplicate=true: dodaj kolejną porcję tego samego addon
-      if (!opts?.allowDuplicate && exists) return i;
+        if (!opts?.allowDuplicate && exists) return it;
 
-      return { ...i, addons: [...addons, addon] };
+        const updated = { ...it, addons: [...addons, addon] };
+        updated.signature = makeSignature(updated);
+        return updated;
+      });
+
+      return { items: ensureNormalized(next) };
     }),
-  })),
 
-  removeAddon: (name, addon, opts) =>
-  set((state) => ({
-    items: state.items.map((i) => {
-      if (i.name !== name) return i;
+  removeAddon: (key, addon, opts) =>
+    set((state) => {
+      const next = state.items.map((it) => {
+        if (!matchKey(it, key)) return it;
 
-      const addons = Array.isArray(i.addons) ? i.addons : [];
-      if (!addons.length) return i;
+        const addons = Array.isArray(it.addons) ? it.addons : [];
+        if (!addons.length) return it;
 
-      // removeOne=true: usuń tylko jedną porcję (pierwsze wystąpienie)
-      if (opts?.removeOne) {
-        const idx = addons.indexOf(addon);
-        if (idx === -1) return i;
-        const next = addons.slice();
-        next.splice(idx, 1);
-        return { ...i, addons: next };
-      }
+        let updatedAddons = addons;
 
-      // domyślnie jak było: usuń wszystkie takie addony
-      return { ...i, addons: addons.filter((a) => a !== addon) };
+        if (opts?.removeOne) {
+          const idx = addons.indexOf(addon);
+          if (idx === -1) return it;
+          updatedAddons = addons.slice();
+          updatedAddons.splice(idx, 1);
+        } else {
+          updatedAddons = addons.filter((a) => a !== addon);
+        }
+
+        const updated = { ...it, addons: updatedAddons };
+        updated.signature = makeSignature(updated);
+        return updated;
+      });
+
+      return { items: ensureNormalized(next) };
     }),
-  })),
 
-  swapIngredient: (name, from, to) =>
-    set((state) => ({
-      items: state.items.map((i) => {
-        if (i.name !== name) return i;
+  swapIngredient: (key, from, to) =>
+    set((state) => {
+      const fromLc = (from || "").toLowerCase();
 
-        const swaps = Array.isArray(i.swaps) ? i.swaps : [];
-        const fromLc = (from || "").toLowerCase();
+      const next = state.items.map((it) => {
+        if (!matchKey(it, key)) return it;
 
-        // Usuwamy poprzednią zamianę dla tego samego `from` i dokładamy aktualną
+        const swaps = Array.isArray(it.swaps) ? it.swaps : [];
         const nextSwaps = [
           ...swaps.filter(
             (s) =>
@@ -162,30 +232,39 @@ const useCartStore = create<CartState>((set) => ({
           { from, to },
         ];
 
-        return { ...i, swaps: nextSwaps };
-      }),
-    })),
+        const updated = { ...it, swaps: nextSwaps };
+        updated.signature = makeSignature(updated);
+        return updated;
+      });
 
-  removeSwap: (name, swapIndex) =>
-    set((state) => ({
-      items: state.items.map((i) => {
-        if (i.name !== name) return i;
-        const swaps = Array.isArray(i.swaps) ? i.swaps : [];
-        if (swapIndex < 0 || swapIndex >= swaps.length) return i;
-        const nextSwaps = [...swaps];
+      return { items: ensureNormalized(next) };
+    }),
+
+  removeSwap: (key, swapIndex) =>
+    set((state) => {
+      const next = state.items.map((it) => {
+        if (!matchKey(it, key)) return it;
+
+        const swaps = Array.isArray(it.swaps) ? it.swaps : [];
+        if (swapIndex < 0 || swapIndex >= swaps.length) return it;
+
+        const nextSwaps = swaps.slice();
         nextSwaps.splice(swapIndex, 1);
-        return { ...i, swaps: nextSwaps };
-      }),
-    })),
 
-  toggleCart: () =>
-    set((state) => ({
-      isOpen: !state.isOpen,
-    })),
+        const updated = { ...it, swaps: nextSwaps };
+        updated.signature = makeSignature(updated);
+        return updated;
+      });
+
+      return { items: ensureNormalized(next) };
+    }),
+
+  toggleCart: () => set((state) => ({ isOpen: !state.isOpen })),
 
   clearCart: () =>
     set({
       items: [],
+      // opcjonalnie (jeśli chcesz): isOpen: false, isCheckoutOpen: false, checkoutStep: 1
     }),
 
   goToStep: (step) => set({ checkoutStep: step }),

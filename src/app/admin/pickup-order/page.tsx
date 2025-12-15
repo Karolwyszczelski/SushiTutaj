@@ -383,8 +383,16 @@ const extractExplicitQty = (label: string) => {
  * - NIE sumuje duplikatów z różnych pól (bo to zwykle ten sam wybór zapisany 2×).
  * - Jeśli gdziekolwiek przyjdzie jawne ×N (lub qty), bierze największe N.
  */
+const isSauceLabel = (s: string) => /\b(sos|sauce)\b/i.test(s || "");
+
+/**
+ * Sumuje duplikaty po "bazowej nazwie" dodatku.
+ * - Jeśli w labelu jest jawne ×N/xN -> dolicza N.
+ * - Jeśli label powtarza się bez ×N -> sumuje jako +1.
+ * - Dla sosów pokazuje też ×1 (żeby kuchnia widziała ilość).
+ */
 const collapseLabelsWithQty = (labels: string[]): string[] => {
-  const map = new Map<string, { base: string; qty: number; hasExplicit: boolean }>();
+  const map = new Map<string, { base: string; count: number }>();
   const order: string[] = [];
 
   for (const raw of labels || []) {
@@ -392,30 +400,26 @@ const collapseLabelsWithQty = (labels: string[]): string[] => {
     if (!cleaned) continue;
 
     const { base, qty, hasExplicit } = extractExplicitQty(cleaned);
-    const key = normalizeLabelKey(base);
-
+    const baseClean = (base || "").trim().replace(/\s+/g, " ");
+    const key = normalizeLabelKey(baseClean);
     if (!key) continue;
 
+    const inc = hasExplicit ? Math.max(1, qty) : 1;
+
     if (!map.has(key)) {
-      map.set(key, { base, qty: hasExplicit ? qty : 1, hasExplicit });
+      map.set(key, { base: baseClean, count: inc });
       order.push(key);
-      continue;
+    } else {
+      const cur = map.get(key)!;
+      cur.count += inc;
+      map.set(key, cur);
     }
-
-    // jeśli już mamy wpis:
-    const cur = map.get(key)!;
-
-    // jeżeli nowy ma jawne ×N, a stary nie miał – przyjmij ×N
-    if (hasExplicit && (!cur.hasExplicit || qty > cur.qty)) {
-      map.set(key, { base: cur.base || base, qty, hasExplicit: true });
-    }
-    // jeśli oba bez jawnego ×N – nic nie rób (nie robimy sztucznego ×2)
   }
 
   return order.map((k) => {
     const row = map.get(k)!;
-    if (row.hasExplicit && row.qty > 1) return `${row.base} ×${row.qty}`;
-    return row.base;
+    const showQty = row.count > 1 || isSauceLabel(row.base);
+    return showQty ? `${row.base} ×${row.count}` : row.base;
   });
 };
 
