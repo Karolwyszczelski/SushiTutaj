@@ -4812,6 +4812,78 @@ const LegalConsent = (
   </label>
 );
 
+/* ================= START: SHARED PRICE SUMMARY ================= */
+
+const pln = (v: number) =>
+  `${Number(v || 0).toFixed(2).replace(".", ",")} zł`;
+
+const PriceSummaryCard = (
+  <div className="rounded-2xl border border-black/10 bg-white p-4 space-y-4">
+    <div className="flex items-center justify-between gap-3">
+      <h4 className="text-sm font-semibold">Podsumowanie cen</h4>
+      {selectedOption === "delivery" && deliveryInfo?.eta ? (
+        <span className="text-[11px] text-black/60">
+          ETA: {deliveryInfo.eta}
+        </span>
+      ) : null}
+    </div>
+
+    <div className="space-y-2 text-sm">
+      <div className="flex items-center justify-between">
+        <span className="text-black/70">Produkty</span>
+        <span className="font-semibold">{pln(baseTotal)}</span>
+      </div>
+
+      {selectedOption ? (
+        <div className="flex items-center justify-between">
+          <span className="text-black/70">Opakowanie</span>
+          <span className="font-semibold">{pln(packagingCost)}</span>
+        </div>
+      ) : null}
+
+      {selectedOption === "delivery" ? (
+        <div className="flex items-center justify-between">
+          <span className="text-black/70">Dostawa</span>
+          <span className="font-semibold">{pln(deliveryCost)}</span>
+        </div>
+      ) : null}
+
+      {discount > 0 ? (
+        <div className="flex items-center justify-between">
+          <span className="text-black/70">Rabat</span>
+          <span className="font-semibold text-green-700">
+            -{pln(discount)}
+          </span>
+        </div>
+      ) : null}
+
+      <div className="h-px bg-black/10 my-2" />
+
+      <div className="flex items-center justify-between text-base">
+        <span className="font-semibold">Do zapłaty</span>
+        <span className="font-bold">{pln(totalWithDelivery)}</span>
+      </div>
+    </div>
+
+    <PromoSection
+      promo={promo}
+      promoError={promoError}
+      onApply={applyPromo}
+      onClear={clearPromo}
+    />
+
+    <div className="text-[11px] text-black/60">
+      Ceny zawierają VAT.{" "}
+      {selectedOption === "delivery"
+        ? "Płatność: gotówka u kierowcy."
+        : "Płatność: gotówka przy odbiorze."}
+    </div>
+  </div>
+);
+
+/* ================== END: SHARED PRICE SUMMARY ================== */
+
+
 return (
   <>
     {TURNSTILE_SITE_KEY && (
@@ -4871,6 +4943,14 @@ return (
                       lokal w Google.
                     </p>
                   </div>
+                  {!orderSent && (
+  <div className="hidden lg:block">
+    <div className="lg:sticky lg:top-6 space-y-4">
+      {PriceSummaryCard}
+    </div>
+  </div>
+)}
+
                   <h3 className="text-2xl font-bold">
                     Dziękujemy za zamówienie!
                   </h3>
@@ -5065,11 +5145,10 @@ return (
                   )}
 
                    {/* KROK 3: dane kontaktowe + podsumowanie mobile */}
-{checkoutStep === 3 && (
-                    (isMobile && checkoutStep === 3)) && (
-                    <div className="space-y-6">
+{checkoutStep === 3 && isMobile && (
+  <div className="space-y-6">
                       <h3 className="text-2xl font-bold">Dane kontaktowe</h3>
-
+                      {PriceSummaryCard}
                       {selectedOption === "delivery" && (
                         <>
                           <AddressAutocomplete
