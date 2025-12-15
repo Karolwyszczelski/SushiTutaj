@@ -93,6 +93,37 @@ export default function ZestawMiesiaca() {
     return m.charAt(0).toUpperCase() + m.slice(1);
   }, []);
 
+   const parseSomDescription = (input?: string | null) => {
+    const raw = String(input ?? "").replace(/\r/g, "").trim();
+    if (!raw) return { header: null as string | null, items: [] as string[] };
+
+    // wspieramy zarówno • jak i \n (gdy kiedyś zaczniesz zapisywać ładnie w DB)
+    const parts = raw
+      .split(/\n|•/g)
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    if (!parts.length) return { header: null, items: [] };
+
+    // heurystyka: pierwszy segment często jest "36 sztuk / 120 zł"
+    let header: string | null = null;
+    let items = parts;
+
+    if (parts.length > 1 && /(szt|zł)/i.test(parts[0])) {
+      header = parts[0];
+      items = parts.slice(1);
+    }
+
+    items = items
+      .map((x) => x.replace(/^[\-•\u2022]+/, "").trim())
+      .filter(Boolean);
+
+    return { header, items };
+  };
+
+  const parsedDesc = useMemo(() => parseSomDescription(desc), [desc]);
+
+
   useEffect(() => {
     let cancelled = false;
 
@@ -347,11 +378,21 @@ export default function ZestawMiesiaca() {
           </div>
         </div>
 
-        {/* opis */}
-        {!loading && desc ? (
-          <p className="mt-4 text-sm text-white/80 text-center whitespace-pre-line">
-            {desc}
-          </p>
+                {/* opis */}
+        {!loading && (parsedDesc.header || parsedDesc.items.length > 0) ? (
+          <div className="mt-4 text-sm text-white/80">
+            {parsedDesc.header ? (
+              <p className="mb-2 text-center">{parsedDesc.header}</p>
+            ) : null}
+
+            {parsedDesc.items.length > 0 ? (
+              <ul className="mx-auto max-w-md text-left list-disc list-inside space-y-1">
+                {parsedDesc.items.map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
         ) : null}
 
         {/* akcje */}
@@ -394,18 +435,24 @@ export default function ZestawMiesiaca() {
                 ? "Ładowanie…"
                 : productName || title || "Zestaw specjalny"}
             </p>
-            <p className={STYLE.body}>
-              {loading
-                ? ""
-                : (desc || "")
-                    .split("\n")
-                    .map((l, i) => (
-                      <span key={i}>
-                        {l}
-                        <br />
-                      </span>
+            {!loading && (parsedDesc.header || parsedDesc.items.length > 0) ? (
+              <div className={STYLE.body}>
+                {parsedDesc.header ? (
+                  <div className="mb-2">{parsedDesc.header}</div>
+                ) : null}
+
+                {parsedDesc.items.length > 0 ? (
+                  <ul className="list-disc pl-5 space-y-1">
+                    {parsedDesc.items.map((t, i) => (
+                      <li key={i}>{t}</li>
                     ))}
-            </p>
+                  </ul>
+                ) : null}
+              </div>
+            ) : (
+              <div className={STYLE.body}>{loading ? "" : null}</div>
+            )}
+
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <button
                 onClick={handleAdd}
