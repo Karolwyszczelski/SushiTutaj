@@ -1414,21 +1414,59 @@ export default function PickupOrdersPage() {
   const urlSlug = (searchParams.get("restaurant") || "").toLowerCase() || null;
 
   const [authChecked, setAuthChecked] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      const { data } = await supabase.auth.getSession();
+  // Sprawdzenie sesji admina (uodpornione na "noc / uśpienie taba")
+useEffect(() => {
+  let alive = true;
+
+  const withTimeout = <T,>(p: Promise<T>, ms = 8000) =>
+    new Promise<T>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error("timeout")), ms);
+      p.then((v) => {
+        clearTimeout(t);
+        resolve(v);
+      }).catch((e) => {
+        clearTimeout(t);
+        reject(e);
+      });
+    });
+
+  (async () => {
+    try {
+      // 1) Spróbuj normalnie
+      const { data } = await withTimeout(supabase.auth.getSession(), 8000);
       if (!alive) return;
-      if (!data.session) {
-        router.replace("/admin/login"); // dostosuj jeśli masz inną ścieżkę
-        return;
+
+      // 2) Jeśli brak sesji – spróbuj odświeżyć (po nocy często pomaga)
+      if (!data?.session) {
+        const r = await supabase.auth.refreshSession().catch(() => null as any);
+        const sess = r?.data?.session ?? null;
+        if (!sess) {
+          router.replace("/admin/login");
+          return;
+        }
       }
-      setAuthChecked(true);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [supabase, router]);
+
+      if (alive) setAuthChecked(true);
+    } catch (e) {
+      // getSession potrafi rzucić wyjątek po długim uśpieniu taba/PWA
+      try {
+        const r = await supabase.auth.refreshSession();
+        if (!alive) return;
+
+        if (!r?.data?.session) {
+          router.replace("/admin/login");
+          return;
+        }
+      } catch {}
+
+      if (alive) setAuthChecked(true); // ważne: nie wieszamy UI na "Ładowanie…"
+    }
+  })();
+
+  return () => {
+    alive = false;
+  };
+}, [supabase, router]);
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1494,7 +1532,9 @@ const enablePush = useCallback(async () => {
 
     if (!VAPID_PUBLIC_KEY) {
       setPushStatus("error");
-      setPushError("Brak klucza VAPID (NEXT_PUBLIC_VAPID_PUBLIC_KEY). Skonfiguruj go w env.");
+      setPushError(
+        "Brak klucza VAPID (NEXT_PUBLIC_VAPID_PUBLIC_KEY). Skonfiguruj go w env."
+      );
       return;
     }
 
@@ -1504,12 +1544,10 @@ const enablePush = useCallback(async () => {
       return;
     }
 
-    // SW: użyj istniejącego albo zarejestruj
     const reg =
       (await navigator.serviceWorker.getRegistration()) ||
       (await navigator.serviceWorker.register("/sw.js"));
 
-    // nie dubluj subskrypcji
     const existing = await reg.pushManager.getSubscription();
 
     const sub =
@@ -1519,18 +1557,27 @@ const enablePush = useCallback(async () => {
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       }));
 
-    // PushSubscription ma toJSON() – ale bezpiecznie wymuś "czysty" JSON
     const payload =
       typeof (sub as any).toJSON === "function"
         ? (sub as any).toJSON()
         : JSON.parse(JSON.stringify(sub));
 
-    const res = await fetch("/api/admin/push/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include", // ważne (cookie restaurant_id/slug)
-      body: JSON.stringify(payload),
-    });
+    const doPost = () =>
+      fetch("/api/admin/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        cache: "no-store",
+        body: JSON.stringify(payload),
+      });
+
+    let res = await doPost();
+
+    // Retry po 401 (typowe po nocy / uśpieniu)
+    if (res.status === 401) {
+      await supabase.auth.refreshSession().catch(() => null);
+      res = await doPost();
+    }
 
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
@@ -1546,7 +1593,7 @@ const enablePush = useCallback(async () => {
     setPushStatus("error");
     setPushError("Nie udało się włączyć powiadomień.");
   }
-}, []);
+}, [supabase]);
 
   const [page, setPage] = useState(1);
   const perPage = 10;
@@ -1594,18 +1641,32 @@ useEffect(() => {
       const sub = await reg.pushManager.getSubscription();
       if (!sub) return;
 
-      const res = await fetch("/api/admin/push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(sub),
-      });
+            const payload =
+        typeof (sub as any).toJSON === "function"
+          ? (sub as any).toJSON()
+          : JSON.parse(JSON.stringify(sub));
+
+      const doPost = () =>
+        fetch("/api/admin/push/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          cache: "no-store",
+          body: JSON.stringify(payload),
+        });
+
+      let res = await doPost();
+
+      // Retry po 401 (po nocy sesja bywa do odświeżenia)
+      if (res.status === 401) {
+        await supabase.auth.refreshSession().catch(() => null);
+        res = await doPost();
+      }
 
       if (!res.ok) {
         const txt = await res.text().catch(() => "");
         console.warn("[push] sync existing FAIL", res.status, txt);
         if (!cancelled) {
-          // nie psujemy statusu "subscribed" (bo w przeglądarce jest), tylko pokazujemy info
           setPushError(
             "Powiadomienia są włączone, ale nie udało się zsynchronizować subskrypcji z bazą. Kliknij „Włącz powiadomienia” ponownie."
           );
@@ -1619,7 +1680,7 @@ useEffect(() => {
   return () => {
     cancelled = true;
   };
-}, [booted, restaurantSlug]);
+}, [booted, restaurantSlug, supabase]);
 
  /* AUDIO – dźwięk nowego zamówienia */
 const newOrderAudio = useRef<HTMLAudioElement | null>(null);
@@ -1756,10 +1817,24 @@ const fetchOrders = useCallback(
       const slug = restaurantSlug || urlSlug;
       if (slug) qs.set("restaurant", slug);
 
-      const res = await fetch(`/api/orders/current?${qs.toString()}`, {
+      let res = await fetch(`/api/orders/current?${qs.toString()}`, {
+        method: "GET",
+        credentials: "include",
         cache: "no-store",
         signal: ac.signal,
       });
+
+      // Retry po 401 (po nocy token/cookie bywa nieświeże)
+      if (res.status === 401) {
+        await supabase.auth.refreshSession().catch(() => null);
+
+        res = await fetch(`/api/orders/current?${qs.toString()}`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+          signal: ac.signal,
+        });
+      }
 
       const json = await res.json().catch(() => ({} as any));
 
@@ -1889,7 +1964,7 @@ const fetchOrders = useCallback(
       }
     }
   },
-  [booted, page, perPage, restaurantSlug, urlSlug, sortOrder, playDing]
+  [booted, page, perPage, restaurantSlug, urlSlug, sortOrder, playDing, supabase]
 );
 
 // aktualizuj ref po każdej zmianie fetchOrders

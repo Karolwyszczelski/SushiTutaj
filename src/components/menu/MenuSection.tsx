@@ -192,7 +192,7 @@ export default function MenuSection() {
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
-  const [activeCat, setActiveCat] = useState<string>("Zestawy");
+  const [activeCat, setActiveCat] = useState<string>("Wszystko");
   const [q, setQ] = useState("");
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [justAdded, setJustAdded] = useState<string[]>([]);
