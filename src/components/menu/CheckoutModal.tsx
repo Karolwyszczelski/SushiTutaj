@@ -5148,7 +5148,6 @@ return (
 {checkoutStep === 3 && isMobile && (
   <div className="space-y-6">
                       <h3 className="text-2xl font-bold">Dane kontaktowe</h3>
-                      {PriceSummaryCard}
                       {selectedOption === "delivery" && (
                         <>
                           <AddressAutocomplete
@@ -5320,20 +5319,61 @@ return (
                         <div className="mt-3 space-y-4">
                           {/* Podsumowanie cen */}
                           <div className="rounded-2xl border border-black/10 bg-white p-4 space-y-2">
-                            <h4 className="text-lg font-semibold">
-                              Podsumowanie
-                            </h4>
-                            <div className="space-y-1 text-sm">
-                              <div className="flex justify-between">
-                                <span>Produkty:</span>
-                                <span>{baseTotal.toFixed(2)} zł</span>
-                              </div>
-                              {selectedOption && (
-                                <div className="flex justify-between">
-                                  <span>Opakowanie:</span>
-                                  <span>{packagingUnit.toFixed(2)} zł</span>
-                                </div>
-                              )}
+                            <h4 className="text-lg font-semibold">Podsumowanie</h4>
+
+<p className="text-[11px] text-black/60">
+  {selectedOption === "delivery"
+    ? "Sposób: dostawa"
+    : selectedOption === "takeaway"
+    ? "Sposób: odbiór osobisty"
+    : "Sposób: —"}
+</p>
+
+{/* Lista pozycji (żeby było widać co wybrane) */}
+<div className="space-y-2 max-h-[180px] overflow-y-auto border-y border-black/10 py-2">
+  {items.length === 0 ? (
+    <p className="text-sm text-black/60 text-center">Brak produktów.</p>
+  ) : (
+    items.map((it: any, i: number) => {
+      const label = withCategoryPrefix(it.name, productCategory(it.name));
+      const qty = it.quantity || 1;
+      return (
+        <div key={i} className="flex justify-between text-sm">
+          <span className="truncate pr-2">
+            {label} ×{qty}
+          </span>
+          <span>{getItemLineTotal(it).toFixed(2)} zł</span>
+        </div>
+      );
+    })
+  )}
+</div>
+
+<div className="space-y-1 text-sm">
+  <div className="flex justify-between">
+    <span>Produkty:</span>
+    <span>{baseTotal.toFixed(2)} zł</span>
+  </div>
+
+  {selectedOption && (
+    <div className="flex justify-between">
+      <span>Opakowanie:</span>
+      <span>{packagingUnit.toFixed(2)} zł</span>
+    </div>
+  )}
+
+  {/* Dostawa: pokazuj zawsze przy delivery (fallback gdy jeszcze nie policzona) */}
+  {selectedOption === "delivery" && (
+    <div className="flex justify-between">
+      <span>Dostawa:</span>
+      <span>
+        {deliveryInfo && typeof deliveryInfo.cost === "number"
+          ? `${deliveryInfo.cost.toFixed(2)} zł`
+          : "—"}
+      </span>
+    </div>
+  )}
+
                               {selectedOption === "delivery" && deliveryInfo && (
   <div className="flex justify-between">
     <span>Dostawa:</span>
@@ -5435,11 +5475,11 @@ return (
                               </span>
                             </div>
 
-                            {deliveryInfo && (
-                              <p className="text-[11px] text-black/60 text-center mt-1">
-                                ETA: {deliveryInfo.eta}
-                              </p>
-                            )}
+                            {selectedOption === "delivery" && (
+  <p className="text-[11px] text-black/60 text-center mt-1">
+    {deliveryInfo?.eta ? `ETA: ${deliveryInfo.eta}` : "ETA: wybierz adres, aby policzyć dostawę"}
+  </p>
+)}
                           </div>
 
                           {/* Potwierdzenia + Turnstile */}
