@@ -4751,7 +4751,7 @@ return (
                   )}
 
                   {/* KROK 1 MOBILE: lista produktów */}
-                  {isMobile && checkoutStep === 1 && (
+                  {checkoutStep === 1 && (
                     <div className="space-y-6">
                       <h3 className="text-2xl font-bold">Wybrane produkty</h3>
 
@@ -4802,8 +4802,8 @@ return (
                   )}
 
                   {/* KROK 1 DESKTOP / KROK 2 MOBILE: sposób odbioru */}
-                  {((!isMobile && checkoutStep === 1) ||
-                    (isMobile && checkoutStep === 2)) && (
+                  {/* KROK 2: sposób odbioru */}
+{checkoutStep === 2 && (
                     <div className="space-y-6">
                       <h3 className="text-2xl font-bold">Sposób odbioru</h3>
 
@@ -4893,15 +4893,13 @@ return (
 )}
 
                       <div className="flex justify-between gap-3 pt-2 border-t border-black/10">
-                        {isMobile && (
-                          <button
-                            type="button"
-                            onClick={() => goToStep(1)}
-                            className="px-4 py-2 rounded-xl border border-black/15"
-                          >
-                            ← Cofnij
-                          </button>
-                        )}
+                        <button
+  type="button"
+  onClick={() => goToStep(1)}
+  className="px-4 py-2 rounded-xl border border-black/15"
+>
+  ← Cofnij
+</button>
                         <div className="flex-1 flex justify-end">
                           <button
                             onClick={nextStep}
@@ -4915,8 +4913,8 @@ return (
                     </div>
                   )}
 
-                   {/* KROK 2 DESKTOP / KROK 3 MOBILE: dane kontaktowe + podsumowanie mobile */}
-                  {((!isMobile && checkoutStep === 2) ||
+                   {/* KROK 3: dane kontaktowe + podsumowanie mobile */}
+{checkoutStep === 3 && (
                     (isMobile && checkoutStep === 3)) && (
                     <div className="space-y-6">
                       <h3 className="text-2xl font-bold">Dane kontaktowe</h3>
@@ -5051,7 +5049,7 @@ return (
 
                       <div className="flex justify-between mt-2">
                         <button
-                          onClick={() => goToStep(isMobile ? 2 : 1)}
+                          onClick={() => goToStep(2)}
                           className="px-4 py-2 rounded-xl border border-black/15"
                         >
                           ← Cofnij
@@ -5292,8 +5290,8 @@ return (
                     </div>
                   )}
 
-                  {/* KROK 3 DESKTOP: podsumowanie + pałeczki */}
-                  {!isMobile && checkoutStep === 3 && (
+                  {/* KROK 4 DESKTOP: podsumowanie + pałeczki */}
+{!isMobile && checkoutStep === 4 && (
                     <div className="space-y-6">
                       <h3 className="text-2xl font-bold text-center">
                         Podsumowanie
@@ -5348,7 +5346,7 @@ return (
                       <div className="flex justify-between mt-2">
                         <button
                           type="button"
-                          onClick={() => goToStep(2)}
+                          onClick={() => goToStep(3)}
                           className="px-4 py-2 rounded-xl border border-black/15"
                         >
                           ← Cofnij
