@@ -355,7 +355,10 @@ const hasQtySuffix = (s: string) => /\b(?:x|×)\s*\d+\b/i.test(s);
 
 const stripNoteBeforePipe = (v?: string | null) => {
   if (!v) return undefined;
-  const left = String(v).split("|")[0].trim();
+  const s = String(v);
+  // ważne: zwracamy "lewo od |" TYLKO gdy separator faktycznie istnieje
+  if (!s.includes("|")) return undefined;
+  const left = s.split("|")[0].trim();
   return left || undefined;
 };
 
@@ -399,6 +402,8 @@ const collapseLabelsWithQty = (labels: string[]): string[] => {
     const cleaned = (raw || "").trim().replace(/\s+/g, " ");
     if (!cleaned) continue;
 
+    if (isQtyOnlyTokenString(cleaned)) continue;
+
     const { base, qty, hasExplicit } = extractExplicitQty(cleaned);
     const baseClean = (base || "").trim().replace(/\s+/g, " ");
     const key = normalizeLabelKey(baseClean);
@@ -422,6 +427,42 @@ const collapseLabelsWithQty = (labels: string[]): string[] => {
     return showQty ? `${row.base} ×${row.count}` : row.base;
   });
 };
+
+const parseQtyFromTokenString = (s: string): number | null => {
+  const t = (s ?? "").normalize("NFKC").trim();
+  if (!t) return null;
+
+  // np. "x1x1", "x1 x1", "×1×1" -> sumujemy: 1+1
+  const all = Array.from(t.matchAll(/(?:x|×)\s*(\d+)/gi))
+    .map((m) => parseInt(m[1], 10))
+    .filter((n) => Number.isFinite(n) && n > 0);
+
+  if (all.length >= 2) return all.reduce((a, b) => a + b, 0);
+
+  // "x2" / "×2"
+  const m1 = t.match(/^(?:x|×)\s*(\d+)$/i);
+  if (m1) {
+    const n = parseInt(m1[1], 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  // "2" / "2x" / "2×"
+  const m2 = t.match(/^(\d+)\s*(?:x|×)?$/i);
+  if (m2) {
+    const n = parseInt(m2[1], 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  return null;
+};
+
+const isQtyOnlyTokenString = (s: string): boolean => {
+  const t = (s ?? "").normalize("NFKC").trim();
+  if (!t) return false;
+  // same tokeny ilościowe, bez nazwy
+  return /^(?:(?:x|×)\s*\d+\s*)+$/i.test(t);
+};
+
 
 const collectAddonLabels = (val: any): string[] => {
   if (!val) return [];
@@ -463,26 +504,38 @@ const collectAddonLabels = (val: any): string[] => {
 
     const out: string[] = [];
     for (const [k, v] of Object.entries(obj)) {
-      if (!k || ignore.has(k)) continue;
+  if (!k || ignore.has(k)) continue;
 
-      if (v === true || v === 1 || v === "1") {
-        out.push(k);
-        continue;
-      }
+  if (v === true || v === 1 || v === "1") {
+    out.push(k);
+    continue;
+  }
 
-      const q = asPosInt(v);
-      if (q !== null) {
-        out.push(q > 1 && !hasQtySuffix(k) ? `${k} ×${q}` : k);
-        continue;
-      }
+  const q = asPosInt(v);
+  if (q !== null) {
+    out.push(q > 1 && !hasQtySuffix(k) ? `${k} ×${q}` : k);
+    continue;
+  }
 
-      if (typeof v === "string" && v.trim()) {
-        out.push(v.trim());
-        continue;
-      }
+  if (typeof v === "string") {
+    const vs = v.trim();
 
-      if (typeof v === "object") out.push(...collectAddonLabels(v));
+    // klucz jest nazwą, a wartość bywa "x1"/"x1x1"/"×2" itp.
+    const qtyFromToken = parseQtyFromTokenString(vs);
+    if (qtyFromToken !== null) {
+      out.push(qtyFromToken > 1 && !hasQtySuffix(k) ? `${k} ×${qtyFromToken}` : k);
+      continue;
     }
+
+    // jeżeli to jest goły token ilościowy bez nazwy — ignorujemy
+    if (isQtyOnlyTokenString(vs)) continue;
+
+    if (vs) out.push(vs);
+    continue;
+  }
+
+  if (typeof v === "object") out.push(...collectAddonLabels(v));
+}
 
     if (out.length) return out;
 
@@ -2489,21 +2542,27 @@ const isNonEmptyString = (v: unknown): v is string =>
             </div>
           )}
 
-          {/* Notatka pozycji (to co ludzie wpisują) */}
-          {p.note && (
-            <div
-              className={
-                addonsOnly.length > 0 || swapsHuman.length > 0 || setSwaps.length > 0
-                  ? "mt-2 border-t border-slate-200 pt-2"
-                  : ""
-              }
-            >
-              <div className="text-[12px] font-semibold text-slate-800">Notatka</div>
-              <div className="mt-0.5 whitespace-pre-line break-words text-[12px] italic text-slate-800">
-                {p.note}
-              </div>
-            </div>
-          )}
+          {/* Notatka pozycji (tylko prawdziwa notatka – nie auto-podsumowania) */}
+{(() => {
+  const txt = typeof p.note === "string" ? p.note.trim() : "";
+  const show = !!txt && !(p.isSet && looksLikeAutoSwapSummary(txt));
+  if (!show) return null;
+
+  return (
+    <div
+      className={
+        addonsOnly.length > 0 || swapsHuman.length > 0 || setSwaps.length > 0
+          ? "mt-2 border-t border-slate-200 pt-2"
+          : ""
+      }
+    >
+      <div className="text-[12px] font-semibold text-slate-800">Notatka</div>
+      <div className="mt-0.5 whitespace-pre-line break-words text-[12px] italic text-slate-800">
+        {txt}
+      </div>
+    </div>
+  );
+})()}
         </div>
       )}
 

@@ -526,6 +526,65 @@ const SAUCE_PRIORITY: string[] = [
   "Sos toffi",
 ];
 
+function pluralizeSos(n: number) {
+  const nn = Math.abs(Math.trunc(Number(n || 0)));
+  const mod10 = nn % 10;
+  const mod100 = nn % 100;
+
+  if (nn === 1) return "sos";
+  if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) return "sosy";
+  return "sosów";
+}
+
+function buildDefaultFreeSaucesForRule(rule: SauceRule): string[] {
+  if (!rule) return [];
+
+  const eligible = Array.isArray(rule.eligible) ? rule.eligible : [];
+  const eligibleSet = new Set(eligible);
+  const out: string[] = [];
+
+  if (rule.kind === "perSauce") {
+    const fb = rule.freeBySauce || {};
+    for (const [s, qRaw] of Object.entries(fb)) {
+      const q = Math.max(0, Math.floor(Number(qRaw || 0)));
+      if (!q) continue;
+      if (!eligibleSet.has(s)) continue;
+      for (let i = 0; i < q; i++) out.push(s);
+    }
+    return out;
+  }
+
+  if (rule.kind === "count") {
+    const freeCount = Math.max(0, Math.floor(Number(rule.freeCount || 0)));
+    if (!freeCount) return [];
+
+    const ordered = [
+      ...SAUCE_PRIORITY.filter((s) => eligibleSet.has(s)),
+      ...eligible.filter((s) => !SAUCE_PRIORITY.includes(s)),
+    ];
+
+    if (!ordered.length) return [];
+
+    for (let i = 0; i < freeCount; i++) {
+      out.push(ordered[i % ordered.length]);
+    }
+    return out;
+  }
+
+  return [];
+}
+
+function summarizeSauceList(list: string[]): string {
+  if (!list?.length) return "";
+  const m = new Map<string, number>();
+  for (const s of list) m.set(s, (m.get(s) ?? 0) + 1);
+
+  return Array.from(m.entries())
+    .map(([s, q]) => `${s} ×${q}`)
+    .join(", ");
+}
+
+
 type SauceRule =
   | { kind: "none"; eligible: string[]; hint?: string }
   | { kind: "count"; eligible: string[]; freeCount: number; hint?: string }
@@ -2130,16 +2189,95 @@ const isDrink =
 const showSauces = !isDrink && !isDessert;
 
 // 2) Bezpiecznik: jeśli to napój/deser, usuń sosy z addonów (żeby nie naliczało kosztu)
-useEffect(() => {
-  if (!isDrink && !isDessert) return;
+  // ===== SOSY: reguła + auto-ustawienie gratisów dla zestawów/set-like =====
+  const itemNameForSauces = useMemo(
+    () => String(prodInfo?.name || prod.name || ""),
+    [prodInfo?.name, prod.name]
+  );
 
-  const arr: string[] = Array.isArray(prod.addons) ? (prod.addons as string[]) : [];
-  for (const a of arr) {
-    if (!isSauceAddon(a)) continue;
-    // usuń każdą porcję (obsługa duplikatów)
-    removeAddon(prod.name, a, { removeOne: true });
-  }
-}, [isDrink, isDessert, prod.addons, prod.name, removeAddon]);
+  const sauceRule = useMemo(
+    () =>
+      getSauceRuleForItem({
+        itemName: itemNameForSauces,
+        subcatLc: String(subcat || ""),
+        restaurantSlug,
+      }),
+    [itemNameForSauces, subcat, restaurantSlug]
+  );
+
+  // identyczna definicja “set-like” jak w getSauceRuleForItem (żeby nie łapać np. napojów)
+  const shouldAutoPrefillFreeSauces = useMemo(() => {
+    const namePlain = normalizePlain(itemNameForSauces);
+    const subPlain = String(subcat || "").toLowerCase();
+
+    const isSetLike =
+      subPlain === "zestawy" ||
+      namePlain.includes("zestaw") ||
+      namePlain.includes(" set ") ||
+      namePlain.includes("lunch") ||
+      /\bset\b/i.test(namePlain);
+
+    return isSetLike;
+  }, [itemNameForSauces, subcat]);
+
+  const freeSaucesTotal = useMemo(() => {
+    if (sauceRule.kind === "count") {
+      return Math.max(0, Number(sauceRule.freeCount || 0));
+    }
+    if (sauceRule.kind === "perSauce") {
+      return Object.values(sauceRule.freeBySauce || {}).reduce(
+        (acc, v) => acc + Math.max(0, Number(v || 0)),
+        0
+      );
+    }
+    return 0;
+  }, [sauceRule]);
+
+  const defaultFreeSauces = useMemo(() => {
+    if (!shouldAutoPrefillFreeSauces) return [];
+    return buildDefaultFreeSaucesForRule(sauceRule);
+  }, [shouldAutoPrefillFreeSauces, sauceRule]);
+
+  const defaultFreeSaucesSummary = useMemo(
+    () => summarizeSauceList(defaultFreeSauces),
+    [defaultFreeSauces]
+  );
+
+  const didAutoInitSaucesRef = useRef(false);
+
+  useEffect(() => {
+    // nie nadpisujemy UX po pierwszej inicjalizacji
+    if (didAutoInitSaucesRef.current) return;
+
+    // tylko gdy sosy w ogóle są widoczne (nie napoje/desery)
+    if (!showSauces) return;
+
+    // tylko dla zestawów / set-like
+    if (!shouldAutoPrefillFreeSauces) return;
+
+    const arr: string[] = Array.isArray(prod.addons) ? (prod.addons as string[]) : [];
+    const alreadyHasAnySauce = arr.some((a) => typeof a === "string" && isSauceAddon(a));
+
+    // auto-prefill TYLKO jeśli klient jeszcze nic nie wybrał
+    if (!alreadyHasAnySauce && defaultFreeSauces.length > 0) {
+      didAutoInitSaucesRef.current = true;
+      defaultFreeSauces.forEach((s) => addAddon(prod.name, s, { allowDuplicate: true }));
+      return;
+    }
+
+    // jeśli już są sosy (klient kliknął) — nie ruszamy
+    if (alreadyHasAnySauce) {
+      didAutoInitSaucesRef.current = true;
+    }
+  }, [
+    showSauces,
+    shouldAutoPrefillFreeSauces,
+    defaultFreeSauces,
+    prod.addons,
+    prod.name,
+    addAddon,
+  ]);
+
 
 
 const SOFT_DRINK_GROUP = useMemo<SoftDrinkGroup | null>(() => {
@@ -2744,6 +2882,19 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
         {showSauces && (
   <div className="mt-2">
     <div className="font-semibold mb-2">Sosy</div>
+        {shouldAutoPrefillFreeSauces && freeSaucesTotal > 0 && (
+      <div className="mb-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+        <div className="text-[11px] font-semibold text-black">
+          W cenie masz {freeSaucesTotal} {pluralizeSos(freeSaucesTotal)} gratis.
+        </div>
+        {defaultFreeSaucesSummary ? (
+          <div className="text-[11px] text-black/70">
+            Domyślnie wybieramy: {defaultFreeSaucesSummary}. Możesz zmienić ilości poniżej.
+          </div>
+        ) : null}
+      </div>
+    )}
+
 
     <div className="overflow-hidden rounded-2xl border border-black/10 bg-white">
       <div className="grid grid-cols-[1fr_120px] items-center px-3 py-2 bg-gray-50 text-[11px] font-semibold text-black/70">
