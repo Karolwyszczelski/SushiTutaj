@@ -2666,13 +2666,7 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
       // inne EXTRAS wyłączone dla Californii w zestawach
       return false;
     }
-
-    // === Hosomaki / Hoso ===
-    if (rowCatLc.includes("hosomaki") || rowCatLc.includes("hoso")) {
-      // Hoso mają tylko Tempurę
-      return ex === "Tempura";
-    }
-
+    
     // === Futomaki / Futo ===
     if (rowCatLc.includes("futomaki") || rowCatLc.includes("futo")) {
       const rowText = row.from.toLowerCase();
