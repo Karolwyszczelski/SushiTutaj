@@ -36,16 +36,20 @@ export default function TermsPage() {
         <div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur-md shadow-[0_30px_90px_rgba(0,0,0,.55)]">
           <div className="px-6 py-8 md:px-10 md:py-12">
             <article
-              className="prose prose-invert prose-lg max-w-none
-              prose-headings:font-semibold
-              prose-h1:text-2xl prose-h1:md:text-3xl prose-h1:text-center prose-h1:tracking-tight
-              prose-h2:mt-10 prose-h2:scroll-mt-28
-              prose-p:leading-relaxed
-              prose-hr:border-white/10
-              prose-a:text-[var(--accent,#de1d13)] hover:prose-a:text-[#ff3b30]
-              prose-strong:text-white
-              prose-li:marker:text-white/40"
-            >
+  className="prose prose-invert prose-lg max-w-none
+  prose-headings:font-semibold
+  prose-h1:text-2xl prose-h1:md:text-3xl prose-h1:text-center prose-h1:tracking-tight prose-h1:mb-6
+  prose-h2:mt-10 prose-h2:mb-4 prose-h2:pb-2 prose-h2:border-b prose-h2:border-white/10 prose-h2:scroll-mt-28
+  prose-h3:mt-8 prose-h3:mb-3
+  prose-p:my-4 md:prose-p:my-5 prose-p:leading-relaxed prose-p:text-white/80
+  prose-ul:my-4 prose-ol:my-4 prose-ul:pl-6 prose-ol:pl-6
+  prose-li:my-1 prose-li:leading-relaxed
+  prose-hr:my-10 prose-hr:border-white/10
+  prose-a:text-[var(--accent,#de1d13)] prose-a:underline prose-a:decoration-white/20 hover:prose-a:text-[#ff3b30] hover:prose-a:decoration-[var(--accent,#de1d13)]
+  prose-strong:text-white
+  prose-li:marker:text-white/40"
+>
+
               <h1>Regulamin serwisu zamówień on-line Sushi Tutaj</h1>
 
               <p>
