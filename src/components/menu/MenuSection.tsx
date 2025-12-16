@@ -316,8 +316,9 @@ export default function MenuSection() {
       }
       const unique = Array.from(uniqueMap.values());
 
-      // sortowanie z preferencją dla zestawów:
-      // Zestaw 1–13 → Vege set 1–2 → pozostałe sety
+            // sortowanie z preferencją: Zestawy → Lunche → reszta
+      // Zestawy: Zestaw 1–13 → Vege set 1–2 → pozostałe sety
+      // Lunche: Lunch 1–N
       const items = unique.slice().sort((a, b) => {
         const catA = a.subcategory || "Inne";
         const catB = b.subcategory || "Inne";
@@ -325,11 +326,6 @@ export default function MenuSection() {
         const catNormB = normalizeDisplay(catB);
         const nameNormA = normalizeDisplay(a.name || "");
         const nameNormB = normalizeDisplay(b.name || "");
-
-        const isSetA =
-          /zestaw|set/.test(catNormA) || /zestaw|set/.test(nameNormA);
-        const isSetB =
-          /zestaw|set/.test(catNormB) || /zestaw|set/.test(nameNormB);
 
         const posA =
           typeof a.position === "number"
@@ -340,21 +336,35 @@ export default function MenuSection() {
             ? b.position
             : Number.POSITIVE_INFINITY;
 
-        if (isSetA && isSetB) {
-          const getSetKey = (p: Product) => {
-            const nameNorm = normalizeDisplay(p.name || "");
-            const subNorm = normalizeDisplay(p.subcategory || "");
+        const groupOf = (catNorm: string, nameNorm: string) => {
+          const isSet =
+            /zestaw|set/.test(catNorm) || /zestaw|set/.test(nameNorm);
+          if (isSet) return 0;
 
-            const isSetInner =
-              /zestaw|set/.test(subNorm) || /zestaw|set/.test(nameNorm);
+          const isLunch =
+            /lunch|lunche/.test(catNorm) || nameNorm.startsWith("lunch ");
+          if (isLunch) return 1;
+
+          return 2;
+        };
+
+        const gA = groupOf(catNormA, nameNormA);
+        const gB = groupOf(catNormB, nameNormB);
+        if (gA !== gB) return gA - gB;
+
+        // ----- ZESTAWY -----
+        if (gA === 0) {
+          const getSetKey = (p: Product) => {
+            const n = normalizeDisplay(p.name || "");
+            const s = normalizeDisplay(p.subcategory || "");
+            const isSetInner = /zestaw|set/.test(s) || /zestaw|set/.test(n);
             if (!isSetInner) return null;
 
-            const isVege =
-              nameNorm.includes("vege") || nameNorm.includes("wege");
+            const isVege = n.includes("vege") || n.includes("wege");
 
             let group = 2; // inne sety
             if (isVege) group = 1; // Vege sety
-            else if (nameNorm.startsWith("zestaw ")) group = 0; // Zestaw 1–13
+            else if (n.startsWith("zestaw ")) group = 0; // Zestaw 1–13
 
             const num = extractSetNumber(p.name);
             const order = num !== null ? num : Number.POSITIVE_INFINITY;
@@ -366,20 +376,30 @@ export default function MenuSection() {
           const keyB = getSetKey(b);
 
           if (keyA && keyB) {
-            if (keyA.group !== keyB.group) {
-              return keyA.group - keyB.group;
-            }
-            if (keyA.order !== keyB.order) {
-              return keyA.order - keyB.order;
-            }
+            if (keyA.group !== keyB.group) return keyA.group - keyB.group;
+            if (keyA.order !== keyB.order) return keyA.order - keyB.order;
           }
 
+          // fallback w obrębie zestawów
           const catCmp = catNormA.localeCompare(catNormB, "pl");
           if (catCmp !== 0) return catCmp;
           if (posA !== posB) return posA - posB;
           return (a.name || "").localeCompare(b.name || "", "pl");
         }
 
+        // ----- LUNCHE -----
+        if (gA === 1) {
+          const nA = extractSetNumber(a.name);
+          const nB = extractSetNumber(b.name);
+          const oA = nA ?? Number.POSITIVE_INFINITY;
+          const oB = nB ?? Number.POSITIVE_INFINITY;
+
+          if (oA !== oB) return oA - oB;
+          if (posA !== posB) return posA - posB;
+          return (a.name || "").localeCompare(b.name || "", "pl");
+        }
+
+        // ----- RESZTA -----
         const catCmp = catNormA.localeCompare(catNormB, "pl");
         if (catCmp !== 0) return catCmp;
         if (posA !== posB) return posA - posB;
@@ -388,28 +408,25 @@ export default function MenuSection() {
 
       setProducts(items);
 
-      // kategorie: Zestawy → Wszystko → reszta
+            // kategorie: Wszystko → Zestawy → Lunche → reszta
       const rawCats = Array.from(
         new Set(items.map((p) => p.subcategory || "Inne"))
       ).sort((a, b) => a.localeCompare(b, "pl"));
 
-      const setsIdx = rawCats.findIndex((c) =>
-        c.toLowerCase().includes("zestaw")
-      );
+      const isSetCat = (c: string) => /zestaw|set/.test(norm(c));
+      const isLunchCat = (c: string) => /lunch|lunche/.test(norm(c));
 
-      let catsOrdered: string[];
-      if (setsIdx !== -1) {
-        const setsCat = rawCats[setsIdx];
-        const rest = rawCats.filter((_, idx) => idx !== setsIdx);
-        catsOrdered = [setsCat, "Wszystko", ...rest];
-      } else {
-        catsOrdered = ["Wszystko", ...rawCats];
-      }
+      const setsCats = rawCats.filter(isSetCat);
+      const lunchCats = rawCats.filter(isLunchCat);
+      const restCats = rawCats.filter((c) => !isSetCat(c) && !isLunchCat(c));
+
+      const catsOrdered = ["Wszystko", ...setsCats, ...lunchCats, ...restCats];
 
       setCategories(catsOrdered);
       if (activeCat !== "Wszystko" && !catsOrdered.includes(activeCat)) {
         setActiveCat("Wszystko");
       }
+
       setLoading(false);
     })();
 
