@@ -1141,6 +1141,16 @@ const isVisible = (el: HTMLDivElement | null) => !!el && !!el.offsetParent;
 const accentBtn =
   "bg-gradient-to-b from-[#b31217] to-[#7a0b0b] text-white shadow-[0_10px_22px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)] ring-1 ring-black/30";
 
+  const getCartItemKey = (item: any, index: number) => {
+  return (
+    item.cart_item_id ||
+    item.uid ||
+    item.id ||
+    `${item.product_id ?? item.productId ?? item.name ?? "item"}__${item.variant_id ?? item.variantId ?? "base"}__${index}`
+  );
+};
+
+
 /* ================= GODZINY OTWARCIA PER MIASTO ================= */
 type Day = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = niedziela
 type Range = [h: number, m: number, H: number, M: number];
@@ -2575,8 +2585,9 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
       <div className="text-xs text-black/80 space-y-3">
         {isSet && setRows.length > 0 && (
           <div className="space-y-2">
-            <div className="font-semibold">Zamiany w zestawie</div>
-            {setRows.map((row, i) => {
+            <div className="font-semibold">Skład zestawu</div>
+
+{setRows.map((row, i) => {
   const catKey = normalize(row.cat);
   const isCaliforniaRow = /california/i.test(row.cat || "");
 
@@ -2586,8 +2597,7 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
 
   // bazowa pula zamian w obrębie kategorii (bez specjałów)
   let pool = (optionsByCat[catKey] || []).filter(
-    (n) =>
-      (productCategory(n) || "").toLowerCase() !== "specjały"
+    (n) => (productCategory(n) || "").toLowerCase() !== "specjały"
   );
 
   // DLA CALIFORNI: filtrujemy tylko do tej samej „klasy”
@@ -2595,10 +2605,7 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
   // – klasyczna ↔ klasyczna
   if (isCaliforniaRow) {
     const currentIsTopped = currentProduct
-      ? isCaliforniaToppedByText(
-          currentProduct.name,
-          currentProduct.description
-        )
+      ? isCaliforniaToppedByText(currentProduct.name, currentProduct.description)
       : isCaliforniaToppedByText(row.from, null);
 
     pool = pool.filter((n) => {
@@ -2610,9 +2617,6 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
   }
 
   // OPCJE SELECTA:
-  // - aktualnie wybrana rolka (current)
-  // - oryginalna rolka z opisu zestawu (row.from)
-  // - pozostałe rolki z puli
   const rawOptions = [current, row.from, ...pool];
   const selectOptions = Array.from(new Set(rawOptions));
 
@@ -2626,17 +2630,12 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
 
   const toggleRowBake = () => {
     if (!rawRow || isWholeSetBaked) return;
-    if (rollBaked) {
-      removeAddon(prod.name, rollAddonLabel);
-    } else {
-      addAddon(prod.name, rollAddonLabel);
-    }
+    if (rollBaked) removeAddon(prod.name, rollAddonLabel);
+    else addAddon(prod.name, rollAddonLabel);
   };
 
   // Dodatki per konkretną rolkę
-  const extraKey = (ex: string) =>
-    `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — ${ex}`;
-
+  const extraKey = (ex: string) => `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — ${ex}`;
   const rowCatLc = (row.cat || "").toLowerCase();
 
   const text = `${currentProduct?.name || row.cat} ${
@@ -2647,15 +2646,12 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
     const parentNameLc = (prodInfo?.name || prod.name || "").toLowerCase();
 
     // SPEC CASE: w Zestawie 2 hosomaki bez dodatków
-    if (parentNameLc.startsWith("zestaw 2") && rowCatLc.includes("hosomaki")) {
-      return false;
-    }
+    if (parentNameLc.startsWith("zestaw 2") && rowCatLc.includes("hosomaki")) return false;
 
     // === California w zestawie ===
     if (rowCatLc.includes("california")) {
       if (ex === "Ryba pieczona") {
         const rowText = row.from.toLowerCase();
-        // jeśli ta California jest już pieczona / w tempurze – blokujemy
         if (isAlreadyBakedOrTempura(rowText)) return false;
 
         return isSpecialCaliforniaBakedFishProduct(
@@ -2663,16 +2659,14 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
           currentProduct?.description || ""
         );
       }
-      // inne EXTRAS wyłączone dla Californii w zestawach
       return false;
     }
 
     // === Hosomaki / Hoso ===
     if (rowCatLc.includes("hosomaki") || rowCatLc.includes("hoso")) {
-      // Hoso mają tylko Tempurę
       return ex === "Tempura";
     }
-    
+
     // === Futomaki / Futo ===
     if (rowCatLc.includes("futomaki") || rowCatLc.includes("futo")) {
       const rowText = row.from.toLowerCase();
@@ -2698,96 +2692,109 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
     return false;
   };
 
+  // labelki do selecta: pokazuj krótko (np. "Dorsz"), ale value zostaje pełne
+  const stripKnownPrefix = (label: string) =>
+    (label || "")
+      .replace(/^(Futomak(?:i)?|Hosomak(?:i)?|California|Nigiri)\s+/i, "")
+      .trim();
+
+  const optionLabelShort = (n: string) => stripKnownPrefix(withCategoryPrefix(n, row.cat));
+
   return (
-    <div key={i} className="flex flex-col gap-2">
-  <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 min-w-0">
-        <span className="px-2 py-1 rounded bg-gray-50 border border-gray-200">
-          {row.qty}× {row.cat}
-        </span>
-
-        {/* DLA KAŻDEJ ROLKI (także California) jest select – ale dla California pool jest przefiltrowany */}
-        <span className="text-black/70">zamień:</span>
-        <select
-          className="border border-black/15 rounded px-2 py-2 bg-white w-full sm:w-auto max-w-full"
-      value={current}
-      onChange={(e) => doSetSwap(row.from, e.target.value)}
-        >
-          {selectOptions.map((n) => (
-            <option key={n} value={n}>
-              {n === row.from
-                ? `Skład zestawu — ${withCategoryPrefix(n, row.cat)}`
-                : withCategoryPrefix(n, row.cat)}
-            </option>
-          ))}
-        </select>
-
-        {rawRow && (
-          <button
-            type="button"
-            onClick={toggleRowBake}
-            disabled={isWholeSetBaked}
-            className={clsx(
-              "px-2 py-1 rounded text-[11px] border",
-              isWholeSetBaked
-                ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
-                : rollBaked
-                ? "bg-black text-white border-black"
-                : "bg-white text-black hover:bg-gray-50 border-gray-200"
-            )}
-          >
-            {rollBaked
-              ? "✓ Ta rolka pieczona (+2 zł)"
-              : "+ Zamień tę rolkę na pieczoną (+2 zł)"}
-          </button>
-        )}
+    <div
+      key={i}
+      className="rounded-2xl border border-black/10 bg-white p-3 space-y-3"
+    >
+      {/* 1) Skład rolki w zestawie */}
+      <div className="text-sm font-semibold text-black leading-snug">
+        {row.qty}x {row.cat} {row.from}
       </div>
 
-      {/* Dodatki dla tej KONKRETNEJ rolki */}
-      <div className="flex flex-wrap items-center gap-2 pl-2">
-        <span className="text-black/70 text-[11px]">
-          Dodatki do tej rolki:
-        </span>
-        {EXTRAS.map((ex) => {
-          const key = extraKey(ex);
-          const allowed = canUseExtraForRow(ex);
-          const on = (prod.addons ?? []).includes(key);
-          return (
-            <button
-              key={ex}
-              type="button"
-              onClick={() => {
-  if (!allowed) return;
+      {/* 2) Zamiana */}
+      <div className="space-y-1">
+        <div className="text-[11px] font-semibold text-black/70">Zamień na</div>
+        <select
+          className="border border-black/15 rounded-xl px-3 py-2 bg-white w-full"
+          value={current}
+          onChange={(e) => doSetSwap(row.from, e.target.value)}
+          aria-label={`Zamiana: ${row.qty}x ${row.cat} ${row.from}`}
+        >
+          {selectOptions.map((n) => {
+            const short = optionLabelShort(n);
+            return (
+              <option key={n} value={n}>
+                {n === row.from ? `Skład zestawu — ${short}` : short}
+              </option>
+            );
+          })}
+        </select>
+      </div>
 
-  if (on) {
-    // klik w aktywny -> zdejmij
-    removeAddon(prod.name, key);
-    return;
-  }
+      {/* 3) Pieczenie tej rolki (jeśli dotyczy) */}
+      {rawRow && (
+        <button
+          type="button"
+          onClick={toggleRowBake}
+          disabled={isWholeSetBaked}
+          className={clsx(
+            "w-full px-3 py-2 rounded-xl text-[11px] border",
+            isWholeSetBaked
+              ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
+              : rollBaked
+              ? "bg-black text-white border-black"
+              : "bg-white text-black hover:bg-gray-50 border-gray-200"
+          )}
+        >
+          {rollBaked ? "✓ Ta rolka pieczona (+2 zł)" : "+ Zamień tę rolkę na pieczoną (+2 zł)"}
+        </button>
+      )}
 
-  // klik w nowy -> usuń WSZYSTKIE inne dodatki dla tej rolki (radio-like)
-  EXTRAS.forEach((ex2) => {
-    const k2 = extraKey(ex2);
-    if ((prod.addons ?? []).includes(k2)) {
-      removeAddon(prod.name, k2);
-    }
-  });
+      {/* 4) Dodatki do tej rolki */}
+      <div className="space-y-2">
+        <div className="text-[11px] font-semibold text-black/70">
+          Dodatki do tej rolki
+        </div>
 
-  // i ustaw wybrany
-  addAddon(prod.name, key);
-}}
-              className={clsx(
-                "px-2 py-1 rounded text-[11px] border",
-                !allowed
-                  ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
-                  : on
-                  ? "bg-black text-white border-black"
-                  : "bg-white text-black hover:bg-gray-50 border-gray-200"
-              )}
-            >
-              {on ? `✓ ${ex}` : `+ ${ex}`}
-            </button>
-          );
-        })}
+        <div className="flex flex-wrap gap-2">
+          {EXTRAS.map((ex) => {
+            const key = extraKey(ex);
+            const allowed = canUseExtraForRow(ex);
+            const on = (prod.addons ?? []).includes(key);
+
+            return (
+              <button
+                key={ex}
+                type="button"
+                onClick={() => {
+                  if (!allowed) return;
+
+                  if (on) {
+                    removeAddon(prod.name, key);
+                    return;
+                  }
+
+                  // radio-like w obrębie tej rolki
+                  EXTRAS.forEach((ex2) => {
+                    const k2 = extraKey(ex2);
+                    if ((prod.addons ?? []).includes(k2)) removeAddon(prod.name, k2);
+                  });
+
+                  addAddon(prod.name, key);
+                }}
+                className={clsx(
+                  "px-2 py-1 rounded text-[11px] border",
+                  !allowed
+                    ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
+                    : on
+                    ? "bg-black text-white border-black"
+                    : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                )}
+              >
+                {on ? `✓ ${ex}` : `+ ${ex}`}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -3494,7 +3501,7 @@ export default function CheckoutModal() {
     setReservationId(isUuid ? r.trim() : null);
   }, []);
 
-  const [notes, setNotes] = useState<{ [key: number]: string }>({});
+const [notes, setNotes] = useState<Record<string, string>>({});
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -4699,26 +4706,27 @@ loyalty_stickers_before:
         const setSwaps = buildSetSwapsPayload(item, product);
 
         // tekst z notatki użytkownika + tekst z zamian
-        const userNote = notes[index] || "";
-        const swapsNote = buildSetSwapsNote(setSwaps);
-        const combinedNote =
-          userNote && swapsNote
-            ? `${userNote} | ${swapsNote}`
-            : userNote || swapsNote || "";
+        // tekst z notatki użytkownika + tekst z zamian
+const userNote = notes[index] || "";
+const swapsNote = buildSetSwapsNote(setSwaps);
+const combinedNote =
+  userNote && swapsNote
+    ? `${userNote} | ${swapsNote}`
+    : userNote || swapsNote || "";
 
-        return {
-          product_id: product?.id ?? item.product_id ?? item.id ?? null,
-          name: item.name,
-          quantity: item.quantity || 1,
-          unit_price: item.price,
-          options: {
-            addons: item.addons,
-            swaps: item.swaps,
-            set_swaps: setSwaps.length ? setSwaps : undefined, // struktura do panelu
-            note: combinedNote, // to pole czyta backend (opt.note)
-            restaurant: slug,
-          },
-        };
+return {
+  product_id: product?.id ?? item.product_id ?? item.id ?? null,
+  name: item.name,
+  quantity: item.quantity || 1,
+  unit_price: item.price,
+  options: {
+    addons: item.addons,
+    swaps: item.swaps,
+    set_swaps: setSwaps.length ? setSwaps : undefined, // struktura do panelu
+    note: combinedNote, // to pole czyta backend (opt.note)
+    restaurant: slug,
+  },
+};
       });
 
      const tsToken = getTurnstileToken();
@@ -4972,34 +4980,44 @@ return (
                     <div className="space-y-6">
                       <h3 className="text-2xl font-bold">Wybrane produkty</h3>
 
-                      <div className="space-y-3 max-h-[360px] overflow-y-auto">
-                        {items.map((item, idx) => (
-                          <div key={idx} className="space-y-1">
-                            <ProductItem
-                              prod={item}
-                              productCategory={productCategory}
-                              productsDb={productsDb}
-                              optionsByCat={optionsByCat}
-                              restaurantSlug={restaurantSlug}
-                              helpers={productHelpers}
-                              dbOptionsByProductId={dbOptionsByProductId}
-                            />
-                            <textarea
-                              className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
-                              placeholder="Notatka do produktu (np. alergie, zamiany składników)"
-                              value={notes[idx] || ""}
-                              onChange={(e) =>
-                                setNotes({ ...notes, [idx]: e.target.value })
-                              }
-                            />
-                          </div>
-                        ))}
-                        {items.length === 0 && (
-                          <p className="text-center text-black/60">
-                            Brak produktów w koszyku.
-                          </p>
-                        )}
-                      </div>
+                      {/* START: lista pozycji koszyka */}
+<div className="space-y-3 max-h-[360px] overflow-y-auto">
+  {items.map((item: any, idx: number) => {
+    // Stabilny key: preferuj unikalne ID pozycji koszyka, a jak nie ma – kompozyt
+    const itemKey =
+      item.cart_item_id ||
+      item.uid ||
+      item.id ||
+      `${item.product_id ?? item.productId ?? item.name ?? "item"}__${item.variant_id ?? item.variantId ?? "base"}__${idx}`;
+
+    return (
+      <div key={itemKey} className="space-y-1">
+        <ProductItem
+          prod={item}
+          productCategory={productCategory}
+          productsDb={productsDb}
+          optionsByCat={optionsByCat}
+          restaurantSlug={restaurantSlug}
+          helpers={productHelpers}
+          dbOptionsByProductId={dbOptionsByProductId}
+        />
+
+        <textarea
+          className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
+          placeholder="Notatka do produktu (np. alergie, zamiany składników)"
+          value={notes[itemKey] ?? ""}
+          onChange={(e) =>
+            setNotes((prev) => ({ ...prev, [itemKey]: e.target.value }))
+          }
+        />
+      </div>
+    );
+  })}
+
+  {items.length === 0 && (
+    <p className="text-center text-black/60">Brak produktów w koszyku.</p>
+  )}
+</div>
 
                       <ChopsticksControl
                         value={chopsticksQty}
