@@ -386,7 +386,7 @@ export default function ZestawMiesiaca() {
             ) : null}
 
             {parsedDesc.items.length > 0 ? (
-              <ul className="mx-auto max-w-md text-left list-disc list-inside space-y-1">
+              <ul className="mx-auto max-w-md text-center list-disc list-inside space-y-1">
                 {parsedDesc.items.map((t, i) => (
                   <li key={i}>{t}</li>
                 ))}
