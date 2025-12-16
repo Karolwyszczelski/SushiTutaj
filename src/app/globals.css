@@ -126,3 +126,60 @@ html,body{ touch-action:manipulation; }
 .modal-scroll {
   -webkit-overflow-scrolling: touch;
 }
+
+/* Regulaminy/Polityki: przywróć odstępy (Tailwind preflight zeruje marginesy) */
+@layer base {
+  .prose :where(p):not(:where(.not-prose, .not-prose *)) {
+    margin: 0.95em 0;
+    line-height: 1.75;
+  }
+
+  .prose :where(ul):not(:where(.not-prose, .not-prose *)),
+  .prose :where(ol):not(:where(.not-prose, .not-prose *)) {
+    margin: 0.95em 0;
+    padding-left: 1.5em;
+  }
+
+  .prose :where(ul):not(:where(.not-prose, .not-prose *)) { list-style: disc; }
+  .prose :where(ol):not(:where(.not-prose, .not-prose *)) { list-style: decimal; }
+
+  .prose :where(li):not(:where(.not-prose, .not-prose *)) {
+    margin: 0.25em 0;
+    line-height: 1.7;
+  }
+
+  .prose :where(h1):not(:where(.not-prose, .not-prose *)) {
+    margin: 0 0 0.9em;
+  }
+
+  .prose :where(h2):not(:where(.not-prose, .not-prose *)) {
+    margin: 1.8em 0 0.7em;
+    padding-bottom: 0.35em;
+    border-bottom: 1px solid rgba(255,255,255,0.10);
+  }
+
+  .prose :where(h3):not(:where(.not-prose, .not-prose *)) {
+    margin: 1.2em 0 0.4em;
+  }
+
+  .prose :where(hr):not(:where(.not-prose, .not-prose *)) {
+    margin: 2.2em 0;
+    border-color: rgba(255,255,255,0.10);
+  }
+
+  /* Nadpisz globalne a{color:#fff;} tylko w treściach prawnych */
+  .prose :where(a):not(:where(.not-prose, .not-prose *)) {
+    color: var(--accent, #de1d13);
+    text-decoration: underline;
+    text-decoration-color: rgba(255,255,255,0.20);
+    text-underline-offset: 3px;
+  }
+  .prose :where(a:hover):not(:where(.not-prose, .not-prose *)) {
+    opacity: 1; /* nadpisuje a:hover{opacity:.9;} */
+    text-decoration-color: var(--accent, #de1d13);
+  }
+
+  .prose :where(strong):not(:where(.not-prose, .not-prose *)) {
+    color: #fff;
+  }
+}
