@@ -3334,7 +3334,7 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
 
                {isTartar && (
   <div className="mt-2">
-    <div className="font-semibold mb-2">TATAR ŁOSOŚ / TUŃCZYK</div>
+
 
     <div className="flex flex-wrap gap-2">
       {TARTAR_BASES.map((base) => {
