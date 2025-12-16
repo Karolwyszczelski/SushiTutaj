@@ -49,7 +49,6 @@ export default function TermsPage() {
   prose-strong:text-white
   prose-li:marker:text-white/40"
 >
-
               <h1>Regulamin serwisu zamówień on-line Sushi Tutaj</h1>
 
               <p>
