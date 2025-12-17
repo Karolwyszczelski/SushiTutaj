@@ -2,10 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Upload, X, Save, ImageIcon } from "lucide-react";
+import { Upload, X, Save, ImageIcon, Loader2 } from "lucide-react";
 import Image from "next/image";
 
-// Typ danych z bazy
 type RestaurantData = {
   id: string;
   popup_active: boolean;
@@ -38,7 +37,7 @@ export default function PopupSettingsForm({
         .from("restaurants")
         .select("popup_active, popup_title, popup_content, popup_image_url")
         .eq("id", restaurantId)
-        .single();
+        .maybeSingle();
 
       if (data && !error) {
         setActive(data.popup_active || false);
@@ -59,11 +58,11 @@ export default function PopupSettingsForm({
 
       const file = e.target.files[0];
       const fileExt = file.name.split(".").pop();
-      // Unikalna nazwa pliku: restaurantId_timestamp.ext
+      // Unikalna nazwa pliku
       const fileName = `${restaurantId}_${Date.now()}.${fileExt}`;
-      const filePath = `${fileName}`;
+      const filePath = fileName;
 
-      // 1. Upload do Supabase Storage (bucket: 'popups')
+      // 1. Upload do Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from("popups")
         .upload(filePath, file);
@@ -73,22 +72,22 @@ export default function PopupSettingsForm({
       // 2. Pobranie publicznego URL
       const { data } = supabase.storage.from("popups").getPublicUrl(filePath);
       
-      // 3. Ustawienie w stanie (zapis do bazy nastąpi po kliknięciu "Zapisz zmiany")
+      // 3. Ustawienie w stanie
       setImageUrl(data.publicUrl);
 
     } catch (error: any) {
       alert("Błąd podczas wgrywania zdjęcia: " + error.message);
     } finally {
       setUploading(false);
+      // Reset inputa, żeby można było wgrać ten sam plik ponownie
+      e.target.value = "";
     }
   };
 
-  // Usuwanie zdjęcia (tylko ze stanu i bazy, plik w storage może zostać lub można go usunąć API)
   const removeImage = () => {
     setImageUrl(null);
   };
 
-  // Zapis całej konfiguracji
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -105,6 +104,7 @@ export default function PopupSettingsForm({
       if (error) throw error;
       alert("Zapisano ustawienia pop-up!");
     } catch (error: any) {
+      console.error(error);
       alert("Błąd zapisu: " + error.message);
     } finally {
       setSaving(false);
@@ -114,9 +114,13 @@ export default function PopupSettingsForm({
   if (loading) return <div className="p-4 text-sm text-gray-500">Ładowanie ustawień...</div>;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-6 max-w-2xl">
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-6 max-w-2xl text-slate-900">
       <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-        <h3 className="text-lg font-bold text-slate-900">Ustawienia Pop-up (Promocja)</h3>
+        <div>
+           <h3 className="text-lg font-bold text-slate-900">Pop-up (Promocja)</h3>
+           <p className="text-xs text-slate-500">Wyskakujące okienko na stronie głównej</p>
+        </div>
+       
         <div className="flex items-center gap-2">
           <label className="relative inline-flex items-center cursor-pointer">
             <input 
@@ -136,21 +140,22 @@ export default function PopupSettingsForm({
       <div className="space-y-4">
         {/* Tytuł */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
-            Nagłówek (Tytuł)
+          <label className="block text-sm font-semibold text-slate-700 mb-1">
+            Nagłówek
           </label>
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="np. Promocja Walentynkowa!"
-            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+            // FIX: bg-white i text-gray-900 wymuszają czytelność
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
           />
         </div>
 
         {/* Treść */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">
+          <label className="block text-sm font-semibold text-slate-700 mb-1">
             Treść komunikatu
           </label>
           <textarea
@@ -158,29 +163,32 @@ export default function PopupSettingsForm({
             onChange={(e) => setContent(e.target.value)}
             rows={4}
             placeholder="Opisz szczegóły promocji..."
-            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
+            // FIX: bg-white i text-gray-900 wymuszają czytelność
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"
           />
         </div>
 
         {/* Sekcja Zdjęcia */}
         <div>
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            Obrazek promocyjny
+          <label className="block text-sm font-semibold text-slate-700 mb-2">
+            Obrazek
           </label>
           
           <div className="flex flex-col gap-4">
             {/* Podgląd */}
             {imageUrl ? (
-              <div className="relative w-full h-48 bg-gray-100 rounded-xl overflow-hidden border border-slate-200 group">
+              <div className="relative w-full h-64 bg-gray-50 rounded-xl overflow-hidden border border-slate-200 group">
                 <Image 
                   src={imageUrl} 
                   alt="Podgląd" 
                   fill 
                   className="object-cover" 
+                  // Fallback dla obrazków bez skonfigurowanej domeny
+                  unoptimized={true} 
                 />
                 <button
                   onClick={removeImage}
-                  className="absolute top-2 right-2 p-1 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute top-2 right-2 p-1.5 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
                   title="Usuń zdjęcie"
                 >
                   <X size={16} />
@@ -196,9 +204,9 @@ export default function PopupSettingsForm({
             )}
 
             {/* Przycisk Uploadu */}
-            <div className="flex items-center gap-3">
-               <label className={`flex items-center gap-2 cursor-pointer px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-sm font-medium transition ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                 <Upload size={16} />
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+               <label className={`flex items-center gap-2 cursor-pointer px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium transition shadow-sm ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                 {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
                  <span>{uploading ? "Wgrywanie..." : "Wybierz plik"}</span>
                  <input 
                    type="file" 
@@ -220,9 +228,9 @@ export default function PopupSettingsForm({
         <button
           onClick={handleSave}
           disabled={saving || uploading}
-          className="flex items-center gap-2 rounded-xl bg-black px-6 py-2.5 text-sm font-bold text-white hover:bg-gray-800 disabled:opacity-50 transition"
+          className="flex items-center gap-2 rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50 transition shadow-md"
         >
-          <Save size={16} />
+          {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
           {saving ? "Zapisywanie..." : "Zapisz zmiany"}
         </button>
       </div>
