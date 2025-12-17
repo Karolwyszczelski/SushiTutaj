@@ -164,7 +164,8 @@ export default function PopupSettingsForm({
                 onChange={(e) => setBtnType(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-gray-900 focus:ring-1 focus:ring-emerald-500 outline-none"
               >
-                <option value="close">Tylko "Zamknij"</option>
+                {/* TUTAJ BYŁ BŁĄD - ZAMIENIŁEM NA &quot; */}
+                <option value="close">Tylko &quot;Zamknij&quot;</option>
                 <option value="link">Przekieruj do linku</option>
                 <option value="call">Zadzwoń do lokalu</option>
               </select>
@@ -221,6 +222,7 @@ export default function PopupSettingsForm({
         {/* Zdjęcie */}
         <div>
           <label className="block text-sm font-semibold text-slate-700 mb-2">Obrazek</label>
+          
           <div className="flex flex-col gap-4">
             {imageUrl ? (
               <div className="relative w-full bg-gray-50 rounded-xl overflow-hidden border border-slate-200 group">
