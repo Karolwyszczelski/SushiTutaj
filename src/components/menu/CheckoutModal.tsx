@@ -1141,16 +1141,6 @@ const isVisible = (el: HTMLDivElement | null) => !!el && !!el.offsetParent;
 const accentBtn =
   "bg-gradient-to-b from-[#b31217] to-[#7a0b0b] text-white shadow-[0_10px_22px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)] ring-1 ring-black/30";
 
-  const getCartItemKey = (item: any, index: number) => {
-  return (
-    item.cart_item_id ||
-    item.uid ||
-    item.id ||
-    `${item.product_id ?? item.productId ?? item.name ?? "item"}__${item.variant_id ?? item.variantId ?? "base"}__${index}`
-  );
-};
-
-
 /* ================= GODZINY OTWARCIA PER MIASTO ================= */
 type Day = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = niedziela
 type Range = [h: number, m: number, H: number, M: number];
@@ -1924,6 +1914,7 @@ const ProductItem: React.FC<{
 }, [prod.addons, prodInfo, prod.name, subcat, restaurantSlug]);
   const lineTotal = (priceNum + addonsCost) * (prod.quantity || 1);
 
+
   // Czy dany extra jest dozwolony dla tego produktu
   const canUseExtra = (extra: string): boolean => {
     if (isSet) {
@@ -1996,14 +1987,54 @@ const ProductItem: React.FC<{
     const current = getSetSwapCurrent(rowFrom);
     if (!to || to === current) return;
 
-    // ważne: backend/store trzyma zamianę po ORYGINALNEJ nazwie z opisu zestawu
+    const swaps = Array.isArray(prod.swaps) ? prod.swaps : [];
+    
+    // Używamy trim() i toLowerCase() dla pewności porównania
+    const rowFromLc = rowFrom.trim().toLowerCase();
+    const toLc = to.trim().toLowerCase();
+
+    // 1. Najpierw wykonaj zamianę w stanie koszyka
     swapIngredient(prod.name, rowFrom, to);
 
-    // jednorazowa opłata za zamiany w zestawie
-    if (!(prod.addons ?? []).includes(SWAP_FEE_NAME)) {
-      addAddon(prod.name, SWAP_FEE_NAME);
+    // 2. Teraz oblicz, czy po tej operacji nadal istnieje jakakolwiek PŁATNA zamiana.
+    // Symulujemy stan tablicy swaps po aktualizacji:
+    const nextSwaps = [...swaps]; 
+    const existingIdx = nextSwaps.findIndex(
+      (s: any) => s && s.from && s.from.trim().toLowerCase() === rowFromLc
+    );
+
+    if (existingIdx >= 0) {
+      if (toLc === rowFromLc) {
+        // Użytkownik wrócił do oryginału -> usuwamy wpis o zamianie
+        nextSwaps.splice(existingIdx, 1);
+      } else {
+        // Aktualizacja istniejącej zamiany na coś innego
+        nextSwaps[existingIdx] = { ...nextSwaps[existingIdx], to };
+      }
+    } else {
+      // Nowa zamiana (jeśli nie jest tożsama z oryginałem)
+      if (toLc !== rowFromLc) {
+        nextSwaps.push({ from: rowFrom, to });
+      }
+    }
+
+    // Sprawdź, czy w tablicy pozostał jakikolwiek wpis, gdzie 'from' różni się od 'to'
+    const hasAnyActiveSwap = nextSwaps.some(
+      (s: any) => 
+        s.from && s.to && 
+        s.from.trim().toLowerCase() !== s.to.trim().toLowerCase()
+    );
+
+    const hasFee = (prod.addons ?? []).includes(SWAP_FEE_NAME);
+
+    // 3. Dodaj lub usuń opłatę 5 zł
+    if (hasAnyActiveSwap) {
+      if (!hasFee) addAddon(prod.name, SWAP_FEE_NAME);
+    } else {
+      if (hasFee) removeAddon(prod.name, SWAP_FEE_NAME);
     }
   };
+
 
   // Frytki z batatów z przystawek – tylko w Szczytnie i Przasnyszu
    const isSweetPotatoFries = useMemo(() => {
@@ -2591,29 +2622,51 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
   const catKey = normalize(row.cat);
   const isCaliforniaRow = /california/i.test(row.cat || "");
 
-  const current = getSetSwapCurrent(row.from);
+    const current = getSetSwapCurrent(row.from);
+
+  // produkt WYBRANEJ rolki (po zamianie) – nie oryginał ani cały zestaw
+  const currentPrefixed = withCategoryPrefix(current, row.cat);
   const currentProduct =
-    byName.get(current) || byName.get(row.from) || prodInfo;
+    byName.get(current) || byName.get(currentPrefixed) || null;
 
-  // bazowa pula zamian w obrębie kategorii (bez specjałów)
-  let pool = (optionsByCat[catKey] || []).filter(
-    (n) => (productCategory(n) || "").toLowerCase() !== "specjały"
-  );
+  // tekst do logiki – MUSI opisywać WYBRANĄ rolkę (żeby nie “ciągnęło tempury”)
+  const textForLogic = `${currentProduct?.name || currentPrefixed} ${
+    currentProduct?.description || ""
+  }`;
 
-  // DLA CALIFORNI: filtrujemy tylko do tej samej „klasy”
-  // – obłożona ↔ obłożona
-  // – klasyczna ↔ klasyczna
-  if (isCaliforniaRow) {
-    const currentIsTopped = currentProduct
-      ? isCaliforniaToppedByText(currentProduct.name, currentProduct.description)
-      : isCaliforniaToppedByText(row.from, null);
 
-    pool = pool.filter((n) => {
-      const p = byName.get(n);
-      if (!p) return false;
-      const pIsTopped = isCaliforniaToppedByText(p.name, p.description);
-      return pIsTopped === currentIsTopped;
-    });
+  // 1. Sprawdźmy, czy ten konkretny składnik zestawu (oryginał) jest Specjałem
+  const originalNameFull = withCategoryPrefix(row.from, row.cat);
+  const originalDbItem = byName.get(row.from) || byName.get(originalNameFull);
+  
+  // Sprawdzamy subkategorię w bazie ("specjały")
+  const isRowSpecial = (originalDbItem?.subcategory || "").toLowerCase() === "specjały";
+
+  let pool: string[] = [];
+
+  if (isRowSpecial) {
+    // JEŚLI TO SPECJAŁ: blokujemy zamiany (pula jest pusta).
+    // Użytkownik zobaczy tylko "Skład zestawu — California Rainbow"
+    pool = [];
+  } else {
+    // JEŚLI TO ZWYKŁA ROLKA: generujemy standardową pulę zamian (bez specjałów)
+    pool = (optionsByCat[catKey] || []).filter(
+      (n) => (productCategory(n) || "").toLowerCase() !== "specjały"
+    );
+
+    // DLA CALIFORNI: filtrujemy tylko do tej samej „klasy” (obłożona ↔ obłożona)
+    if (isCaliforniaRow) {
+      const currentIsTopped = currentProduct
+        ? isCaliforniaToppedByText(currentProduct.name, currentProduct.description)
+        : isCaliforniaToppedByText(currentPrefixed, null);
+
+      pool = pool.filter((n) => {
+        const p = byName.get(n);
+        if (!p) return false;
+        const pIsTopped = isCaliforniaToppedByText(p.name, p.description);
+        return pIsTopped === currentIsTopped;
+      });
+    }
   }
 
   // OPCJE SELECTA:
@@ -2624,12 +2677,28 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
   const rowKeyBase = normalizeSetRowKey(row);
 
   // pieczenie konkretnej rolki w zestawie
+  // pieczenie konkretnej rolki w zestawie
   const rollAddonLabel = RAW_SET_BAKE_ROLL_PREFIX + rowKeyBase;
-  const rawRow = isRawRow(row);
+
+  // --- POPRAWKA: Sprawdzamy aktualnie wybraną rolkę (po zamianie), a nie tylko oryginał ---
+  const currentTextLc = (textForLogic || "").toLowerCase();
+  
+  // Pozwól na pieczenie, jeśli w nazwie jest "surowy" LUB nazwa ryby (łosoś/tuńczyk)
+  const isCurrentRawOrFish = 
+    /surowy|surowe|surowa/i.test(currentTextLc) ||
+    /łosoś|losos|tuńczyk|tunczyk/i.test(currentTextLc);
+
+  // Sprawdź, czy ta wybrana rolka nie jest już pieczona/w tempurze
+  const isCurrentBaked = isAlreadyBakedOrTempura(currentTextLc);
+
+  const rowBakePossible = isCurrentRawOrFish && !isCurrentBaked;
+  const rawRow = isRawRow(row); 
+  // ---------------------------------------------------------------------------------------
+
   const rollBaked = (prod.addons ?? []).includes(rollAddonLabel);
 
   const toggleRowBake = () => {
-    if (!rawRow || isWholeSetBaked) return;
+    if (!rawRow || !rowBakePossible || isWholeSetBaked) return;
     if (rollBaked) removeAddon(prod.name, rollAddonLabel);
     else addAddon(prod.name, rollAddonLabel);
   };
@@ -2638,29 +2707,8 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
   const extraKey = (ex: string) => `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — ${ex}`;
   const rowCatLc = (row.cat || "").toLowerCase();
 
-  const text = `${currentProduct?.name || row.cat} ${
-    currentProduct?.description || row.from
-  }`.toLowerCase();
-
-  const canUseExtraForRow = (ex: string): boolean => {
-    const parentNameLc = (prodInfo?.name || prod.name || "").toLowerCase();
-
-    // SPEC CASE: w Zestawie 2 hosomaki bez dodatków
-    if (parentNameLc.startsWith("zestaw 2") && rowCatLc.includes("hosomaki")) return false;
-
-    // === California w zestawie ===
-    if (rowCatLc.includes("california")) {
-      if (ex === "Ryba pieczona") {
-        const rowText = row.from.toLowerCase();
-        if (isAlreadyBakedOrTempura(rowText)) return false;
-
-        return isSpecialCaliforniaBakedFishProduct(
-          currentProduct?.name || "",
-          currentProduct?.description || ""
-        );
-      }
-      return false;
-    }
+ const canUseExtraForRow = (ex: string): boolean => {
+    const rowText = (textForLogic || "").toLowerCase();
 
     // === Hosomaki / Hoso ===
     if (rowCatLc.includes("hosomaki") || rowCatLc.includes("hoso")) {
@@ -2669,10 +2717,15 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
 
     // === Futomaki / Futo ===
     if (rowCatLc.includes("futomaki") || rowCatLc.includes("futo")) {
-      const rowText = row.from.toLowerCase();
       if (ex === "Ryba pieczona") {
+        // Jeśli rolka jest już pieczona/w tempurze (np. wybrałeś "Futomak Grill") -> ukryj opcję
         if (isAlreadyBakedOrTempura(rowText)) return false;
-        return /surowy/i.test(rowText);
+        
+        // POPRAWKA: Pokazuj opcję, jeśli jest surowy LUB ma w nazwie rybę
+        return (
+          /surowy|surowe|surowa/i.test(rowText) ||
+          /łosoś|losos|tuńczyk|tunczyk/i.test(rowText)
+        );
       }
       if (ex === "Tamago") return true;
       return ex === "Tempura" || ex === "Płatek sojowy";
@@ -2682,11 +2735,12 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
     if (rowCatLc.includes("nigiri")) {
       if (ex !== "Ryba pieczona") return false;
       const hasFish =
-        text.includes("łosoś") ||
-        text.includes("losos") ||
-        text.includes("tuńczyk") ||
-        text.includes("tunczyk");
-      return hasFish;
+        rowText.includes("łosoś") ||
+        rowText.includes("losos") ||
+        rowText.includes("tuńczyk") ||
+        rowText.includes("tunczyk");
+      // Nigiri tylko dla rybnych i jeśli nie są już pieczone
+      return hasFish && !isAlreadyBakedOrTempura(rowText);
     }
 
     return false;
@@ -2707,8 +2761,14 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
     >
       {/* 1) Skład rolki w zestawie */}
       <div className="text-sm font-semibold text-black leading-snug">
-        {row.qty}x {row.cat} {row.from}
-      </div>
+  {row.qty}x {currentPrefixed}
+</div>
+
+{normalizePlain(currentPrefixed) !== normalizePlain(withCategoryPrefix(row.from, row.cat)) && (
+  <div className="text-[11px] text-black/50">
+    W zestawie było: {withCategoryPrefix(row.from, row.cat)}
+  </div>
+)}
 
       {/* 2) Zamiana */}
       <div className="space-y-1">
@@ -2716,7 +2776,20 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
         <select
           className="border border-black/15 rounded-xl px-3 py-2 bg-white w-full"
           value={current}
-          onChange={(e) => doSetSwap(row.from, e.target.value)}
+          onChange={(e) => {
+  const next = e.target.value;
+
+  // jeśli była dopłata za pieczenie, a nowa WYBRANA rolka jest już pieczona / w tempurze → zdejmij dopłatę
+  const nextPref = withCategoryPrefix(next, row.cat);
+  const nextProd = byName.get(next) || byName.get(nextPref) || null;
+  const nextText = `${nextProd?.name || nextPref} ${nextProd?.description || ""}`;
+
+  if ((prod.addons ?? []).includes(rollAddonLabel) && isAlreadyBakedOrTempura(nextText)) {
+    removeAddon(prod.name, rollAddonLabel);
+  }
+
+  doSetSwap(row.from, next);
+}}
           aria-label={`Zamiana: ${row.qty}x ${row.cat} ${row.from}`}
         >
           {selectOptions.map((n) => {
@@ -2735,17 +2808,21 @@ const setSoftDrinkVariant = (variant: SoftDrinkVariant | null) => {
         <button
           type="button"
           onClick={toggleRowBake}
-          disabled={isWholeSetBaked}
+          disabled={isWholeSetBaked || !rowBakePossible}
           className={clsx(
             "w-full px-3 py-2 rounded-xl text-[11px] border",
-            isWholeSetBaked
+            (isWholeSetBaked || !rowBakePossible)
               ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
               : rollBaked
               ? "bg-black text-white border-black"
               : "bg-white text-black hover:bg-gray-50 border-gray-200"
           )}
         >
-          {rollBaked ? "✓ Ta rolka pieczona (+2 zł)" : "+ Zamień tę rolkę na pieczoną (+2 zł)"}
+          {rollBaked
+  ? "✓ Ta rolka pieczona (+2 zł)"
+  : rowBakePossible
+  ? "+ Zamień tę rolkę na pieczoną (+2 zł)"
+  : "Ta rolka jest już pieczona lub w tempurze"}
         </button>
       )}
 
@@ -4706,27 +4783,26 @@ loyalty_stickers_before:
         const setSwaps = buildSetSwapsPayload(item, product);
 
         // tekst z notatki użytkownika + tekst z zamian
-        // tekst z notatki użytkownika + tekst z zamian
-const userNote = notes[index] || "";
-const swapsNote = buildSetSwapsNote(setSwaps);
-const combinedNote =
-  userNote && swapsNote
-    ? `${userNote} | ${swapsNote}`
-    : userNote || swapsNote || "";
+        const userNote = notes[index] || "";
+        const swapsNote = buildSetSwapsNote(setSwaps);
+        const combinedNote =
+          userNote && swapsNote
+            ? `${userNote} | ${swapsNote}`
+            : userNote || swapsNote || "";
 
-return {
-  product_id: product?.id ?? item.product_id ?? item.id ?? null,
-  name: item.name,
-  quantity: item.quantity || 1,
-  unit_price: item.price,
-  options: {
-    addons: item.addons,
-    swaps: item.swaps,
-    set_swaps: setSwaps.length ? setSwaps : undefined, // struktura do panelu
-    note: combinedNote, // to pole czyta backend (opt.note)
-    restaurant: slug,
-  },
-};
+        return {
+          product_id: product?.id ?? item.product_id ?? item.id ?? null,
+          name: item.name,
+          quantity: item.quantity || 1,
+          unit_price: item.price,
+          options: {
+            addons: item.addons,
+            swaps: item.swaps,
+            set_swaps: setSwaps.length ? setSwaps : undefined, // struktura do panelu
+            note: combinedNote, // to pole czyta backend (opt.note)
+            restaurant: slug,
+          },
+        };
       });
 
      const tsToken = getTurnstileToken();
