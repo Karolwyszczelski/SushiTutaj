@@ -372,12 +372,26 @@ const normalizeLabelKey = (s: string) =>
 
 const extractExplicitQty = (label: string) => {
   const t = (label || "").normalize("NFKC").trim().replace(/\s+/g, " ");
-  // obsłuż "x2", "×2", "x 2", "× 2"
-  const m = t.match(/\b(?:x|×)\s*(\d+)\b/i);
-  if (!m) return { base: t, qty: 1, hasExplicit: false };
+  
+  // Szukamy wzorca na końcu (np. "Sos sojowy x2", "Sos sojowy × 2") 
+  // lub na początku, jeśli to sam licznik (choć to rzadkie w labelach).
+  // Najczęstszy format w Twoim systemie to "Nazwa xN"
+  const m = t.match(/(?:[\s\xa0]+(?:x|×)[\s\xa0]*(\d+))$/i);
+
+  if (!m) {
+    // Jeśli nie ma "x2" na końcu, sprawdzamy, czy cały string to nie jest np. "2x"
+    const mPrefix = t.match(/^(?:x|×)\s*(\d+)$/i);
+    if (mPrefix) {
+       // to dziwny przypadek, ale obsłużmy go
+       return { base: "", qty: parseInt(mPrefix[1], 10), hasExplicit: true };
+    }
+    return { base: t, qty: 1, hasExplicit: false };
+  }
 
   const qty = Math.max(1, parseInt(m[1], 10) || 1);
-  const base = t.replace(m[0], "").trim();
+  // Usuwamy końcówkę z ilością, żeby dostać czystą nazwę
+  const base = t.substring(0, m.index).trim();
+  
   return { base, qty, hasExplicit: true };
 };
 
@@ -390,40 +404,45 @@ const isSauceLabel = (s: string) => /\b(sos|sauce)\b/i.test(s || "");
 
 /**
  * Sumuje duplikaty po "bazowej nazwie" dodatku.
- * - Jeśli w labelu jest jawne ×N/xN -> dolicza N.
- * - Jeśli label powtarza się bez ×N -> sumuje jako +1.
- * - Dla sosów pokazuje też ×1 (żeby kuchnia widziała ilość).
+ * - Wyciąga ilość z każdego wpisu (np. "Sos x2" -> base: "Sos", qty: 2).
+ * - Sumuje qty dla tej samej bazy.
+ * - Zwraca listę stringów w formacie "Nazwa" (dla 1 szt.) lub "Nazwa xN".
  */
 const collapseLabelsWithQty = (labels: string[]): string[] => {
   const map = new Map<string, { base: string; count: number }>();
+  // Zachowujemy kolejność pojawiania się unikalnych nazw
   const order: string[] = [];
 
   for (const raw of labels || []) {
     const cleaned = (raw || "").trim().replace(/\s+/g, " ");
-    if (!cleaned) continue;
+    if (!cleaned || isQtyOnlyTokenString(cleaned)) continue;
 
-    if (isQtyOnlyTokenString(cleaned)) continue;
-
-    const { base, qty, hasExplicit } = extractExplicitQty(cleaned);
-    const baseClean = (base || "").trim().replace(/\s+/g, " ");
-    const key = normalizeLabelKey(baseClean);
+    const { base, qty } = extractExplicitQty(cleaned);
+    
+    // Klucz do mapy to małe litery, bez spacji (dla pewnego porównania)
+    const key = normalizeLabelKey(base); 
+    
     if (!key) continue;
 
-    const inc = hasExplicit ? Math.max(1, qty) : 1;
-
     if (!map.has(key)) {
-      map.set(key, { base: baseClean, count: inc });
+      map.set(key, { base: base, count: qty }); // Używamy 'base' jako ładnej nazwy do wyświetlania
       order.push(key);
     } else {
       const cur = map.get(key)!;
-      cur.count += inc;
+      cur.count += qty;
+      // Opcjonalnie: jeśli nowa nazwa 'base' jest dłuższa/lepsza (np. ma wielkie litery), można ją podmienić
+      // ale zazwyczaj pierwsza jest OK.
       map.set(key, cur);
     }
   }
 
   return order.map((k) => {
     const row = map.get(k)!;
-    const showQty = row.count > 1 || isSauceLabel(row.base);
+    // Zawsze pokazuj ilość dla sosów, nawet jeśli to 1 (żeby kuchnia miała jasność "1x Sos")
+    // Dla reszty tylko jeśli > 1
+    const isSauce = isSauceLabel(row.base);
+    const showQty = row.count > 1 || isSauce;
+    
     return showQty ? `${row.base} ×${row.count}` : row.base;
   });
 };
@@ -998,38 +1017,22 @@ const optionsAddonLabels = [
   .map((s) => (s || "").trim())
   .filter((s) => s && s !== "0");
 
-  // preferuj top-level (source.*), a z options dobierz tylko brakujące (bez dubli)
-// UWAGA: nie robimy Set() na całej liście, bo Set “zjada” potencjalne x2 –
-// dedupujemy tylko options względem source.
+  // Łączy listy addonów z różnych źródeł w jedną płaską listę.
+// NIE USUWA duplikatów tutaj, żeby collapseLabelsWithQty mogło je zsumować (np. Sos free + Sos paid).
 function mergeAddonLists(source: string[] = [], options: string[] = []): string[] {
   const out: string[] = [];
-  const seenBase = new Set<string>();
-
-  const keyOf = (label: string) => {
-    const cleaned = (label || "").trim().replace(/\s+/g, " ");
-    if (!cleaned) return "";
-    // ignoruj “×N / xN” w kluczu porównania
-    const { base } = extractExplicitQty(cleaned);
-    return normalizeLabelKey(base);
-  };
-
-  // 1) source: zostawiamy jak jest (nawet jeśli się powtarza)
+  
+  // Dodajemy wszystko z source
   for (const s of source) {
-    const cleaned = (s || "").trim().replace(/\s+/g, " ");
-    if (!cleaned || cleaned === "0") continue;
-    out.push(cleaned);
-    const k = keyOf(cleaned);
-    if (k) seenBase.add(k);
+    const cleaned = (s || "").trim();
+    if (cleaned && cleaned !== "0") out.push(cleaned);
   }
 
-  // 2) options: dodaj tylko jeśli nie ma już w source (po bazowej nazwie)
+  // Dodajemy wszystko z options
+  // (Chyba że wolisz unikać duplikatów całkowicie, ale przy sosach x1 + x1 chcemy je dodać obie, by potem zsumować)
   for (const s of options) {
-    const cleaned = (s || "").trim().replace(/\s+/g, " ");
-    if (!cleaned || cleaned === "0") continue;
-    const k = keyOf(cleaned);
-    if (!k || seenBase.has(k)) continue;
-    out.push(cleaned);
-    seenBase.add(k);
+    const cleaned = (s || "").trim();
+    if (cleaned && cleaned !== "0") out.push(cleaned);
   }
 
   return out;
