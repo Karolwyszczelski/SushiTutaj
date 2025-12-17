@@ -5,6 +5,7 @@ import MenuSection from "@/components/menu/MenuSection";
 import OnasSection from "@/components/OnasSection";
 import ContactSection from "@/components/ContactSection";
 import { getRestaurantBySlug } from "@/lib/tenant";
+import PromoModal from "@/components/PromoModal";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_URL || "https://www.sushitutaj.pl";
 
@@ -98,6 +99,17 @@ export default async function Home({ params }: CityPageProps) {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
+      {/* DODANY POP-UP */}
+      <PromoModal
+        restaurantId={r?.id} // Ważne dla unikalności sesji (żeby nie pokazywać w kółko)
+        data={{
+          active: r?.popup_active,
+          title: r?.popup_title,
+          content: r?.popup_content,
+          image_url: r?.popup_image_url,
+        }}
       />
 
       <Hero />

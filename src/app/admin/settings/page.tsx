@@ -1,4 +1,3 @@
-// src/app/admin/settings/page.tsx
 "use client";
 
 import { Tab } from "@headlessui/react";
@@ -11,6 +10,7 @@ import {
   BadgePercent,
   Clock4,
   Info,
+  Megaphone, // Nowa ikona dla Pop-up
 } from "lucide-react";
 
 import TableLayoutForm from "@/components/admin/settings/TableLayoutForm";
@@ -19,6 +19,7 @@ import BlockedAddressesForm from "@/components/admin/settings/BlockedAddressesFo
 import DiscountCodesForm from "@/components/admin/settings/DiscountCodesForm";
 import BlockedTimesForm from "@/components/admin/settings/BlockedTimesForm";
 import NoticeBarForm from "@/components/admin/settings/NoticeBarForm";
+import PopupSettingsForm from "@/components/admin/settings/PopupSettingsForm"; // <--- NOWY IMPORT
 
 function cn(...classes: string[]) {
   return classes.filter(Boolean).join(" ");
@@ -65,7 +66,7 @@ const tabs = [
     short: "Godziny",
     long: "Blokady godzin",
     Icon: Clock4,
-    render: (restaurantSlug: string | null) => (
+    render: (restaurantSlug: string | null, restaurantId: string | null) => (
       <BlockedTimesForm restaurantSlug={restaurantSlug} />
     ),
   },
@@ -74,9 +75,24 @@ const tabs = [
     short: "Pasek",
     long: "Pasek informacji",
     Icon: Info,
-    render: (restaurantSlug: string | null) => (
+    render: (restaurantSlug: string | null, restaurantId: string | null) => (
       <NoticeBarForm restaurantSlug={restaurantSlug} />
     ),
+  },
+  {
+    key: "popup", // <--- NOWA ZAKŁADKA
+    short: "Pop-up",
+    long: "Pop-up (Promocja)",
+    Icon: Megaphone,
+    // Tutaj potrzebujemy ID restauracji, nie tylko slug
+    render: (restaurantSlug: string | null, restaurantId: string | null) =>
+      restaurantId ? (
+        <PopupSettingsForm restaurantId={restaurantId} />
+      ) : (
+        <div className="p-4 text-sm text-amber-800 bg-amber-50 rounded-xl border border-amber-200">
+          Nie udało się pobrać ID restauracji. Odśwież stronę.
+        </div>
+      ),
   },
 ] as const;
 
@@ -92,6 +108,8 @@ export default function SettingsPage() {
   }, [qs, searchParams]);
 
   const [restaurantSlug, setRestaurantSlug] = useState<string | null>(initialSlug);
+  // Dodajemy stan dla ID restauracji, bo jest potrzebny do PopupSettingsForm
+  const [restaurantId, setRestaurantId] = useState<string | null>(null);
 
   // Self-heal: jeśli ktoś wejdzie bez ?restaurant=... lub cookie się rozjedzie
   useEffect(() => {
@@ -110,10 +128,14 @@ export default function SettingsPage() {
         if (!res.ok) return;
 
         const json = (await res.json()) as EnsureCookieResp;
-        const srvSlug = json.restaurant_slug?.toLowerCase() ?? null;
+        
         if (!alive) return;
 
+        const srvSlug = json.restaurant_slug?.toLowerCase() ?? null;
+        const srvId = json.restaurant_id ?? null; // Zakładam, że API zwraca też ID
+
         if (srvSlug && srvSlug !== restaurantSlug) setRestaurantSlug(srvSlug);
+        if (srvId && srvId !== restaurantId) setRestaurantId(srvId);
 
         // dopnij/poprzez URL
         if (srvSlug) {
@@ -189,7 +211,7 @@ export default function SettingsPage() {
           <Tab.Group>
             {/* TAB BAR */}
             <Tab.List className="border-b border-slate-200 p-2">
-              <div className="flex gap-2 overflow-x-auto whitespace-nowrap sm:overflow-visible sm:whitespace-normal">
+              <div className="flex gap-2 overflow-x-auto whitespace-nowrap sm:overflow-visible sm:whitespace-normal no-scrollbar">
                 {tabs.map(({ key, short, long, Icon }) => (
                   <Tab
                     key={key}
@@ -205,17 +227,14 @@ export default function SettingsPage() {
                       className={cn(
                         "h-4 w-4",
                         "transition",
-                        // wymuszamy kolor ikon dla czytelności
                         "text-slate-700 group-hover:text-slate-900"
                       )}
                     />
                     <span className="sm:hidden">{short}</span>
                     <span className="hidden sm:inline">{long}</span>
-                    {/* akcent pod aktywnym tabem */}
                     <span
                       className={cn(
                         "ml-auto hidden sm:block h-2 w-2 rounded-full",
-                        // kropka jako sygnał aktywności
                         "opacity-0 group-data-[headlessui-state=selected]:opacity-100"
                       )}
                       style={{ backgroundColor: ACCENT }}
@@ -250,10 +269,11 @@ export default function SettingsPage() {
 
                   {/* card */}
                   <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm">
-                    {t.render(restaurantSlug)}
+                    {/* Przekazujemy slug i ID do funkcji renderującej */}
+                    {t.render(restaurantSlug, restaurantId)}
                   </div>
 
-                  {!restaurantSlug && (t.key === "times" || t.key === "notice") && (
+                  {!restaurantSlug && (t.key === "times" || t.key === "notice" || t.key === "popup") && (
                     <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                       Brak sluga lokalu w URL. Odśwież stronę lub przejdź do panelu
                       z wybranego lokalu (parametr <b>?restaurant=...</b>).
