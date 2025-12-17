@@ -58,8 +58,11 @@ export default function PromoModal({
   }
 
   return (
-    // Z-Index 9999 zapewnia, że jesteśmy nad wszystkim (navbarem, koszykiem itp.)
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6">
+    // ZMIANA TUTAJ:
+    // px-4 pb-4: marginesy po bokach i na dole
+    // pt-20: DUŻY margines na górze (ok. 80px), żeby odsunąć modal od navbara/notcha
+    // sm:p-6: na komputerze wracamy do równego odstępu z każdej strony
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center px-4 pb-4 pt-20 sm:p-6">
       
       {/* Tło - backdrop */}
       <div 
@@ -68,9 +71,10 @@ export default function PromoModal({
       />
 
       {/* Kontener Modala */}
-      <div className="relative w-full max-w-md bg-white shadow-2xl rounded-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 max-h-[85vh]">
+      {/* ZMIANA: max-h-[80vh] zamiast 85vh, żeby przy obniżeniu nie ucięło dołu */}
+      <div className="relative w-full max-w-md bg-white shadow-2xl rounded-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 max-h-[80vh]">
         
-        {/* Przycisk Zamknięcia - ZAWSZE WIDOCZNY, na górze, z wyraźnym tłem */}
+        {/* Przycisk Zamknięcia */}
         <button
           onClick={handleClose}
           className="absolute right-3 top-3 z-50 flex h-9 w-9 items-center justify-center rounded-full bg-white text-black shadow-md hover:bg-gray-100 transition active:scale-95"
@@ -80,10 +84,9 @@ export default function PromoModal({
         </button>
 
         {/* Przewijalna zawartość */}
-        {/* overscroll-contain zapobiega scrollowaniu strony pod spodem na mobile */}
         <div className="overflow-y-auto overscroll-contain custom-scrollbar flex-1">
           
-          {/* Obrazek - zachowuje proporcje, nie jest ucinany */}
+          {/* Obrazek */}
           {data.image_url && (
             <div className="w-full bg-gray-50 relative">
               <Image
@@ -112,7 +115,7 @@ export default function PromoModal({
             )}
 
             {/* Przycisk Akcji */}
-            <div className="pt-2">
+            <div className="pt-2 pb-2"> {/* Dodatkowy padding na dole dla bezpieczeństwa */}
               {btnType === "close" ? (
                 <button
                   onClick={handleClose}
