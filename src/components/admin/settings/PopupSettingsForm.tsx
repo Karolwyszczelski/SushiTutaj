@@ -2,16 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Upload, X, Save, ImageIcon, Loader2 } from "lucide-react";
+import { Upload, X, Save, ImageIcon, Loader2, Link as LinkIcon, Phone } from "lucide-react";
 import Image from "next/image";
-
-type RestaurantData = {
-  id: string;
-  popup_active: boolean;
-  popup_title: string | null;
-  popup_content: string | null;
-  popup_image_url: string | null;
-};
 
 export default function PopupSettingsForm({
   restaurantId,
@@ -24,18 +16,22 @@ export default function PopupSettingsForm({
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   
-  // Stan formularza
+  // Stan
   const [active, setActive] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
-  // Pobranie aktualnych ustawień
+  // Nowe stany dla przycisków
+  const [btnType, setBtnType] = useState("close"); // 'close', 'link', 'call'
+  const [btnLabel, setBtnLabel] = useState("");
+  const [btnUrl, setBtnUrl] = useState("");
+
   useEffect(() => {
     async function load() {
       const { data, error } = await supabase
         .from("restaurants")
-        .select("popup_active, popup_title, popup_content, popup_image_url")
+        .select("popup_active, popup_title, popup_content, popup_image_url, popup_btn_type, popup_btn_label, popup_btn_url")
         .eq("id", restaurantId)
         .maybeSingle();
 
@@ -44,49 +40,42 @@ export default function PopupSettingsForm({
         setTitle(data.popup_title || "");
         setContent(data.popup_content || "");
         setImageUrl(data.popup_image_url || null);
+        
+        // Ładowanie ustawień przycisku
+        setBtnType(data.popup_btn_type || "close");
+        setBtnLabel(data.popup_btn_label || "Zamknij");
+        setBtnUrl(data.popup_btn_url || "");
       }
       setLoading(false);
     }
     load();
   }, [restaurantId, supabase]);
 
-  // Funkcja wgrywania zdjęcia
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
       if (!e.target.files || e.target.files.length === 0) return;
       setUploading(true);
-
       const file = e.target.files[0];
       const fileExt = file.name.split(".").pop();
-      // Unikalna nazwa pliku
       const fileName = `${restaurantId}_${Date.now()}.${fileExt}`;
-      const filePath = fileName;
 
-      // 1. Upload do Supabase Storage
       const { error: uploadError } = await supabase.storage
         .from("popups")
-        .upload(filePath, file);
+        .upload(fileName, file);
 
       if (uploadError) throw uploadError;
 
-      // 2. Pobranie publicznego URL
-      const { data } = supabase.storage.from("popups").getPublicUrl(filePath);
-      
-      // 3. Ustawienie w stanie
+      const { data } = supabase.storage.from("popups").getPublicUrl(fileName);
       setImageUrl(data.publicUrl);
-
     } catch (error: any) {
       alert("Błąd podczas wgrywania zdjęcia: " + error.message);
     } finally {
       setUploading(false);
-      // Reset inputa, żeby można było wgrać ten sam plik ponownie
       e.target.value = "";
     }
   };
 
-  const removeImage = () => {
-    setImageUrl(null);
-  };
+  const removeImage = () => setImageUrl(null);
 
   const handleSave = async () => {
     setSaving(true);
@@ -98,29 +87,32 @@ export default function PopupSettingsForm({
           popup_title: title,
           popup_content: content,
           popup_image_url: imageUrl,
+          // Zapis nowych pól
+          popup_btn_type: btnType,
+          popup_btn_label: btnLabel,
+          popup_btn_url: btnUrl,
         })
         .eq("id", restaurantId);
 
       if (error) throw error;
       alert("Zapisano ustawienia pop-up!");
     } catch (error: any) {
-      console.error(error);
       alert("Błąd zapisu: " + error.message);
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) return <div className="p-4 text-sm text-gray-500">Ładowanie ustawień...</div>;
+  if (loading) return <div className="p-4 text-sm text-gray-500">Ładowanie...</div>;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-6 max-w-2xl text-slate-900">
+      {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-100 pb-4">
         <div>
            <h3 className="text-lg font-bold text-slate-900">Pop-up (Promocja)</h3>
            <p className="text-xs text-slate-500">Wyskakujące okienko na stronie głównej</p>
         </div>
-       
         <div className="flex items-center gap-2">
           <label className="relative inline-flex items-center cursor-pointer">
             <input 
@@ -138,52 +130,107 @@ export default function PopupSettingsForm({
       </div>
 
       <div className="space-y-4">
-        {/* Tytuł */}
+        {/* Tytuł & Treść */}
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-1">
-            Nagłówek
-          </label>
+          <label className="block text-sm font-semibold text-slate-700 mb-1">Nagłówek</label>
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="np. Promocja Walentynkowa!"
-            // FIX: bg-white i text-gray-900 wymuszają czytelność
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none"
+            placeholder="np. Zestawy Wigilijne"
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-gray-900 focus:ring-1 focus:ring-emerald-500 outline-none"
           />
         </div>
-
-        {/* Treść */}
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-1">
-            Treść komunikatu
-          </label>
+          <label className="block text-sm font-semibold text-slate-700 mb-1">Treść komunikatu</label>
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            rows={4}
-            placeholder="Opisz szczegóły promocji..."
-            // FIX: bg-white i text-gray-900 wymuszają czytelność
-            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"
+            rows={3}
+            placeholder="Opisz szczegóły..."
+            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-gray-900 focus:ring-1 focus:ring-emerald-500 outline-none resize-none"
           />
         </div>
 
-        {/* Sekcja Zdjęcia */}
-        <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">
-            Obrazek
-          </label>
+        {/* Sekcja Przycisku */}
+        <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
+          <h4 className="text-sm font-bold text-slate-800">Ustawienia przycisku</h4>
           
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Akcja przycisku</label>
+              <select
+                value={btnType}
+                onChange={(e) => setBtnType(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-gray-900 focus:ring-1 focus:ring-emerald-500 outline-none"
+              >
+                <option value="close">Tylko "Zamknij"</option>
+                <option value="link">Przekieruj do linku</option>
+                <option value="call">Zadzwoń do lokalu</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Tekst na guziku</label>
+              <input
+                type="text"
+                value={btnLabel}
+                onChange={(e) => setBtnLabel(e.target.value)}
+                placeholder="np. Sprawdź ofertę"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-gray-900 focus:ring-1 focus:ring-emerald-500 outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Pola warunkowe */}
+          {btnType === "link" && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1 flex items-center gap-1">
+                <LinkIcon size={12} /> Link docelowy
+              </label>
+              <input
+                type="text"
+                value={btnUrl}
+                onChange={(e) => setBtnUrl(e.target.value)}
+                placeholder="np. https://sushitutaj.pl/menu/zestawy"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-gray-900 focus:ring-1 focus:ring-emerald-500 outline-none"
+              />
+              <p className="text-[10px] text-slate-500 mt-1">Wklej pełny link do podstrony lub zewnętrznej strony.</p>
+            </div>
+          )}
+
+          {btnType === "call" && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1 flex items-center gap-1">
+                <Phone size={12} /> Numer telefonu
+              </label>
+              <input
+                type="text"
+                value={btnUrl}
+                onChange={(e) => setBtnUrl(e.target.value)}
+                placeholder="Pozostaw puste, aby użyć domyślnego numeru lokalu"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-gray-900 focus:ring-1 focus:ring-emerald-500 outline-none"
+              />
+              <p className="text-[10px] text-slate-500 mt-1">
+                Opcjonalnie wpisz inny numer (np. 500123456). Jeśli puste, system użyje głównego numeru restauracji.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Zdjęcie */}
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 mb-2">Obrazek</label>
           <div className="flex flex-col gap-4">
-            {/* Podgląd */}
             {imageUrl ? (
-              <div className="relative w-full h-64 bg-gray-50 rounded-xl overflow-hidden border border-slate-200 group">
+              <div className="relative w-full bg-gray-50 rounded-xl overflow-hidden border border-slate-200 group">
+                {/* Podgląd bez przycinania w panelu, żeby admin widział co wrzuca */}
                 <Image 
                   src={imageUrl} 
                   alt="Podgląd" 
-                  fill 
-                  className="object-cover" 
-                  // Fallback dla obrazków bez skonfigurowanej domeny
+                  width={600}
+                  height={400}
+                  className="w-full h-auto object-contain"
                   unoptimized={true} 
                 />
                 <button
@@ -203,8 +250,7 @@ export default function PopupSettingsForm({
               </div>
             )}
 
-            {/* Przycisk Uploadu */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <div className="flex items-center gap-3">
                <label className={`flex items-center gap-2 cursor-pointer px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium transition shadow-sm ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
                  {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
                  <span>{uploading ? "Wgrywanie..." : "Wybierz plik"}</span>
@@ -216,9 +262,7 @@ export default function PopupSettingsForm({
                    disabled={uploading}
                  />
                </label>
-               <span className="text-xs text-slate-500">
-                 Zalecane: JPG, PNG, WebP (max 2MB)
-               </span>
+               <span className="text-xs text-slate-500">Zalecane: JPG, PNG, WebP</span>
             </div>
           </div>
         </div>

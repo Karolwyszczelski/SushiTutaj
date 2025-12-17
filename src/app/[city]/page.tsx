@@ -103,14 +103,19 @@ export default async function Home({ params }: CityPageProps) {
 
       {/* DODANY POP-UP */}
       <PromoModal
-        restaurantId={r?.id} // Ważne dla unikalności sesji (żeby nie pokazywać w kółko)
-        data={{
-          active: r?.popup_active,
-          title: r?.popup_title,
-          content: r?.popup_content,
-          image_url: r?.popup_image_url,
-        }}
-      />
+  restaurantId={r?.id}
+  restaurantPhone={r?.phone} // <--- Dodaj przekazanie telefonu
+  data={{
+    active: r?.popup_active,
+    title: r?.popup_title,
+    content: r?.popup_content,
+    image_url: r?.popup_image_url,
+    // Przekazanie nowych pól
+    btn_type: r?.popup_btn_type,
+    btn_label: r?.popup_btn_label,
+    btn_url: r?.popup_btn_url,
+  }}
+/>
 
       <Hero />
       <ZestawMiesiaca />
