@@ -1951,8 +1951,13 @@ const ProductItem: React.FC<{
 
     // === Hosomaki / Hoso ===
     if (s.includes("hoso")) {
-      // Hoso mają tylko Tempurę
-      return extra === "Tempura";
+      // Hoso mają tylko Tempurę, ale nie pokazuj jej, jeśli już są w tempurze/pieczone
+      if (extra === "Tempura") {
+        const text = `${prod.name} ${prodInfo.description || ""}`;
+        if (isAlreadyBakedOrTempura(text)) return false;
+        return true;
+      }
+      return false;
     }
 
     // === Futomaki / Futo ===
@@ -4996,12 +5001,12 @@ return (
 
         <div className="min-h-0 overflow-y-auto overscroll-contain modal-scroll">
           <div
-    className={clsx(
-      "grid grid-cols-1 gap-6 p-6",
-      !orderSent && "lg:grid-cols-[1fr_380px]"
-    )}
-  >
-            <div>
+            className={clsx(
+              // ZMIANA TUTAJ: dodane 'pb-32 lg:pb-6' zamiast samego p-6 (które ma domyślny padding zewsząd)
+              "grid grid-cols-1 gap-6 px-6 pt-6 pb-32 lg:pb-6",
+              !orderSent && "lg:grid-cols-[1fr_380px]"
+            )}
+          >       <div>
               {orderSent ? (
                 <div className="min-h-[320px] flex flex-col items-center justify-center text-center space-y-5 px-4">
                   <div className="bg-white p-4 rounded-2xl shadow flex flex-col items-center gap-2">
