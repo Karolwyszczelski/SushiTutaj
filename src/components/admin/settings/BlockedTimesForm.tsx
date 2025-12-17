@@ -299,10 +299,14 @@ export default function BlockedTimesForm({
           </label>
           <input
             type="date"
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
+            // FIX: colorScheme light wymusza czarną ikonę i jasne tło popupu
+            style={{ colorScheme: "light" }}
+            className="w-full cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             value={date}
             onChange={(e) => setDate(e.target.value)}
             disabled={saving || !canUse}
+            // FIX: kliknięcie gdziekolwiek w input otwiera kalendarz
+            onClick={(e) => e.currentTarget.showPicker?.()}
           />
         </div>
 
@@ -311,7 +315,7 @@ export default function BlockedTimesForm({
             Co blokujemy
           </label>
           <select
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
+            className="w-full cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             value={kind}
             onChange={(e) => setKind(e.target.value as BlockKind)}
             disabled={saving || !canUse}
@@ -330,25 +334,31 @@ export default function BlockedTimesForm({
             <input
               type="time"
               step={300}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
+              // FIX: colorScheme light wymusza czarną ikonę i jasne tło popupu
+              style={{ colorScheme: "light" }}
+              className="w-full cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               value={fromTime}
               onChange={(e) => setFromTime(e.target.value)}
               disabled={saving || fullDay || !canUse}
+              // FIX: kliknięcie otwiera zegar
+              onClick={(e) => e.currentTarget.showPicker?.()}
             />
             <span className="text-xs text-slate-500">–</span>
             <input
               type="time"
               step={300}
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
+              style={{ colorScheme: "light" }}
+              className="w-full cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               value={toTime}
               onChange={(e) => setToTime(e.target.value)}
               disabled={saving || fullDay || !canUse}
+              onClick={(e) => e.currentTarget.showPicker?.()}
             />
           </div>
-          <label className="mt-1 inline-flex items-center gap-2 text-xs text-slate-700">
+          <label className="mt-1 inline-flex cursor-pointer items-center gap-2 text-xs text-slate-700">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-300"
+              className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
               checked={fullDay}
               onChange={(e) => setFullDay(e.target.checked)}
               disabled={saving || !canUse}
@@ -363,7 +373,7 @@ export default function BlockedTimesForm({
           </label>
           <input
             type="text"
-            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm"
+            className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             placeholder="np. Święta, awaria kuchni, impreza zamknięta…"
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -393,10 +403,10 @@ export default function BlockedTimesForm({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 hover:bg-slate-50">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-slate-300"
+                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                 checked={onlyFuture}
                 onChange={(e) => setOnlyFuture(e.target.checked)}
               />
@@ -404,7 +414,7 @@ export default function BlockedTimesForm({
             </label>
 
             <select
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700"
+              className="cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
               value={kindFilter}
               onChange={(e) => setKindFilter(e.target.value as any)}
             >
