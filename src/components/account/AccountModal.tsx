@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   X,
   LogIn,
@@ -14,6 +14,7 @@ import {
 import clsx from "clsx";
 import { useSession } from "@supabase/auth-helpers-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useRouter } from "next/navigation";
 import useCartStore from "@/store/cartStore";
 
 /** Akcenty: korzystamy z var(--accent-red*). */
@@ -52,7 +53,7 @@ export default function AccountModal({
   const supabase = createClientComponentClient();
   const session = useSession();
   const user = session?.user || null;
-
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>("auth");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
 
@@ -71,6 +72,8 @@ export default function AccountModal({
   // panel: loyalty
   const [loyaltyStickers, setLoyaltyStickers] = useState<number | null>(null);
   const [loyaltyLoading, setLoyaltyLoading] = useState(false);
+    const [rollRewardClaimed, setRollRewardClaimed] = useState<boolean | null>(null);
+
 
   // panel: profile (adres + zmiana hasła)
   const meta = (user?.user_metadata as any) || {};
@@ -86,6 +89,35 @@ export default function AccountModal({
   // koszyk (zamów ponownie)
   const addItem = useCartStore((s) => (s as any).addItem);
   const openCheckoutModal = useCartStore((s) => (s as any).openCheckoutModal);
+
+    // koszyk: wykryj czy są produkty (różne nazwy pól w store – fallbacki)
+  const cartItems = useCartStore(
+    (s) => (s as any).items ?? (s as any).cartItems ?? (s as any).cart ?? []
+  );
+
+  const cartCount = useMemo(() => {
+    if (!Array.isArray(cartItems)) return 0;
+    return cartItems.reduce((acc: number, it: any) => {
+      const q = Number(it?.quantity ?? 1);
+      return acc + (Number.isFinite(q) && q > 0 ? q : 1);
+    }, 0);
+  }, [cartItems]);
+
+  const goToCartOrMenu = () => {
+    // zamykamy modal konta, żeby nie robić „modal na modalu”
+    onClose();
+
+    // jeśli koszyk ma pozycje — otwórz checkout
+    if (cartCount > 0 && typeof openCheckoutModal === "function") {
+      // microtask, żeby zamknięcie modala zdążyło zejść z DOM
+      setTimeout(() => openCheckoutModal(), 0);
+      return;
+    }
+
+    // jeśli koszyk pusty — wyślij do menu
+    setTimeout(() => router.push("/menu"), 0);
+  };
+
 
   // gdy użytkownik się zaloguje — pokaż panel
   useEffect(() => {
@@ -221,6 +253,7 @@ useEffect(() => {
   // jeśli modal zamknięty albo user niezalogowany – czyścimy stan
   if (!open || tab !== "loyalty" || !user?.id) {
     setLoyaltyStickers(null);
+    setRollRewardClaimed(null);
     return;
   }
 
@@ -232,7 +265,7 @@ useEffect(() => {
 
       const { data, error } = await supabase
         .from("loyalty_accounts")
-        .select("stickers")
+        .select("stickers, roll_reward_claimed")
         .eq("user_id", user.id)
         .maybeSingle();
 
@@ -241,9 +274,13 @@ useEffect(() => {
 
       const stickers = Math.max(0, Number(data?.stickers ?? 0));
       setLoyaltyStickers(stickers);
+      setRollRewardClaimed(!!(data as any)?.roll_reward_claimed);
     } catch (e) {
       console.error("Loyalty(AccountModal): błąd pobierania loyalty_accounts", e);
-      if (!cancelled) setLoyaltyStickers(0);
+      if (!cancelled) {
+        setLoyaltyStickers(0);
+        setRollRewardClaimed(false);
+      }
     } finally {
       if (!cancelled) setLoyaltyLoading(false);
     }
@@ -327,7 +364,7 @@ useEffect(() => {
     label,
   }: {
     value: Exclude<Tab, "auth">;
-    icon: React.ReactNode;
+    icon: ReactNode;
     label: string;
   }) => {
     const active = tab === value;
@@ -721,11 +758,52 @@ useEffect(() => {
                 <b>4 naklejki</b> = darmowa rolka, <b>8 naklejek</b> = <b>−30%</b> na zamówienie.
               </p>
 
-              {loyaltyLoading ? (
+                                          {loyaltyLoading ? (
                 <p className="text-sm text-black/70">Ładujemy stan programu…</p>
               ) : (
-                <LoyaltyProgress stickers={loyaltyStickers ?? 0} />
+                <LoyaltyProgress
+                  stickers={loyaltyStickers ?? 0}
+                  rollRewardClaimed={!!rollRewardClaimed}
+                />
               )}
+
+              {/* UX: żeby user nie utknął — nagrody wybiera się w koszyku */}
+              <div className="mt-4 rounded-xl border border-black/10 bg-black/[0.02] p-3">
+                <div className="text-sm font-semibold mb-1">
+                  Jak odebrać nagrodę?
+                </div>
+                <p className="text-xs text-black/70 leading-relaxed">
+                  Nagrody wybierasz <b>w koszyku</b> podczas składania zamówienia.
+                  Jeśli masz ≥4 naklejki — zobaczysz opcję darmowej rolki (1× na cykl).
+                  Jeśli masz 8 — zobaczysz opcję <b>−30%</b> (spala 8 naklejek).
+                </p>
+
+                <div className="mt-2 flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    onClick={goToCartOrMenu}
+                    className={clsx(
+                      "rounded-xl px-4 py-2 font-semibold disabled:opacity-60",
+                      gradBtn
+                    )}
+                  >
+                    {cartCount > 0 ? "Przejdź do koszyka" : "Przejdź do menu"}
+                  </button>
+
+                  {cartCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        setTimeout(() => router.push("/menu"), 0);
+                      }}
+                      className="rounded-xl px-4 py-2 font-semibold border border-black/10 hover:bg-black/5"
+                    >
+                      Dodaj coś jeszcze
+                    </button>
+                  )}
+                </div>
+              </div>
 
               <p className="text-xs text-black/50 mt-2">
                 Promocje naliczamy przy składaniu zamówienia, po weryfikacji statusu poprzednich.
@@ -819,9 +897,15 @@ useEffect(() => {
 }
 
 /* ---------------- MINI KOMPONENT: LOYALTY ---------------- */
-function LoyaltyProgress({ stickers }: { stickers: number }) {
-  // zakładamy, że w bazie trzymasz *aktualne* niewykorzystane naklejki (0–8)
-  const usable = Math.max(0, Math.min(stickers, 8));
+function LoyaltyProgress({
+  stickers,
+  rollRewardClaimed,
+}: {
+  stickers: number;
+  rollRewardClaimed: boolean;
+}) {
+  // UI: trzymamy 0–8 (jeśli w DB będzie inaczej, nie rozjedzie kratki)
+  const usable = Math.max(0, Math.min(Number(stickers || 0), 8));
 
   const cells = useMemo(() => Array.from({ length: 8 }, (_, i) => i < usable), [
     usable,
@@ -829,6 +913,8 @@ function LoyaltyProgress({ stickers }: { stickers: number }) {
 
   const toFreeRoll = usable >= 4 ? 0 : 4 - usable;
   const toDiscount = usable >= 8 ? 0 : 8 - usable;
+
+  const canClaimFreeRoll = usable >= 4 && !rollRewardClaimed;
 
   return (
     <div>
@@ -845,24 +931,31 @@ function LoyaltyProgress({ stickers }: { stickers: number }) {
           />
         ))}
       </div>
+
       <div className="mt-2 text-sm">
         {usable >= 8 ? (
           <span className="font-semibold">
-            Masz {usable} naklejek — przy następnym zamówieniu naliczymy −20% i
-            licznik się wyzeruje.
+            Masz {usable} naklejek — w koszyku możesz wybrać <b>−30%</b> (spalimy 8 naklejek).
           </span>
         ) : usable >= 4 ? (
-          <span>
-            Masz <b>{usable}</b> naklejki. Możesz wymienić <b>4</b> na darmową
-            rolkę albo zbierać dalej. Do −20% brakuje <b>{toDiscount}</b>.
-          </span>
+          canClaimFreeRoll ? (
+            <span>
+              Masz <b>{usable}</b> naklejki. W koszyku możesz odebrać <b>darmową rolkę</b> (nagroda za 4)
+              albo zbierać dalej. Do <b>−30%</b> brakuje <b>{toDiscount}</b>.
+            </span>
+          ) : (
+            <span>
+              Masz <b>{usable}</b> naklejki. <b>Darmowa rolka (za 4)</b> została już odebrana w tym cyklu.
+              Do <b>−30%</b> brakuje <b>{toDiscount}</b>.
+            </span>
+          )
         ) : (
           <span>
-            Masz <b>{usable}</b> naklejki. Do darmowej rolki brakuje{" "}
-            <b>{toFreeRoll}</b>.
+            Masz <b>{usable}</b> naklejki. Do darmowej rolki brakuje <b>{toFreeRoll}</b>.
           </span>
         )}
       </div>
     </div>
   );
 }
+

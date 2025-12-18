@@ -34,6 +34,9 @@ export default function Footer() {
   const pathname = usePathname();
   const city = params?.city ?? null;
 
+    // Admin panel: nie pokazujemy footera wcale
+  if (pathname?.startsWith("/admin")) return null;
+
   const [r, setR] = useState<R | null>(null);
 
   useEffect(() => {

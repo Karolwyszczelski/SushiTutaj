@@ -14,6 +14,7 @@ import EditOrderButton from "@/components/EditOrderButton";
 import CancelButton from "@/components/CancelButton";
 import clsx from "clsx";
 import { formatInTimeZone, toZonedTime, fromZonedTime } from "date-fns-tz";
+import { computeAddonsCostWithSauces } from "@/components/menu/checkoutModal/shared";
 
 const VAPID_PUBLIC_KEY =
   process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
@@ -40,6 +41,39 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+const DBMOD_PREFIX = "DBMOD|"; // DBMOD|<groupId>|<modifierId>|<priceCents>|<name>
+const DBVAR_PREFIX = "DBVAR|"; // DBVAR|<variantId>|<priceCents>|<name>
+
+function prettyAddonLabel(a: string): string {
+  const s = (a || "").trim();
+  if (!s) return "";
+
+  if (s.startsWith(DBMOD_PREFIX)) {
+    const parts = s.split("|");
+    const priceCents = Number(parts[3]);
+    const name = parts.slice(4).join("|").trim();
+    if (name && Number.isFinite(priceCents)) {
+      const zł = (Math.max(0, priceCents) / 100).toFixed(2);
+      return priceCents > 0 ? `${name} +${zł} zł` : name;
+    }
+    return name || s;
+  }
+
+  if (s.startsWith(DBVAR_PREFIX)) {
+    const parts = s.split("|");
+    const priceCents = Number(parts[2]);
+    const name = parts.slice(3).join("|").trim();
+    if (name && Number.isFinite(priceCents)) {
+      const zł = (Math.max(0, priceCents) / 100).toFixed(2);
+      return priceCents > 0 ? `${name} +${zł} zł` : name;
+    }
+    return name || s;
+  }
+
+  return s;
+}
+
+
 type Any = Record<string, any>;
 type PaymentMethod = "Gotówka" | "Terminal" | "Online";
 type PaymentStatus = "pending" | "paid" | "failed" | null;
@@ -49,6 +83,7 @@ interface Order {
   name?: string;
   total_price: number;
   delivery_cost?: number | null;
+  packaging_cost?: number | null;
   created_at: string;
   status: "new" | "pending" | "placed" | "accepted" | "cancelled" | "completed";
   clientDelivery?: string;
@@ -111,6 +146,8 @@ const fromDBPaymentStatus = (v: any): PaymentStatus => {
 };
 
 const TZ = "Europe/Warsaw";
+
+const DEFAULT_PACKAGING_COST = 3.0;
 
 const normalizeHHMM = (v: string): string | null => {
   const m = (v || "").trim().match(/^(\d{1,2}):(\d{2})$/);
@@ -242,11 +279,11 @@ const statusTone = (s: Order["status"]) =>
     ? "ring-slate-200 bg-slate-50"
     : "ring-amber-200 bg-amber-50";
 
-const toNumber = (x: any, d = 0) => {
-  if (typeof x === "number" && !isNaN(x)) return x;
+function toNumber(x: any, d = 0) {
+  if (typeof x === "number" && !Number.isNaN(x)) return x;
   const n = Number(x);
-  return isFinite(n) ? n : d;
-};
+  return Number.isFinite(n) ? n : d;
+}
 
 const parseProducts = (itemsData: any): any[] => {
   if (!itemsData) return [];
@@ -370,30 +407,66 @@ const normalizeLabelKey = (s: string) =>
     .replace(/\s+/g, " ")
     .toLowerCase();
 
-const extractExplicitQty = (label: string) => {
+// Dla WYLICZEŃ (cena): rozwijamy etykiety typu "Nazwa ×2" / "Nazwa x2" do osobnych wpisów.
+// Dzięki temu shared.ts poprawnie rozpozna sosy po *dokładnej* nazwie i zastosuje limity gratisów.
+const extractExplicitQtyLoose = (label: string) => {
   const t = (label || "").normalize("NFKC").trim().replace(/\s+/g, " ");
-  
-  // Szukamy wzorca na końcu (np. "Sos sojowy x2", "Sos sojowy × 2") 
-  // lub na początku, jeśli to sam licznik (choć to rzadkie w labelach).
-  // Najczęstszy format w Twoim systemie to "Nazwa xN"
-  const m = t.match(/(?:[\s\xa0]+(?:x|×)[\s\xa0]*(\d+))$/i);
+  if (!t) return { base: "", qty: 1, hasExplicit: false };
 
-  if (!m) {
-    // Jeśli nie ma "x2" na końcu, sprawdzamy, czy cały string to nie jest np. "2x"
-    const mPrefix = t.match(/^(?:x|×)\s*(\d+)$/i);
-    if (mPrefix) {
-       // to dziwny przypadek, ale obsłużmy go
-       return { base: "", qty: parseInt(mPrefix[1], 10), hasExplicit: true };
-    }
-    return { base: t, qty: 1, hasExplicit: false };
-  }
+  // tolerujemy brak spacji: "Sos×2" / "Sosx2"
+  const m = t.match(/(?:\s*(?:x|×)\s*(\d+))$/i);
+  if (!m) return { base: t, qty: 1, hasExplicit: false };
 
   const qty = Math.max(1, parseInt(m[1], 10) || 1);
-  // Usuwamy końcówkę z ilością, żeby dostać czystą nazwę
-  const base = t.substring(0, m.index).trim();
-  
+  const base = t.slice(0, t.length - m[0].length).trim();
   return { base, qty, hasExplicit: true };
 };
+
+const expandAddonLabelsForPricing = (labels: string[]): string[] => {
+  const out: string[] = [];
+  for (const raw of labels || []) {
+    const cleaned = (raw || "")
+      .toString()
+      .normalize("NFKC")
+      .trim()
+      .replace(/\s+/g, " ");
+    if (!cleaned) continue;
+
+    const { base, qty } = extractExplicitQtyLoose(cleaned);
+    const b = (base || "").trim();
+    if (!b) continue;
+
+    const n = Math.max(1, Number(qty || 1));
+    for (let i = 0; i < n; i++) out.push(b);
+  }
+  return out;
+};
+
+
+// Dla WYŚWIETLANIA (collapse): obsługujemy też prefix "2× " oraz suffix " ×2"
+const extractExplicitQty = (label: string) => {
+  const t = (label || "").normalize("NFKC").trim().replace(/\s+/g, " ");
+  if (!t) return { base: "", qty: 1 };
+
+  // prefix: "2x Nazwa" / "2× Nazwa"
+  let m = t.match(/^(\d+)\s*(?:x|×)\s*(.+)$/i);
+  if (m) {
+    const qty = Math.max(1, parseInt(m[1], 10) || 1);
+    const base = (m[2] || "").trim();
+    return { base, qty };
+  }
+
+  // suffix: "Nazwa x2" / "Nazwa×2" / "Nazwa × 2"
+  m = t.match(/^(.+?)(?:\s*(?:x|×)\s*(\d+))$/i);
+  if (m) {
+    const base = (m[1] || "").trim();
+    const qty = Math.max(1, parseInt(m[2], 10) || 1);
+    return { base, qty };
+  }
+
+  return { base: t, qty: 1 };
+};
+
 
 /**
  * Dedupe po "bazowej nazwie" dodatku.
@@ -446,6 +519,81 @@ const collapseLabelsWithQty = (labels: string[]): string[] => {
     return showQty ? `${row.base} ×${row.count}` : row.base;
   });
 };
+
+// --- UI: oznaczanie darmowych sosów w panelu admina (bez wpływu na ceny) ---
+
+const getSetNumberFromName = (name: string): number | null => {
+  const t = (name || "").normalize("NFKC").trim();
+  const m = t.match(/\b(?:zestaw|set)\s*(\d+)\b/i);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+// Te same progi co w backendzie
+const freeSoyLimitForSetNumber = (n: number): number => {
+  if (n <= 7) return 1;
+  if (n <= 12) return 2;
+  if (n <= 17) return 3;
+  return 4;
+};
+
+const stripPriceSuffix = (s: string) =>
+  (s || "")
+    .replace(/\s*\+\s*\d+(?:[.,]\d+)?\s*zł\s*$/i, "")
+    .trim();
+
+const isSoySauceBase = (base: string) => {
+  const b = (base || "").replace(/\(.*?\)/g, "").trim();
+  const key = normalizeLabelKey(b);
+  return key === "sos sojowy" || key === "soy sauce";
+};
+
+const formatSoyFreeInfo = (free: number, paid: number, qty: number) => {
+  if (free <= 0) return "";
+  if (paid <= 0) return qty === 1 ? " (gratis)" : ` (gratis: ${free})`;
+  return ` (gratis: ${free}, płatne: ${paid})`;
+};
+
+const annotateAddonsWithFreeSoyInfo = (
+  addons: string[],
+  ctx: { itemName: string; quantity: number; isSet: boolean }
+): string[] => {
+  const list = Array.isArray(addons) ? addons : [];
+  if (!ctx.isSet) return list.map((x) => prettyAddonLabel(x)).filter(Boolean);
+
+  const setNo = getSetNumberFromName(ctx.itemName);
+  if (!setNo) return list.map((x) => prettyAddonLabel(x)).filter(Boolean);
+
+  const perSet = freeSoyLimitForSetNumber(setNo);
+  let freeLeft = perSet * Math.max(1, Number(ctx.quantity || 1));
+
+  return list
+    .map((raw) => {
+      const pretty = prettyAddonLabel(raw);
+      const noPrice = stripPriceSuffix(pretty);
+
+      // parsuj ilość z "×N" / "xN"
+      const { base, qty } = extractExplicitQty(noPrice);
+      const baseClean = (base || "").trim();
+
+      if (!baseClean || qty <= 0) return pretty;
+
+      if (freeLeft > 0 && isSoySauceBase(baseClean)) {
+        const free = Math.min(qty, freeLeft);
+        freeLeft -= free;
+        const paid = Math.max(0, qty - free);
+
+        // dla sosu zawsze pokazuj ilość
+        const shown = `${baseClean} ×${qty}`;
+        return shown + formatSoyFreeInfo(free, paid, qty);
+      }
+
+      return pretty;
+    })
+    .filter(Boolean);
+};
+
 
 const parseQtyFromTokenString = (s: string): number | null => {
   const t = (s ?? "").normalize("NFKC").trim();
@@ -806,15 +954,28 @@ const formatSetSwapLine = (s: any) => {
   const prefix =
     typeof qty === "number" && Number.isFinite(qty) && qty > 1 ? `${qty}× ` : "";
 
+  const addons = Array.isArray(s?.addons)
+    ? (s.addons as any[])
+        .map((x) => (typeof x === "string" ? x.trim() : ""))
+        .filter(Boolean)
+    : [];
+
+  const addonsSuffix = addons.length
+    ? ` (+ ${addons.map(prettyAddonLabel).join(", ")})`
+    : "";
+
   // chcemy: FROM → TO
-  if (from) return `${prefix}${from} → ${to}`;
+  if (from) return `${prefix}${from} → ${to}${addonsSuffix}`;
 
   // fallback, gdy nie mamy FROM
-  return `${prefix}${to}`;
+  return `${prefix}${to}${addonsSuffix}`;
 };
 
 
-const normalizeProduct = (raw: Any) => {
+
+type NormalizeProductCtx = { restaurantSlug?: string | null };
+
+const normalizeProduct = (raw: Any, ctx: NormalizeProductCtx = {}) => {
   // jeżeli przychodzi już "spłaszczony" obiekt z _raw – używamy oryginału
   const source: Any =
     raw && typeof raw === "object" && (raw as any)._raw
@@ -899,7 +1060,7 @@ const normalizeProduct = (raw: Any) => {
     (Array.isArray(srcOptions?.set_swaps) && srcOptions!.set_swaps) ||
     [];
 
-  type SetSwapDetail = { qty?: number; from?: string; to: string; label: string };
+type SetSwapDetail = { qty?: number; from?: string; to: string; label: string; addons?: string[] };
 
   const setSwapsBase: SetSwapDetail[] = (rawSetSwaps as any[])
     .map((s) => {
@@ -944,12 +1105,25 @@ const normalizeProduct = (raw: Any) => {
 
       if (!to) return null;
 
-      return {
-        qty: qtyNum,
-        from: from || undefined,
-        to,
-        label: "", // uzupełnimy niżej
-      } as SetSwapDetail;
+const swapAddonLabels = collapseLabelsWithQty(
+  [
+    ...collectAddonLabels((s as any).addons),
+    ...collectAddonLabels((s as any).extras),
+    ...collectAddonLabels((s as any).toppings),
+    ...collectAddonLabels((s as any).sauces ?? (s as any).sosy ?? (s as any).sos),
+  ]
+    .map((x) => (x || "").trim())
+    .filter((x) => x && x !== "0")
+);
+
+return {
+  qty: qtyNum,
+  from: from || undefined,
+  to,
+  label: "", // uzupełnimy niżej
+  addons: swapAddonLabels.length ? swapAddonLabels : undefined,
+} as SetSwapDetail;
+
     })
     .filter(Boolean) as SetSwapDetail[];
 
@@ -1019,28 +1193,35 @@ const optionsAddonLabels = [
 
   // Łączy listy addonów z różnych źródeł w jedną płaską listę.
 // NIE USUWA duplikatów tutaj, żeby collapseLabelsWithQty mogło je zsumować (np. Sos free + Sos paid).
+// Zmodyfikowana funkcja łączenia list dodatków
 function mergeAddonLists(source: string[] = [], options: string[] = []): string[] {
-  const out: string[] = [];
-  
-  // Dodajemy wszystko z source
-  for (const s of source) {
-    const cleaned = (s || "").trim();
-    if (cleaned && cleaned !== "0") out.push(cleaned);
+  // Jeśli source ma dane, używamy tylko ich, aby uniknąć duplikacji z options
+  if (source.length > 0) {
+    return source.filter(s => s && s !== "0");
   }
-
-  // Dodajemy wszystko z options
-  // (Chyba że wolisz unikać duplikatów całkowicie, ale przy sosach x1 + x1 chcemy je dodać obie, by potem zsumować)
-  for (const s of options) {
-    const cleaned = (s || "").trim();
-    if (cleaned && cleaned !== "0") out.push(cleaned);
-  }
-
-  return out;
+  // Jeśli source jest puste, bierzemy dane z options
+  return options.filter(s => s && s !== "0");
 }
 
-
-// preferuj top-level (source.*), a z options dobierz tylko brakujące (bez dubli)
+// Wywołanie funkcji pozostaje bez zmian, ale jej logika zapobiegnie dublowaniu
 const rawAddons = mergeAddonLists(sourceAddonLabels, optionsAddonLabels);
+
+// --- WYLICZENIA (cena dodatków) ---
+// computeAddonsCostWithSauces musi dostać listę bez "Sos sojowy ×2" -> rozwijamy do ["Sos sojowy","Sos sojowy"]
+const addonsForPricing = expandAddonLabelsForPricing(rawAddons);
+
+// minimalny subcat dla reguł sosów (możesz rozbudować, jeśli masz subkategorie w danych)
+const subcatForSauceRules = isSet ? "zestawy" : "";
+
+const restaurantSlugForRules = (ctx.restaurantSlug || "").toLowerCase();
+
+const { addonsCost } = computeAddonsCostWithSauces({
+  addons: addonsForPricing,
+  product: source.product ?? null,
+  itemName: name,
+  subcat: subcatForSauceRules,
+  restaurantSlug: restaurantSlugForRules,
+});
 
 // UWAGA: nie robimy Set() – bo Set zjada x2
 const { plain: plainRaw, setMeta: setMetaRaw, tartarBases } =
@@ -1107,6 +1288,7 @@ const note =
     name,
     price,
     quantity,
+    addonsCost,
     addons,
     ingredients,
     description,
@@ -1616,6 +1798,39 @@ const enablePush = useCallback(async () => {
   const [restaurantSlug, setRestaurantSlug] = useState<string | null>(null);
   const [booted, setBooted] = useState(false);
 
+    // Koszt opakowania z ustawień restauracji (fallback na 3.00)
+  const [restaurantPackagingCost, setRestaurantPackagingCost] = useState<number>(
+    DEFAULT_PACKAGING_COST
+  );
+
+  const loadRestaurantPackagingCost = useCallback(async () => {
+    if (!restaurantId) return;
+
+    const { data, error } = await supabase
+      .from("restaurants")
+      .select("checkout_config")
+      .eq("id", restaurantId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("[pickup] nie udało się pobrać checkout_config", error);
+      return; // zostaw fallback
+    }
+
+    const raw = (data as any)?.checkout_config;
+    const v = raw?.packagingCost;
+
+    const n = toNumber(v, DEFAULT_PACKAGING_COST);
+    const clamped = Math.max(0, Math.min(9999, n));
+
+    setRestaurantPackagingCost(clamped);
+  }, [restaurantId, supabase]);
+
+  useEffect(() => {
+    void loadRestaurantPackagingCost();
+  }, [loadRestaurantPackagingCost]);
+
+
   /* BOOT: ustaw serwerowe cookie, ale ignoruj 401 */
   useEffect(() => {
     const url = urlSlug
@@ -1880,6 +2095,11 @@ const fetchOrders = useCallback(
           name: o.name ?? o.customer_name ?? o.client_name ?? undefined,
           total_price: toNumber(o.total_price),
           delivery_cost: o.delivery_cost ?? null,
+          packaging_cost:
+  (o.packaging_cost ?? o.packagingCost) == null
+    ? null
+    : toNumber(o.packaging_cost ?? o.packagingCost, 0),
+
           created_at: o.created_at,
           status: o.status,
 
@@ -1907,7 +2127,7 @@ const fetchOrders = useCallback(
           payment_status: fromDBPaymentStatus(o.payment_status),
 
           note: o.note ?? noteFromAddress ?? null,
-          kitchen_note: o.kitchen_note ?? null,
+          kitchen_note: o.kitchen_note ?? o.kitchenNote ?? null,
 
           promo_code: o.promo_code ?? null,
           discount_amount: o.discount_amount != null ? Number(o.discount_amount) || 0 : 0,
@@ -2501,7 +2721,7 @@ const isNonEmptyString = (v: unknown): v is string =>
   raw: any;
   onDetails?: (p: any) => void;
 }> = ({ raw, onDetails }) => {
-  const p = normalizeProduct(raw);
+  const p = normalizeProduct(raw, { restaurantSlug: restaurantSlug || urlSlug || "" });
   const isSet = !!p.isSet;
 
   // zamiany poza zestawami
@@ -2520,6 +2740,17 @@ const isNonEmptyString = (v: unknown): v is string =>
 
   // dodatki / sosy bez swapów (swapy pokazujemy osobno)
   const addonsOnly = p.addons || [];
+
+  const displayAddons = useMemo(
+  () =>
+    annotateAddonsWithFreeSoyInfo(addonsOnly, {
+      itemName: p.name,
+      quantity: p.quantity,
+      isSet,
+    }),
+  [addonsOnly, p.name, p.quantity, isSet]
+);
+
 
   const hasMetaBlock =
   addonsOnly.length > 0 ||
@@ -2581,9 +2812,9 @@ const isNonEmptyString = (v: unknown): v is string =>
             <>
               <div className="text-[12px] font-semibold text-slate-800">Dodatki / sosy</div>
               <ul className="mt-1 ml-5 list-disc space-y-0.5 text-[12px] text-slate-700">
-                {addonsOnly.map((a: string, i: number) => (
-                  <li key={i}>{a}</li>
-                ))}
+                {displayAddons.map((txt: string, i: number) => (
+  <li key={i}>{txt}</li>
+))}
               </ul>
             </>
           )}
@@ -2662,7 +2893,7 @@ const isNonEmptyString = (v: unknown): v is string =>
     onClose(): void;
   }> = ({ product, onClose }) => {
     // zawsze normalizujemy na bazie oryginalnego _raw
-   const p = normalizeProduct(product);
+ const p = normalizeProduct(product, { restaurantSlug: restaurantSlug || urlSlug || "" });
     const title = p.quantity > 1 ? `${p.name} x${p.quantity}` : p.name;
     const isSet = !!p.isSet;
 
@@ -2698,20 +2929,128 @@ const isNonEmptyString = (v: unknown): v is string =>
               </div>
             )}
 
-            {isSet && p.setMeta && (
-              <>
-                <div className="mt-2">
-  <b>Zamiany w zestawie:</b>{" "}
-  {p.setSwaps && p.setSwaps.length > 0 ? (
-    <div className="mt-2 overflow-hidden rounded-xl border border-slate-200">
-      <div className="grid grid-cols-[72px_1fr_1fr] bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-700">
-        <div>Ilość</div>
-        <div>Wybrano</div>
-        <div className="text-slate-500">Zamiast</div>
-      </div>
+            {isSet && (
+  <>
+    {/* Zamiany w zestawie – pokazuj zawsze, nawet gdy setMeta === null */}
+    <div className="mt-2">
+      <b>Zamiany w zestawie:</b>{" "}
+      {p.setSwaps && p.setSwaps.length > 0 ? (
+        <div className="mt-2 overflow-hidden rounded-xl border border-slate-200">
+          <div className="grid grid-cols-[72px_1fr_1fr] bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-700">
+            <div>Ilość</div>
+            <div>Wybrano</div>
+            <div className="text-slate-500">Zamiast</div>
+          </div>
 
-      <div className="divide-y divide-slate-200">
-        {p.setSwaps.map((s: any, i: number) => {
+          <div className="divide-y divide-slate-200">
+            {p.setSwaps.map((s: any, i: number) => {
+              const qty =
+                typeof s?.qty === "number"
+                  ? s.qty
+                  : typeof s?.qty === "string"
+                  ? parseInt(String(s.qty).replace(/[^\d]/g, ""), 10)
+                  : 1;
+
+              const chosen = cleanSwapText(s?.to || "");
+              const from = cleanSwapText(s?.from || "");
+
+              const rowAddons = Array.isArray(s?.addons)
+                ? (s.addons as any[])
+                    .map((x) => (typeof x === "string" ? x.trim() : ""))
+                    .filter(Boolean)
+                : [];
+
+              return (
+                <div
+                  key={i}
+                  className="grid grid-cols-[72px_1fr_1fr] px-3 py-2 text-[12px]"
+                >
+                  <div>{qty > 1 ? `${qty}×` : "1×"}</div>
+
+                  <div className="font-medium text-slate-900">
+                    {chosen || "—"}
+                    {rowAddons.length ? (
+                      <div className="mt-0.5 text-[11px] text-slate-600">
+                        + {rowAddons.map(prettyAddonLabel).join(", ")}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="text-slate-500">{from || "—"}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <span>brak</span>
+      )}
+    </div>
+
+    {/* Dodatki / sosy zestawu – pokaż również dla setów */}
+    {p.addons && p.addons.length > 0 && (
+  <div className="mt-3">
+    <b>Dodatki / sosy:</b>{" "}
+    <span>
+      {annotateAddonsWithFreeSoyInfo(p.addons, {
+        itemName: p.name,
+        quantity: p.quantity,
+        isSet,
+      }).join(", ")}
+    </span>
+  </div>
+)}
+
+
+    {/* Reszta “meta” tylko jeśli istnieje */}
+    {p.setMeta?.bakedWholeSet && (
+      <div className="mt-3">
+        <b>Wersja pieczona:</b> cały zestaw pieczony.
+      </div>
+    )}
+
+    {!p.setMeta?.bakedWholeSet && (p.setMeta?.bakedRolls?.length ?? 0) > 0 && (
+      <div className="mt-2">
+        <b>Pieczone rolki:</b> {p.setMeta!.bakedRolls.join(", ")}
+      </div>
+    )}
+
+    {p.setMeta?.setUpgrade && (
+      <div className="mt-2">
+        <b>Rozmiar zestawu:</b> powiększony (dopłata wliczona w cenę).
+      </div>
+    )}
+
+    {/* Rolki – szczegóły (rolka po rolce) na bazie setSwaps + (opcjonalnie) setMeta */}
+    {(() => {
+      type RollInfo = {
+        name: string;
+        qty: number;
+        extras: string[];
+        baked: boolean;
+        froms: string[];
+      };
+
+      const map = new Map<string, RollInfo>();
+      const ensure = (nameRaw: string) => {
+        const name = cleanSwapText(nameRaw || "");
+        if (!name) return null;
+        if (!map.has(name)) {
+          map.set(name, { name, qty: 0, extras: [], baked: false, froms: [] });
+        }
+        return map.get(name)!;
+      };
+
+      const setSwaps =
+        (p as any).setSwaps as
+          | { qty?: number; from?: string; to?: string; addons?: string[] }[]
+          | undefined;
+
+      if (setSwaps?.length) {
+        for (const s of setSwaps) {
+          const chosen = cleanSwapText(s?.to || "");
+          if (!chosen) continue;
+
           const qty =
             typeof s?.qty === "number"
               ? s.qty
@@ -2719,151 +3058,73 @@ const isNonEmptyString = (v: unknown): v is string =>
               ? parseInt(String(s.qty).replace(/[^\d]/g, ""), 10)
               : 1;
 
-          const chosen = cleanSwapText(s?.to || "");
+          const ri = ensure(chosen);
+          if (!ri) continue;
+
+          ri.qty += Number.isFinite(qty) && qty > 0 ? qty : 1;
+
           const from = cleanSwapText(s?.from || "");
+          if (from && from !== chosen && !ri.froms.includes(from)) ri.froms.push(from);
 
-          return (
-            <div
-              key={i}
-              className="grid grid-cols-[72px_1fr_1fr] px-3 py-2 text-[12px]"
-            >
-              <div>{qty > 1 ? `${qty}×` : "1×"}</div>
-              <div className="font-medium text-slate-900">{chosen || "—"}</div>
-              <div className="text-slate-500">{from || "—"}</div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  ) : (
-    <span>brak</span>
-  )}
-</div>
+          const addArr = Array.isArray(s?.addons) ? s.addons : [];
+          for (const a of addArr) {
+            const aa = (a || "").trim();
+            if (aa && !ri.extras.includes(aa)) ri.extras.push(aa);
+          }
+        }
+      }
 
-                {p.setMeta.bakedWholeSet && (
-                  <div>
-                    <b>Wersja pieczona:</b> cały zestaw pieczony.
-                  </div>
-                )}
+      // dopnij dodatki “Dodatek do rolki: ...” jeśli są
+      if (p.setMeta?.rollExtras?.length) {
+        for (const row of p.setMeta.rollExtras) {
+          const ri = ensure(row.roll);
+          if (!ri) continue;
+          for (const ex of row.extras || []) {
+            const e = (ex || "").trim();
+            if (e && !ri.extras.includes(e)) ri.extras.push(e);
+          }
+        }
+      }
 
-                {!p.setMeta.bakedWholeSet &&
-                  p.setMeta.bakedRolls.length > 0 && (
-                    <div>
-                      <b>Pieczone rolki:</b>{" "}
-                      {p.setMeta.bakedRolls.join(", ")}
-                    </div>
-                  )}
+      // pieczenie
+      if (p.setMeta?.bakedWholeSet) {
+        for (const ri of map.values()) ri.baked = true;
+      } else if (p.setMeta?.bakedRolls?.length) {
+        const bakedSet = new Set(p.setMeta.bakedRolls.map((x) => cleanSwapText(x)));
+        for (const ri of map.values()) {
+          if (bakedSet.has(cleanSwapText(ri.name))) ri.baked = true;
+        }
+      }
 
-                {p.setMeta.setUpgrade && (
-                  <div>
-                    <b>Rozmiar zestawu:</b> powiększony (dopłata
-                    wliczona w cenę).
-                  </div>
-                )}
+      const rows = Array.from(map.values()).filter((r) => r.name);
+      if (!rows.length) return null;
 
-                {/* Rolki – pełne szczegóły: zamiana / pieczenie / dodatki */}
-                {(() => {
-                  type RollInfo = {
-                    name: string;
-                    extras: string[];
-                    baked: boolean;
-                    swappedFrom?: string;
-                  };
+      return (
+        <div className="mt-3">
+          <b>Rolki – szczegóły:</b>
+          <ul className="ml-5 list-disc">
+            {rows.map((ri, i) => {
+              const parts: string[] = [];
+              if (ri.froms.length) parts.push(`zamiast: ${ri.froms.join(" / ")}`);
+              if (ri.baked) parts.push("pieczona");
+              if (ri.extras.length) parts.push(`dodatki: ${ri.extras.map(prettyAddonLabel).join(", ")}`);
 
-                  const map = new Map<string, RollInfo>();
+              const text = parts.length ? parts.join(" · ") : "bez zmian";
 
-                  const ensure = (nameRaw: string | undefined | null) => {
-                    const name = (nameRaw || "").trim();
-                    if (!name) return null;
-                    if (!map.has(name)) {
-                      map.set(name, {
-                        name,
-                        extras: [],
-                        baked: false,
-                      });
-                    }
-                    return map.get(name)!;
-                  };
+              return (
+                <li key={i}>
+                  <span className="font-medium">{(ri.qty || 1)}× {ri.name}:</span>{" "}
+                  {text}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      );
+    })()}
+  </>
+)}
 
-                  // dodatki przypisane do konkretnych rolek
-                  for (const row of p.setMeta!.rollExtras || []) {
-                    const ri = ensure(row.roll);
-                    if (!ri) continue;
-                    ri.extras.push(...row.extras);
-                  }
-
-                  // pieczone rolki
-                  if (p.setMeta!.bakedWholeSet) {
-                    for (const ri of map.values()) {
-                      ri.baked = true;
-                    }
-                  } else {
-                    for (const name of p.setMeta!.bakedRolls || []) {
-                      const ri = ensure(name);
-                      if (!ri) continue;
-                      ri.baked = true;
-                    }
-                  }
-
-                 // szczegóły zamian w ZESTAWIE – bierzemy z p.setSwaps (to jest canonical dla zestawów)
-const setSwaps =
-  (p as any).setSwaps as
-    | { qty?: number; from?: string; to?: string; label: string }[]
-    | undefined;
-
-if (setSwaps && setSwaps.length) {
-  for (const s of setSwaps) {
-    const target = (s.to || "").trim();
-    if (!target) continue;
-    const ri = ensure(target);
-    if (!ri) continue;
-
-    const from = (s.from || "").trim();
-    if (from && from !== target) {
-      ri.swappedFrom = from;
-    }
-  }
-}
-
-                  const rows = Array.from(map.values());
-                  if (!rows.length) return null;
-
-                  return (
-                    <div className="mt-1">
-                      <b>Rolki – szczegóły:</b>
-                      <ul className="ml-5 list-disc">
-                        {rows.map((ri, i) => {
-                          const parts: string[] = [];
-                          if (ri.swappedFrom) {
-                            parts.push(`zamiast: ${ri.swappedFrom}`);
-                          }
-                          if (p.setMeta!.bakedWholeSet || ri.baked) {
-                            parts.push("pieczona");
-                          }
-                          if (ri.extras.length) {
-                            parts.push(
-                              `dodatki: ${ri.extras.join(", ")}`
-                            );
-                          }
-                          const text =
-                            parts.length > 0
-                              ? parts.join(" · ")
-                              : "bez zmian";
-                          return (
-                            <li key={i}>
-                              <span className="font-medium">
-                                {ri.name}:
-                              </span>{" "}
-                              {text}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  );
-                })()}
-              </>
-            )}
 
             {p.tartarBases && p.tartarBases.length > 0 && !isSet && (
               <div>
@@ -2876,7 +3137,7 @@ if (setSwaps && setSwaps.length) {
 
             {!isSet && p.addons.length > 0 && (
   <div>
-    <b>Dodatki ogólne:</b> {p.addons.join(", ")}
+    <b>Dodatki ogólne:</b> {p.addons.map(prettyAddonLabel).join(", ")}
   </div>
 )}
 
@@ -2892,6 +3153,18 @@ if (setSwaps && setSwaps.length) {
   const OrderCard: React.FC<{ o: Order }> = ({ o }) => {
     const prods = parseProducts(o.items);
     const sticks = typeof o.chopsticks === "number" ? o.chopsticks : 0;
+
+        const packagingCost = (() => {
+      // 1) jeśli zamówienie ma zapisany packaging_cost, to pokazujemy jego (historycznie poprawne)
+      if (o.packaging_cost != null) {
+        const n = toNumber(o.packaging_cost, NaN);
+        if (Number.isFinite(n)) return Math.max(0, n);
+      }
+      // 2) fallback: aktualna konfiguracja restauracji
+      const n = toNumber(restaurantPackagingCost, DEFAULT_PACKAGING_COST);
+      return Math.max(0, n);
+    })();
+
 
     return (
       <article
@@ -2981,6 +3254,11 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
             <div>
               <b>Kwota:</b> {o.total_price.toFixed(2)} zł
             </div>
+            {packagingCost > 0 && (
+              <div>
+                <b>Opakowanie:</b> {packagingCost.toFixed(2)} zł
+              </div>
+            )}
 
             {typeof o.discount_amount === "number" &&
               o.discount_amount > 0 && (
@@ -3003,12 +3281,12 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
                 </div>
               )}
 
-            {o.selected_option === "delivery" &&
-              typeof o.delivery_cost === "number" && (
-                <div>
-                  <b>Dostawa:</b> {o.delivery_cost.toFixed(2)} zł
-                </div>
-              )}
+{o.selected_option === "delivery" &&
+  typeof o.delivery_cost === "number" && (
+    <div>
+      <b>Dostawa:</b> {o.delivery_cost.toFixed(2)} zł
+    </div>
+  )}
             {o.selected_option === "delivery" &&
               o.address && (
                 <div>
@@ -3141,9 +3419,9 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
 )}
               <EditOrderButton
                 orderId={o.id}
-                currentProducts={parseProducts(o.items).map(
-                  normalizeProduct
-                )}
+                currentProducts={parseProducts(o.items).map((x: any) =>
+  normalizeProduct(x, { restaurantSlug: restaurantSlug || urlSlug || "" })
+)}
                 currentSelectedOption={o.selected_option || "takeaway"}
                 onOrderUpdated={(id, data) =>
                   data ? updateLocal(id, data) : fetchOrders()
@@ -3185,7 +3463,9 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
 
     <EditOrderButton
       orderId={o.id}
-      currentProducts={parseProducts(o.items).map(normalizeProduct)}
+      currentProducts={parseProducts(o.items).map((x: any) =>
+  normalizeProduct(x, { restaurantSlug: restaurantSlug || urlSlug || "" })
+)}
       currentSelectedOption={o.selected_option || "takeaway"}
       onOrderUpdated={(id, data) =>
         data ? updateLocal(id, data) : fetchOrders()

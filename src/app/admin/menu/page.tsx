@@ -2,10 +2,27 @@
 
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { Pencil, Trash, ToggleRight, ChevronDown, Power } from "lucide-react";
+import {
+  Pencil,
+  Trash,
+  ToggleRight,
+  ChevronDown,
+  Power,
+  Upload,
+  Loader2,
+  ImageIcon,
+  X,
+  Layers,
+  Utensils,
+  Settings,
+  List,
+  Plus, // Dodano ikonę Plus
+} from "lucide-react";
 import debounce from "lodash.debounce";
+import Image from "next/image";
 import AddonOptionsForm from "@/components/admin/settings/AddonOptionsForm";
 import CheckoutConfigForm from "@/components/admin/settings/CheckoutConfigForm";
+import clsx from "clsx";
 
 /* ========= Typy ========= */
 interface Product {
@@ -16,66 +33,212 @@ interface Product {
   subcategory: string | null;
   position: number | null;
   image_url: string | null;
-  // flagi dostępności
   available: boolean;
   is_active: boolean;
   price_cents: number | null;
 }
 
+type OptionGroup = {
+  id: string;
+  name: string;
+  type: string;
+};
+
 /* ========= Utils ========= */
 const fmtPrice = (cents?: number | null) =>
   ((cents ?? 0) / 100).toFixed(2) + " zł";
 
-/* ========= Modal edycji ========= */
-function EditProductModal({
-  product,
+/* ========= Uniwersalny Modal (Dodawanie / Edycja) ========= */
+function ProductModal({
+  product,         // Jeśli null -> tryb dodawania
+  restaurantId,    // Potrzebne do utworzenia nowego produktu
   onClose,
   onSaved,
 }: {
-  product: Product;
+  product?: Product | null;
+  restaurantId: string;
   onClose: () => void;
   onSaved: (p: Product) => void;
 }) {
   const supabase = useMemo(() => createClientComponentClient(), []);
+  const isEditing = !!product;
+
   const [form, setForm] = useState({
-    name: product.name ?? "",
-    priceZl:
-      product.price_cents != null ? (product.price_cents / 100).toFixed(2) : "",
-    description: product.description ?? "",
-    subcategory: product.subcategory ?? "",
-    image_url: product.image_url ?? "",
-    position: product.position ?? 0,
+    name: product?.name ?? "",
+    priceZl: product?.price_cents != null ? (product.price_cents / 100).toFixed(2) : "",
+    description: product?.description ?? "",
+    subcategory: product?.subcategory ?? "",
+    image_url: product?.image_url ?? "",
+    position: product?.position ?? 0,
   });
+
+  const [allGroups, setAllGroups] = useState<OptionGroup[]>([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
+  const [loadingGroups, setLoadingGroups] = useState(true);
+
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // Pobieranie grup opcji i powiązań (jeśli edycja)
+  useEffect(() => {
+    async function fetchGroupsData() {
+      if (!restaurantId) return;
+      try {
+        setLoadingGroups(true);
+        // 1. Pobierz wszystkie grupy dostępne dla restauracji
+        const { data: groupsData, error: groupsError } = await supabase
+          .from("option_groups")
+          .select("id, name, type")
+          .eq("restaurant_id", restaurantId)
+          .order("name");
+
+        if (groupsError) throw groupsError;
+        setAllGroups(groupsData || []);
+
+        // 2. Jeśli edytujemy, pobierz zaznaczone grupy
+        if (isEditing && product) {
+          const { data: linksData, error: linksError } = await supabase
+            .from("product_option_groups")
+            .select("option_group_id")
+            .eq("product_id", product.id);
+
+          if (linksError) throw linksError;
+          const linkedIds = new Set((linksData || []).map((l) => l.option_group_id));
+          setSelectedGroupIds(linkedIds);
+        }
+      } catch (error) {
+        console.error("Błąd pobierania grup opcji:", error);
+      } finally {
+        setLoadingGroups(false);
+      }
+    }
+
+    fetchGroupsData();
+  }, [product, restaurantId, isEditing, supabase]);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      if (!e.target.files || e.target.files.length === 0) return;
+      setUploading(true);
+      setErr(null);
+
+      const file = e.target.files[0];
+      const fileExt = file.name.split(".").pop();
+      // Jeśli mamy ID produktu to go używamy, jeśli nie (nowy produkt) to timestamp
+      const prefix = product?.id || `new_${Date.now()}`; 
+      const fileName = `${prefix}_${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("menu-items")
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from("menu-items")
+        .getPublicUrl(fileName);
+
+      setForm((prev) => ({ ...prev, image_url: data.publicUrl }));
+    } catch (error: any) {
+      setErr("Błąd podczas wgrywania zdjęcia: " + error.message);
+    } finally {
+      setUploading(false);
+      if (e.target) e.target.value = "";
+    }
+  };
+
+  const removeImage = () => {
+    setForm((prev) => ({ ...prev, image_url: "" }));
+  };
+
+  const toggleGroup = (groupId: string) => {
+    const next = new Set(selectedGroupIds);
+    if (next.has(groupId)) {
+      next.delete(groupId);
+    } else {
+      next.add(groupId);
+    }
+    setSelectedGroupIds(next);
+  };
 
   const save = async () => {
     setErr(null);
+    if (!form.name.trim()) {
+      setErr("Nazwa produktu jest wymagana.");
+      return;
+    }
+    
     setSaving(true);
     try {
       const cents = Math.round(
         Number((form.priceZl || "0").replace(",", ".")) * 100
       );
-      const payload: Partial<Product> = {
-        name: form.name || null,
+      
+      const payload: any = {
+        name: form.name,
         description: form.description || null,
         subcategory: form.subcategory || null,
         image_url: form.image_url || null,
-        position: Number.isFinite(form.position as number)
-          ? Number(form.position)
-          : 0,
+        position: Number.isFinite(Number(form.position)) ? Number(form.position) : 0,
         price_cents: Number.isFinite(cents) ? cents : 0,
+        restaurant_id: restaurantId, // Ważne przy tworzeniu
       };
 
-      const { data, error } = await supabase
-        .from("products")
-        .update(payload)
-        .eq("id", product.id)
-        .select("*")
-        .single();
+      let savedProduct: Product;
 
-      if (error) throw error;
-      onSaved(data as Product);
+      if (isEditing && product) {
+        // --- AKTUALIZACJA ---
+        const { data, error } = await supabase
+          .from("products")
+          .update(payload)
+          .eq("id", product.id)
+          .select("*")
+          .single();
+
+        if (error) throw error;
+        savedProduct = data as Product;
+      } else {
+        // --- TWORZENIE NOWEGO ---
+        // Domyślnie dostępny i aktywny
+        payload.available = true;
+        payload.is_active = true;
+
+        const { data, error } = await supabase
+          .from("products")
+          .insert(payload)
+          .select("*")
+          .single();
+
+        if (error) throw error;
+        savedProduct = data as Product;
+      }
+
+      // --- AKTUALIZACJA GRUP OPCJI (Usuń stare -> Dodaj nowe) ---
+      // Najpierw czyścimy powiązania dla tego produktu
+      const { error: deleteError } = await supabase
+        .from("product_option_groups")
+        .delete()
+        .eq("product_id", savedProduct.id);
+      
+      if (deleteError) throw deleteError;
+
+      // Teraz dodajemy zaznaczone
+      if (selectedGroupIds.size > 0) {
+        const rowsToInsert = Array.from(selectedGroupIds).map((groupId, idx) => ({
+          product_id: savedProduct.id,
+          option_group_id: groupId,
+          sort_order: idx,
+        }));
+
+        const { error: insertError } = await supabase
+          .from("product_option_groups")
+          .insert(rowsToInsert);
+          
+        if (insertError) throw insertError;
+      }
+
+      onSaved(savedProduct);
       onClose();
     } catch (e: any) {
       setErr(e.message || "Nie udało się zapisać zmian.");
@@ -85,127 +248,249 @@ function EditProductModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/70" onMouseDown={onClose} />
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
       <div
-        className="relative z-[121] w-full max-w-3xl max-h-[85vh] overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl"
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        onMouseDown={onClose}
+      />
+      <div
+        className="relative z-[121] w-full max-w-3xl max-h-[90vh] overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl flex flex-col"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b px-6 py-4">
-          <h3 className="text-xl font-bold">Edytuj produkt</h3>
+        <div className="flex items-center justify-between border-b px-6 py-4 shrink-0 bg-white">
+          <h3 className="text-xl font-bold">
+            {isEditing ? "Edytuj produkt" : "Dodaj nowy produkt"}
+          </h3>
           <button
             onClick={onClose}
             className="inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-sm hover:bg-slate-50"
           >
-            Zamknij
+            <X size={18} /> Zamknij
           </button>
         </div>
 
-        <div className="max-h-[70vh] overflow-y-auto px-6 py-5">
+        <div className="overflow-y-auto px-6 py-5 custom-scrollbar bg-white">
           {err && (
             <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
               {err}
             </div>
           )}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
-                Nazwa
-              </label>
-              <input
-                value={form.name}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, name: e.target.value }))
-                }
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-              />
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            
+            {/* LEWA KOLUMNA */}
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+                    Nazwa <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    value={form.name}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, name: e.target.value }))
+                    }
+                    placeholder="np. Pizza Margarita"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+                      Cena (PLN)
+                    </label>
+                    <input
+                      value={form.priceZl}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, priceZl: e.target.value }))
+                      }
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+                      Kolejność
+                    </label>
+                    <input
+                      type="number"
+                      value={form.position}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          position: Number(e.target.value),
+                        }))
+                      }
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+                    Kategoria
+                  </label>
+                  <input
+                    value={form.subcategory}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, subcategory: e.target.value }))
+                    }
+                    placeholder="np. Pizze, Napoje, Dodatki"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* Sekcja Wariantów */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Layers className="text-slate-500" size={18} />
+                    <h4 className="text-sm font-bold text-slate-700">Warianty i Opcje</h4>
+                  </div>
+                  
+                  {loadingGroups ? (
+                    <div className="text-xs text-slate-500">Ładowanie grup...</div>
+                  ) : allGroups.length === 0 ? (
+  <div className="text-xs text-slate-500">
+    Brak zdefiniowanych grup opcji. Przejdź do zakładki &quot;Warianty / Dodatki&quot; aby je utworzyć.
+  </div>
+) : (
+                    <div className="space-y-2 max-h-40 overflow-y-auto pr-1 custom-scrollbar">
+                      {allGroups.map(group => (
+                        <label key={group.id} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer hover:bg-slate-100 p-1.5 rounded-md transition">
+                          <input 
+                            type="checkbox"
+                            checked={selectedGroupIds.has(group.id)}
+                            onChange={() => toggleGroup(group.id)}
+                            className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <span>{group.name}</span>
+                          <span className="text-xs text-slate-400 ml-auto uppercase">{group.type}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[10px] text-slate-400 mt-2">
+                    Zaznacz grupy, które mają się wyświetlać przy tym produkcie.
+                  </p>
+              </div>
             </div>
 
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
-                Cena (PLN)
-              </label>
-              <input
-                value={form.priceZl}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, priceZl: e.target.value }))
-                }
-                inputMode="decimal"
-                placeholder="np. 34.00"
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-              />
-            </div>
+            {/* PRAWA KOLUMNA */}
+            <div className="space-y-4">
+               <div>
+                  <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
+                    Opis
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={form.description}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, description: e.target.value }))
+                    }
+                    placeholder="Krótki opis składników..."
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                  />
+                </div>
 
-            <div className="md:col-span-2">
-              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
-                Opis
-              </label>
-              <textarea
-                rows={3}
-                value={form.description}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, description: e.target.value }))
-                }
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-              />
-            </div>
+              <div>
+                <label className="mb-2 block text-xs font-semibold uppercase text-slate-600">
+                  Zdjęcie produktu
+                </label>
 
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
-                Kategoria
-              </label>
-              <input
-                value={form.subcategory}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, subcategory: e.target.value }))
-                }
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-              />
-            </div>
+                <div className="flex flex-col gap-3">
+                  <div className="relative w-full aspect-[4/3] bg-slate-100 rounded-xl overflow-hidden border border-slate-200 flex items-center justify-center group">
+                    {form.image_url ? (
+                      <>
+                        <Image
+                          src={form.image_url}
+                          alt="Podgląd"
+                          fill
+                          className="object-cover"
+                          unoptimized
+                        />
+                        <button
+                          onClick={removeImage}
+                          className="absolute top-2 right-2 p-1.5 bg-rose-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-rose-700"
+                          title="Usuń zdjęcie"
+                        >
+                          <Trash size={16} />
+                        </button>
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center text-slate-400">
+                        <ImageIcon size={32} />
+                        <span className="text-xs mt-2">Brak zdjęcia</span>
+                      </div>
+                    )}
 
-            <div>
-              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
-                Kolejność
-              </label>
-              <input
-                type="number"
-                value={form.position}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, position: Number(e.target.value) }))
-                }
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-              />
-            </div>
+                    {uploading && (
+                      <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
+                        <Loader2
+                          className="animate-spin text-emerald-600"
+                          size={32}
+                        />
+                      </div>
+                    )}
+                  </div>
 
-            <div className="md:col-span-2">
-              <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
-                URL obrazka
-              </label>
-              <input
-                value={form.image_url}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, image_url: e.target.value }))
-                }
-                placeholder="https://…"
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-              />
+                  <div className="flex flex-col gap-1">
+                    <label
+                      className={`flex items-center justify-center gap-2 cursor-pointer w-full py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium transition shadow-sm ${
+                        uploading ? "opacity-50 pointer-events-none" : ""
+                      }`}
+                    >
+                      <Upload size={16} />
+                      <span>
+                        {uploading ? "Wgrywanie..." : "Wgraj zdjęcie"}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleImageUpload}
+                        disabled={uploading}
+                      />
+                    </label>
+                    <p className="text-[10px] text-slate-500 text-center">
+                      Max 2MB. JPG, PNG, WebP.
+                    </p>
+                  </div>
+
+                  <div className="mt-2 pt-3 border-t border-slate-100">
+                    <label className="mb-1 block text-[10px] uppercase text-slate-400">
+                      Lub wklej link ręcznie
+                    </label>
+                    <input
+                      value={form.image_url}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, image_url: e.target.value }))
+                      }
+                      placeholder="https://..."
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-600 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 border-t px-6 py-3">
+        <div className="flex justify-end gap-2 border-t px-6 py-4 shrink-0 bg-slate-50 rounded-b-2xl">
           <button
             onClick={onClose}
-            className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50"
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium hover:bg-slate-50 text-slate-700"
           >
             Anuluj
           </button>
           <button
             onClick={save}
-            disabled={saving}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+            disabled={saving || uploading}
+            className="flex items-center gap-2 rounded-xl bg-slate-900 px-6 py-2 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50 shadow-md"
           >
-            Zapisz
+            {saving && <Loader2 size={14} className="animate-spin" />}
+            {isEditing ? "Zapisz zmiany" : "Utwórz produkt"}
           </button>
         </div>
       </div>
@@ -213,12 +498,16 @@ function EditProductModal({
   );
 }
 
-/* ========= Strona ========= */
+/* ========= Główna Strona z Zakładkami ========= */
 export default function AdminMenuPage() {
   const supabase = useMemo(() => createClientComponentClient(), []);
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [slug, setSlug] = useState<string | null>(null);
 
+  // Zakładki
+  const [activeTab, setActiveTab] = useState<'menu' | 'variants' | 'checkout'>('menu');
+
+  // Stan produktów
   const [products, setProducts] = useState<Product[]>([]);
   const [filterCat, setFilterCat] = useState<string>("Wszystkie");
   const [sortKey, setSortKey] = useState<
@@ -228,16 +517,16 @@ export default function AdminMenuPage() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [editing, setEditing] = useState<Product | null>(null);
+  
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
-  const [showDrinkFlavors, setShowDrinkFlavors] = useState(false);
-  const [showCheckoutConfig, setShowCheckoutConfig] = useState(false);
-
-  // Przyjmowanie zamówień globalnie – per restauracja (restaurants.active)
+  // Stan restauracji
   const [orderingOpen, setOrderingOpen] = useState<boolean | null>(null);
   const [toggleOrderingBusy, setToggleOrderingBusy] = useState(false);
 
-  /* 1) Pobierz lokal z ensure-cookie */
+  /* 1) Pobierz lokal */
   useEffect(() => {
     let stop = false;
     (async () => {
@@ -341,48 +630,33 @@ export default function AdminMenuPage() {
     };
   }, [restaurantId, supabase, fetchAll]);
 
-  /* 3) Helper: nazwa z kategorią przed nazwą */
   const displayNameWithCategory = useCallback((p: Product): string => {
     const cat = (p.subcategory || "").trim();
     const name = (p.name || "").trim();
     if (!cat) return name;
-
     const lcName = name.toLowerCase();
     const lcCat = cat.toLowerCase();
-
-    if (
-      lcName.startsWith(lcCat + " ") ||
-      lcName.startsWith(lcCat + "-") ||
-      lcName.startsWith(lcCat + ":")
-    ) {
+    if (lcName.startsWith(lcCat + " ") || lcName.startsWith(lcCat + "-") || lcName.startsWith(lcCat + ":")) {
       return name;
     }
-
     return `${cat} ${name}`;
   }, []);
 
-  /* 4) Akcje */
   const toggleAvailability = async (id: string, current: boolean) => {
     setTogglingId(id);
-
-    // optymistycznie zmieniamy oba pola w stanie
     setProducts((prev) =>
       prev.map((p) =>
         p.id === id ? { ...p, available: !current, is_active: !current } : p
       )
     );
-
     try {
       const { error } = await supabase
         .from("products")
         .update({ available: !current, is_active: !current })
         .eq("id", id);
-
       if (error) throw error;
     } catch (e: any) {
       alert(`Nie udało się zmienić dostępności: ${e.message || e}`);
-
-      // rollback lokalnego stanu jeśli błąd
       setProducts((prev) =>
         prev.map((p) =>
           p.id === id ? { ...p, available: current, is_active: current } : p
@@ -412,7 +686,26 @@ export default function AdminMenuPage() {
     }
   };
 
-  /* 5) Filtry */
+  const handleOpenAddModal = () => {
+    setEditingProduct(null); // Tryb tworzenia
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditModal = (p: Product) => {
+    setEditingProduct(p);
+    setIsModalOpen(true);
+  };
+
+  const handleModalSaved = (savedProduct: Product) => {
+    if (editingProduct) {
+      // Edycja
+      setProducts((prev) => prev.map((p) => (p.id === savedProduct.id ? savedProduct : p)));
+    } else {
+      // Nowy produkt - dodaj do listy
+      setProducts((prev) => [...prev, savedProduct]);
+    }
+  };
+
   const categories = useMemo(
     () =>
       Array.from(
@@ -431,391 +724,330 @@ export default function AdminMenuPage() {
           (p.subcategory || "Bez kategorii") !== filterCat
         )
           return false;
-
         if (search.trim()) {
           const term = search.toLowerCase();
-          return (
-            (p.name || "").toLowerCase().includes(term) ||
-            (p.description || "").toLowerCase().includes(term)
-          );
+          const matchesName = (p.name || "").toLowerCase().includes(term);
+          const matchesDesc = (p.description || "").toLowerCase().includes(term);
+          const matchesCat = (p.subcategory || "").toLowerCase().includes(term);
+          return matchesName || matchesDesc || matchesCat;
         }
         return true;
       })
       .sort((a, b) => {
         switch (sortKey) {
-          case "nameAsc":
-            return (a.name || "").localeCompare(b.name || "");
-          case "nameDesc":
-            return (b.name || "").localeCompare(a.name || "");
-          case "priceAsc":
-            return (a.price_cents ?? 0) - (b.price_cents ?? 0);
-          case "priceDesc":
-            return (b.price_cents ?? 0) - (a.price_cents ?? 0);
-          default:
-            return 0;
+          case "nameAsc": return (a.name || "").localeCompare(b.name || "");
+          case "nameDesc": return (b.name || "").localeCompare(a.name || "");
+          case "priceAsc": return (a.price_cents ?? 0) - (b.price_cents ?? 0);
+          case "priceDesc": return (b.price_cents ?? 0) - (a.price_cents ?? 0);
+          default: return 0;
         }
       });
   }, [products, filterCat, sortKey, search]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const onSearchChange = useCallback(
     debounce((v: string) => setSearch(v), 300),
     []
   );
 
-  const handleSaved = (u: Product) =>
-    setProducts((prev) => prev.map((p) => (p.id === u.id ? u : p)));
+  /* Pomocniczy komponent do zakładek */
+  const TabButton = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: any }) => (
+    <button
+      onClick={() => setActiveTab(id)}
+      className={clsx(
+        "flex items-center gap-2 px-6 py-3 font-medium text-sm transition-all relative shrink-0",
+        activeTab === id
+          ? "text-slate-900"
+          : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+      )}
+    >
+      <Icon size={18} className={activeTab === id ? "text-emerald-600" : "text-slate-400"} />
+      {label}
+      {activeTab === id && (
+        <span className="absolute bottom-0 left-0 w-full h-0.5 bg-emerald-600 rounded-t-full" />
+      )}
+    </button>
+  );
 
-  /* 6) UI */
+  /* ---------- RENDER STRONY ---------- */
   return (
-    <div className="min-h-screen bg-slate-50 p-6 text-slate-900">
+    <div className="min-h-screen bg-slate-50 p-4 md:p-6 text-slate-900">
       {!restaurantId && (
         <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900">
           Brak przypisanego lokalu. Otwórz stronę wyboru restauracji.
         </div>
       )}
 
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {/* NAGŁÓWEK GŁÓWNY */}
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">
+          <h1 className="text-2xl md:text-3xl font-bold text-slate-900">
             Zarządzanie menu {slug ? `— ${slug}` : ""}
           </h1>
           {error && <p className="mt-1 text-sm text-rose-600">{error}</p>}
         </div>
 
-        <div className="flex flex-wrap items-end gap-3">
+        {/* Przyciski Akcji (Globalne) */}
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          {/* Guzik DODAJ PRODUKT */}
           <button
-            onClick={flipOrdering}
-            disabled={orderingOpen == null || toggleOrderingBusy || !restaurantId}
-            className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold shadow-sm ${
-              orderingOpen ? "bg-emerald-600 text-white" : "bg-white text-slate-800"
-            }`}
-            title="Włącz/wyłącz przyjmowanie zamówień"
+            onClick={handleOpenAddModal}
+            disabled={!restaurantId}
+            className="flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-md hover:bg-emerald-700 hover:shadow-lg transition-all active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
           >
-            <Power className="h-4 w-4" />
-            {orderingOpen ? "Zamawianie: WŁĄCZONE" : "Zamawianie: WYŁĄCZONE"}
+            <Plus size={20} strokeWidth={2.5} />
+            Dodaj produkt
           </button>
 
-          <div className="flex-1 min-w-[160px]">
-            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
-              Kategoria
-            </label>
-            <select
-              className="w-full rounded-xl border border-slate-200 bg-white text-slate-900 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-              value={filterCat}
-              onChange={(e) => setFilterCat(e.target.value)}
+          {/* Toggle Zamawiania */}
+          <button
+              onClick={flipOrdering}
+              disabled={orderingOpen == null || toggleOrderingBusy || !restaurantId}
+              className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold shadow-sm transition-all ${
+                orderingOpen 
+                  ? "bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50" 
+                  : "bg-white text-slate-500 border-slate-300 hover:bg-slate-50"
+              }`}
+              title="Włącz/wyłącz przyjmowanie zamówień w całym lokalu"
             >
-              <option value="Wszystkie">Wszystkie</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex-1 min-w-[160px]">
-            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
-              Sortuj
-            </label>
-            <div className="relative">
-              <select
-                className="w-full appearance-none rounded-xl border border-slate-200 bg-white text-slate-900 px-3 py-2 pr-8 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-                value={sortKey}
-                onChange={(e) => setSortKey(e.target.value as any)}
-              >
-                <option value="nameAsc">Nazwa ↑</option>
-                <option value="nameDesc">Nazwa ↓</option>
-                <option value="priceAsc">Cena ↑</option>
-                <option value="priceDesc">Cena ↓</option>
-              </select>
-              <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-600">
-                <ChevronDown size={16} />
-              </div>
-            </div>
-          </div>
-
-          <div className="min-w-[220px] flex-1">
-            <label className="mb-1 block text-xs font-semibold uppercase text-slate-600">
-              Szukaj
-            </label>
-            <input
-              type="text"
-              placeholder="Nazwa lub opis"
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-white text-slate-900 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-300"
-            />
-          </div>
-
-          <button
-            onClick={() => fetchAll()}
-            disabled={loading || !restaurantId}
-            className="inline-flex items-center gap-1 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:opacity-50"
-          >
-            Odśwież
+              <Power className={`h-4 w-4 ${orderingOpen ? "text-emerald-600" : "text-slate-400"}`} />
+              {orderingOpen ? "Zamawianie: WŁĄCZONE" : "Zamawianie: WYŁĄCZONE"}
           </button>
         </div>
       </div>
 
-      {/* Smaki napojów (przeniesione z Ustawień) */}
-<div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-    <div>
-      <div className="text-lg font-semibold text-slate-900">Smaki / warianty napojów</div>
-      <div className="mt-0.5 text-xs text-slate-600">
-        To steruje listą wyboru w koszyku (Checkout) dla tego lokalu.
-      </div>
+      {/* ZAKŁADKI */}
+      <div className="mb-6 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="flex border-b border-slate-100 overflow-x-auto hide-scrollbar">
+          <TabButton id="menu" label="Produkty (Menu)" icon={Utensils} />
+          <TabButton id="variants" label="Warianty / Dodatki" icon={List} />
+          <TabButton id="checkout" label="Ustawienia Koszyka" icon={Settings} />
+        </div>
+
+        <div className="p-4 md:p-6 bg-slate-50/30 min-h-[400px]">
+          
+          {/* ZAKŁADKA 1: MENU (TABELA) */}
+          {activeTab === 'menu' && (
+             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+                {/* Pasek filtrów */}
+<div className="flex flex-col md:flex-row items-end gap-3 mb-6 bg-white p-4 rounded-xl border border-slate-200 shadow-sm w-full">
+  {/* Kategoria + Sortuj (mniejsze) */}
+  <div className="grid grid-cols-2 gap-3 w-full md:flex md:w-auto md:flex-none">
+    <div className="min-w-0 md:w-52">
+      <label className="mb-1 block text-xs font-bold uppercase text-slate-500">
+        Kategoria
+      </label>
+      <select
+        className="w-full rounded-lg border border-slate-300 bg-white text-slate-900 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition text-sm"
+        value={filterCat}
+        onChange={(e) => setFilterCat(e.target.value)}
+      >
+        <option value="Wszystkie">Wszystkie</option>
+        {categories.map((c) => (
+          <option key={c} value={c}>{c}</option>
+        ))}
+      </select>
     </div>
 
-    <button
-      type="button"
-      onClick={() => setShowDrinkFlavors((v) => !v)}
-      className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-    >
-      {showDrinkFlavors ? "Zwiń" : "Edytuj"}
-    </button>
+    <div className="min-w-0 md:w-52">
+      <label className="mb-1 block text-xs font-bold uppercase text-slate-500">
+        Sortuj
+      </label>
+      <div className="relative">
+        <select
+          className="w-full appearance-none rounded-lg border border-slate-300 bg-white text-slate-900 px-3 py-2 pr-8 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition text-sm"
+          value={sortKey}
+          onChange={(e) => setSortKey(e.target.value as any)}
+        >
+          <option value="nameAsc">Nazwa A-Z</option>
+          <option value="nameDesc">Nazwa Z-A</option>
+          <option value="priceAsc">Cena rosnąco</option>
+          <option value="priceDesc">Cena malejąco</option>
+        </select>
+        <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500">
+          <ChevronDown size={14} />
+        </div>
+      </div>
+    </div>
   </div>
-  {/* Konfiguracja checkout (sosy / reguły) */}
-<div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-    <div>
-      <div className="text-lg font-semibold text-slate-900">
-        Konfiguracja checkout (sosy / reguły)
-      </div>
-      <div className="mt-0.5 text-xs text-slate-600">
-        Restauracja może zmieniać logikę gratisowych sosów bez deploya.
-      </div>
-    </div>
 
-    <button
-      type="button"
-      onClick={() => setShowCheckoutConfig((v) => !v)}
-      className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-    >
-      {showCheckoutConfig ? "Zwiń" : "Edytuj"}
-    </button>
+  {/* Szukaj (zdecydowanie większe) */}
+  <div className="w-full md:flex-1 md:min-w-[420px]">
+    <label className="mb-1 block text-xs font-bold uppercase text-slate-500">
+      Szukaj
+    </label>
+    <input
+      type="text"
+      placeholder="Nazwa, opis..."
+      onChange={(e) => onSearchChange(e.target.value)}
+      className="w-full rounded-lg border border-slate-300 bg-white text-slate-900 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition text-sm"
+    />
   </div>
 
-  {showCheckoutConfig && (
-    <div className="mt-4">
-      <CheckoutConfigForm restaurantId={restaurantId} />
-    </div>
-  )}
+  <button
+    onClick={() => fetchAll()}
+    disabled={loading || !restaurantId}
+    className="h-[38px] px-4 rounded-lg bg-slate-100 text-slate-700 font-medium hover:bg-slate-200 transition disabled:opacity-50 w-full md:w-auto md:flex-none"
+  >
+    Odśwież
+  </button>
 </div>
 
-  {showDrinkFlavors && (
-    <div className="mt-4">
-      {/* slug masz już z ensure-cookie: setSlug(j.restaurant_slug) */}
-      <AddonOptionsForm restaurantSlug={slug} />
-    </div>
-  )}
-</div>
+                {/* Tabela Desktop */}
+                <div className="hidden md:block overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <table className="min-w-full divide-y divide-slate-100">
+                    <thead className="bg-slate-50/50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">#</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Nazwa</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Cena</th>
+                        <th className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">Kategoria</th>
+                        <th className="px-6 py-3 text-center text-xs font-bold uppercase tracking-wide text-slate-500">Dostępność</th>
+                        <th className="px-6 py-3 text-right text-xs font-bold uppercase tracking-wide text-slate-500">Akcje</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {loading ? (
+                        Array.from({ length: 5 }).map((_, i) => (
+                          <tr key={i} className="animate-pulse">
+                            <td colSpan={6} className="px-6 py-4"><div className="h-4 bg-slate-100 rounded w-full"></div></td>
+                          </tr>
+                        ))
+                      ) : filtered.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-12 text-center text-slate-500">Brak produktów do wyświetlenia.</td>
+                        </tr>
+                      ) : (
+                        filtered.map((it, i) => (
+                          <tr key={it.id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="px-6 py-4 text-sm text-slate-500">{i + 1}</td>
+                            <td className="px-6 py-4 text-sm font-semibold text-slate-900">{displayNameWithCategory(it)}</td>
+                            <td className="px-6 py-4 text-sm text-slate-700">{fmtPrice(it.price_cents)}</td>
+                            <td className="px-6 py-4 text-sm text-slate-500">
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800">
+                                  {it.subcategory}
+                                </span>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <button
+                                onClick={() => toggleAvailability(it.id, it.available)}
+                                disabled={togglingId === it.id}
+                                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition ${
+                                  it.available ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                                }`}
+                              >
+                                {it.available ? "Dostępny" : "Ukryty"}
+                                <ToggleRight size={16} />
+                              </button>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex justify-end gap-2">
+                                <button onClick={() => handleOpenEditModal(it)} className="p-1.5 hover:bg-sky-50 text-sky-600 rounded transition" title="Edytuj">
+                                  <Pencil size={18} />
+                                </button>
+                                <button onClick={() => {
+                                  if (!confirm("Na pewno usunąć ten produkt?")) return;
+                                  supabase.from("products").delete().eq("id", it.id).then(({ error }) => {
+                                    if (error) return alert("Błąd usuwania");
+                                    setProducts((p) => p.filter((x) => x.id !== it.id));
+                                  });
+                                }} className="p-1.5 hover:bg-rose-50 text-rose-600 rounded transition" title="Usuń">
+                                  <Trash size={18} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                
+                {/* Mobile Cards */}
+                <div className="md:hidden space-y-4">
+                    {filtered.map(it => (
+                        <div key={it.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-3 active:scale-[0.99] transition-transform">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <h4 className="font-bold text-slate-900">{displayNameWithCategory(it)}</h4>
+                                    <span className="text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-600 mt-1 inline-block">{it.subcategory}</span>
+                                </div>
+                                <div className="text-right">
+                                    <div className="font-bold text-slate-800">{fmtPrice(it.price_cents)}</div>
+                                </div>
+                            </div>
+                            <div className="flex justify-between items-center pt-2 border-t border-slate-100 mt-1">
+                                 <button
+                                    onClick={() => toggleAvailability(it.id, it.available)}
+                                    className={`text-xs font-bold px-3 py-1.5 rounded-full flex items-center gap-1 ${it.available ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}
+                                 >
+                                    <ToggleRight size={14} />
+                                    {it.available ? "Dostępny" : "Ukryty"}
+                                 </button>
+                                 <div className="flex gap-1">
+                                     <button onClick={() => handleOpenEditModal(it)} className="bg-sky-50 text-sky-700 p-2 rounded-lg"><Pencil size={18}/></button>
+                                     <button onClick={() => {
+                                         if (!confirm("Usunąć?")) return;
+                                         supabase.from("products").delete().eq("id", it.id).then(({error}) => {
+                                            if(!error) setProducts(p => p.filter(x => x.id !== it.id));
+                                         })
+                                     }} className="bg-rose-50 text-rose-700 p-2 rounded-lg"><Trash size={18}/></button>
+                                 </div>
+                            </div>
+                        </div>
+                    ))}
+                    {filtered.length === 0 && !loading && (
+                      <div className="text-center py-10 text-slate-500 bg-white rounded-xl border border-dashed border-slate-300">
+                        Brak produktów. <br/> Dodaj pierwszy produkt klikając guzik na górze.
+                      </div>
+                    )}
+                </div>
+             </div>
+          )}
 
-      {/* Tabela desktop */}
-      <div className="hidden md:block">
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  #
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Nazwa
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Cena
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Kategoria
-                </th>
-                <th className="px-6 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Dostępność
-                </th>
-                <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  Akcje
-                </th>
-              </tr>
-            </thead>
+          {/* ZAKŁADKA 2: WARIANTY */}
+          {activeTab === 'variants' && (
+             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-7xl mx-auto">
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                   <div className="mb-6">
+                      <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <Layers className="text-sky-600" />
+                        Zarządzanie grupami opcji
+                      </h2>
+                      <p className="text-sm text-slate-500 mt-1">
+  Tutaj dodasz smaki napojów, rodzaje mięsa, czy płatne dodatki (np. &quot;Podwójny ser&quot;).
+  Stworzone grupy przypiszesz potem do produktów w zakładce &quot;Produkty&quot; (klikając Edytuj).
+</p>
+                   </div>
+                   <AddonOptionsForm restaurantSlug={slug} />
+                </div>
+             </div>
+          )}
 
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={i} className="animate-pulse">
-                    <td className="px-6 py-4">
-                      <div className="h-4 w-4 rounded bg-slate-200" />
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="h-4 w-40 rounded bg-slate-200" />
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="h-4 w-16 rounded bg-slate-200" />
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="h-4 w-32 rounded bg-slate-200" />
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="inline-block h-6 w-16 rounded-full bg-slate-200" />
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="inline-block h-4 w-28 rounded bg-slate-200" />
-                    </td>
-                  </tr>
-                ))
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
-                    Brak produktów do wyświetlenia.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((it, i) => (
-                  <tr key={it.id} className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}>
-                    <td className="px-6 py-4 text-sm font-medium text-slate-900">
-                      {i + 1}
-                    </td>
-                    <td className="px-6 py-4 text-sm font-medium text-slate-900">
-                      {displayNameWithCategory(it)}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-slate-700">
-                      {fmtPrice(it.price_cents)}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-slate-700">{it.subcategory}</td>
-                    <td className="px-6 py-4 text-center">
-                      <button
-                        onClick={() => toggleAvailability(it.id, it.available)}
-                        disabled={togglingId === it.id}
-                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold transition ${
-                          it.available
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-rose-100 text-rose-800"
-                        } ${
-                          togglingId === it.id
-                            ? "cursor-not-allowed opacity-70"
-                            : "hover:scale-105"
-                        }`}
-                      >
-                        {it.available ? "Dostępny" : "Wyłączony"}{" "}
-                        <ToggleRight className="h-4 w-4" />
-                      </button>
-                    </td>
-                    <td className="flex justify-end gap-2 px-6 py-4 text-right">
-                      <button
-                        onClick={() => setEditing(it)}
-                        className="inline-flex items-center gap-1 text-sky-700 hover:text-sky-900"
-                      >
-                        <Pencil size={16} /> Edytuj
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (!confirm("Na pewno usunąć ten produkt?")) return;
-                          supabase
-                            .from("products")
-                            .delete()
-                            .eq("id", it.id)
-                            .then(({ error }) => {
-                              if (error) return alert("Nie udało się usunąć produktu");
-                              setProducts((p) => p.filter((x) => x.id !== it.id));
-                            });
-                        }}
-                        className="inline-flex items-center gap-1 text-rose-600 hover:text-rose-800"
-                      >
-                        <Trash size={16} /> Usuń
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+          {/* ZAKŁADKA 3: USTAWIENIA KOSZYKA */}
+          {activeTab === 'checkout' && (
+             <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 max-w-7xl mx-auto">
+                 <div className="mb-6">
+                      <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <Settings className="text-slate-600" />
+                        Konfiguracja sklepu
+                      </h2>
+                      <p className="text-sm text-slate-500 mt-1">
+                        Globalne ustawienia czasu realizacji, kosztów opakowania i walidacji adresu.
+                      </p>
+                   </div>
+                 <CheckoutConfigForm restaurantId={restaurantId} />
+             </div>
+          )}
+
         </div>
       </div>
 
-      {/* Karty mobilne */}
-      <div className="mt-6 space-y-4 md:hidden">
-        {loading ? (
-          Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm">
-              <div className="h-4 w-3/4 rounded bg-slate-200" />
-              <div className="flex justify-between">
-                <div className="h-4 w-1/4 rounded bg-slate-200" />
-                <div className="h-4 w-16 rounded bg-slate-200" />
-              </div>
-              <div className="h-3 w-full rounded bg-slate-200" />
-              <div className="flex gap-2">
-                <div className="h-8 w-20 rounded bg-slate-200" />
-                <div className="h-8 w-20 rounded bg-slate-200" />
-              </div>
-            </div>
-          ))
-        ) : filtered.length === 0 ? (
-          <div className="rounded-2xl bg-white p-8 text-center text-slate-500 shadow-sm">
-            Brak produktów do wyświetlenia.
-          </div>
-        ) : (
-          filtered.map((it) => (
-            <div key={it.id} className="relative flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm">
-              <div className="flex items-start justify-between">
-                <div className="text-lg font-semibold text-slate-900">
-                  {displayNameWithCategory(it)}
-                </div>
-                <div className="text-sm font-medium text-slate-700">
-                  {fmtPrice(it.price_cents)}
-                </div>
-              </div>
-
-              <div className="text-xs text-slate-600">{it.subcategory}</div>
-
-              {it.description && (
-                <div className="text-sm text-slate-800">{it.description}</div>
-              )}
-
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <button
-                  onClick={() => toggleAvailability(it.id, it.available)}
-                  disabled={togglingId === it.id}
-                  className={`flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${
-                    it.available
-                      ? "bg-emerald-100 text-emerald-800"
-                      : "bg-rose-100 text-rose-800"
-                  } ${togglingId === it.id ? "cursor-not-allowed opacity-70" : ""}`}
-                >
-                  {it.available ? "Dostępny" : "Wyłączony"}{" "}
-                  <ToggleRight className="h-4 w-4" />
-                </button>
-
-                <div className="flex gap-3">
-                  <button onClick={() => setEditing(it)} className="text-sky-700">
-                    <Pencil size={16} />
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (!confirm("Na pewno usunąć ten produkt?")) return;
-                      supabase
-                        .from("products")
-                        .delete()
-                        .eq("id", it.id)
-                        .then(({ error }) => {
-                          if (error) return alert("Nie udało się usunąć produktu");
-                          setProducts((p) => p.filter((x) => x.id !== it.id));
-                        });
-                    }}
-                    className="text-rose-600"
-                  >
-                    <Trash size={16} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {editing && (
-        <EditProductModal
-          product={editing}
-          onClose={() => setEditing(null)}
-          onSaved={handleSaved}
+      {isModalOpen && restaurantId && (
+        <ProductModal
+          product={editingProduct} // null = tworzenie, obiekt = edycja
+          restaurantId={restaurantId}
+          onClose={() => setIsModalOpen(false)}
+          onSaved={handleModalSaved}
         />
       )}
     </div>

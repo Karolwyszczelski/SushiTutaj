@@ -53,20 +53,443 @@ async function pushAdminNotification(
 
 
 
-function recomputeTotalFromItems(itemsPayload: any[]): number {
-  return itemsPayload.reduce((acc, it) => {
-    const qty = it.quantity || 1;
-    const base =
-      typeof it.unit_price === "string"
-        ? parseFloat(it.unit_price)
-        : it.unit_price || 0;
-    const addonsCost = (it.options?.addons ?? []).reduce(
-      (sum: number, addon: string) => sum + computeAddonPriceBackend(addon),
-      0
+const SOY_SAUCE_CANON = "Sos sojowy";
+
+function extractInlineQty(label: string): { base: string; qty: number } {
+  const raw = (label ?? "").toString().trim();
+  if (!raw) return { base: "", qty: 0 };
+
+  // suffix: "coś ×2" / "coś x 2"
+  const mSuffix = raw.match(/^(.*?)(?:\s*[×x]\s*)(\d+)\s*$/i);
+  if (mSuffix) {
+    const base = (mSuffix[1] ?? "").trim();
+    const qty = Math.max(1, parseInt(mSuffix[2] ?? "1", 10));
+    return { base, qty };
+  }
+
+  // prefix: "2× coś" / "2 x coś"
+  const mPrefix = raw.match(/^(\d+)(?:\s*[×x]\s*)(.*)$/i);
+  if (mPrefix) {
+    const qty = Math.max(1, parseInt(mPrefix[1] ?? "1", 10));
+    const base = (mPrefix[2] ?? "").trim();
+    return { base, qty };
+  }
+
+  return { base: raw, qty: 1 };
+}
+
+function addonDisplayNameForRules(label: string): string {
+  const s = (label ?? "").toString();
+
+  // DBMOD|group|id|price|NAME
+  if (s.startsWith("DBMOD|")) {
+    const parts = s.split("|");
+    if (parts.length >= 5) return parts.slice(4).join("|").trim();
+  }
+  // DBVAR|... (na przyszłość)
+  if (s.startsWith("DBVAR|")) {
+    const parts = s.split("|");
+    if (parts.length >= 5) return parts.slice(4).join("|").trim();
+  }
+
+  // usuń dopiski cenowe na końcu
+  return s
+    .replace(/\s*\(\s*\+\s*\d+[.,]?\d*\s*zł\s*\)\s*$/i, "")
+    .replace(/\s*\+\s*\d+[.,]?\d*\s*zł\s*$/i, "")
+    .trim();
+}
+
+function normalizePlainServer(input: string): string {
+  return (input || "")
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ł/g, "l")
+    .replace(/Ł/g, "l")
+    .toLowerCase();
+}
+
+/* ================= SAUCE PRICING (SERVER, matches checkoutModal/shared.ts) ================= */
+
+const BASE_SAUCES_SERVER = [
+  "Sos sojowy",
+  "Teryiaki",
+  "Spicy Mayo",
+  "Mango",
+  "Sriracha",
+  "Żurawina",
+] as const;
+
+const BATATA_SAUCES_SERVER = ["Sos czekoladowy", "Sos toffi"] as const;
+
+const ALL_SAUCES_SERVER = [...BASE_SAUCES_SERVER, ...BATATA_SAUCES_SERVER] as const;
+
+// deterministyczna kolejność do reguły COUNT
+const SAUCE_PRIORITY_SERVER: string[] = [
+  "Sos sojowy",
+  "Teryiaki",
+  "Spicy Mayo",
+  "Mango",
+  "Sriracha",
+  "Żurawina",
+  "Sos czekoladowy",
+  "Sos toffi",
+];
+
+type SauceRuleServer =
+  | { kind: "none"; eligible: string[] }
+  | { kind: "count"; eligible: string[]; freeCount: number }
+  | { kind: "perSauce"; eligible: string[]; freeBySauce: Record<string, number> };
+
+const sauceKeyServer = (s: string) =>
+  normalizePlainServer(s).replace(/[^a-z0-9]/g, ""); // np. "Spicy Mayo" -> "spicymayo"
+
+const SAUCE_CANON_BY_KEY = (() => {
+  const m = new Map<string, string>();
+  for (const s of ALL_SAUCES_SERVER) m.set(sauceKeyServer(s), String(s));
+
+  // aliasy na wypadek innej pisowni w danych:
+  m.set(sauceKeyServer("Teriyaki"), "Teryiaki");
+  m.set(sauceKeyServer("Teriyaki sauce"), "Teryiaki");
+  return m;
+})();
+
+function canonicalSauceNameServer(label: string): string | null {
+  const k = sauceKeyServer(label || "");
+  return SAUCE_CANON_BY_KEY.get(k) || null;
+}
+
+function getSaucesForProductNameServer(itemName: string, restaurantSlug: string): string[] {
+  const city = (restaurantSlug || "").toLowerCase();
+  const full = normalizePlainServer(itemName || "");
+
+  const isSweetPotato =
+    (city === "szczytno" || city === "przasnysz") &&
+    (full.includes("frytki z batat") || full.includes("frytki batat"));
+
+  return isSweetPotato
+    ? ["Spicy Mayo", "Teryiaki", "Sos czekoladowy", "Sos toffi"]
+    : Array.from(BASE_SAUCES_SERVER);
+}
+
+function getSauceRuleForItemServer(params: {
+  itemName: string;
+  subcat?: string;
+  restaurantSlug: string;
+}): SauceRuleServer {
+  const itemName = params.itemName || "";
+  const namePlain = normalizePlainServer(itemName);
+  const subPlain = normalizePlainServer(params.subcat || "");
+  const saucesForProduct = getSaucesForProductNameServer(
+    itemName,
+    params.restaurantSlug
+  );
+
+  // Tempura mix / krewetki w tempurze: 1× Teryiaki + 1× Spicy Mayo gratis
+  const isTempuraMix = namePlain.includes("tempura mix");
+  const isShrimpTempura =
+    namePlain.includes("krewetki w tempurze") ||
+    namePlain.includes("krewetka w tempurze");
+
+  if (isTempuraMix || isShrimpTempura) {
+    return {
+      kind: "perSauce",
+      eligible: saucesForProduct,
+      freeBySauce: { Teryiaki: 1, "Spicy Mayo": 1 },
+    };
+  }
+
+  // Frytki z batatów (tylko Przasnysz / Szczytno): 1 sos gratis (COUNT)
+  const isSweetPotato =
+    saucesForProduct.length === 4 &&
+    (namePlain.includes("frytki z batat") || namePlain.includes("frytki batat"));
+
+  if (isSweetPotato) {
+    return {
+      kind: "count",
+      eligible: saucesForProduct,
+      freeCount: 1,
+    };
+  }
+
+  // Set-like: perSauce, darmowe sojowe wg reguł (1/2/3/4)
+  const isSetLike =
+    subPlain === "zestawy" ||
+    subPlain.includes("specja") ||
+    namePlain.includes("zestaw") ||
+    namePlain.includes(" set ") ||
+    namePlain.includes("lunch") ||
+    /\bset\b/i.test(namePlain);
+
+  if (isSetLike) {
+    // używamy Twojej istniejącej funkcji (jest niżej w pliku; hoisting działa)
+    const freeSoy = Math.max(
+      0,
+      (getFreeSoyCountForItem(itemName, params.subcat) || 1)
     );
+
+    return {
+      kind: "perSauce",
+      eligible: saucesForProduct,
+      freeBySauce: { [SOY_SAUCE_CANON]: freeSoy },
+    };
+  }
+
+  // Reszta: brak darmowych
+  return { kind: "none", eligible: saucesForProduct };
+}
+
+// cena jednostkowa sosu (obecnie 2 zł, ale bierzemy z computeAddonPriceBackend dla spójności)
+function sauceUnitPriceServer(canonSauceName: string): number {
+  const p = Number(computeAddonPriceBackend(canonSauceName));
+  return Number.isFinite(p) && p > 0 ? p : 2;
+}
+
+// Liczy koszt sosów wg reguł (odpowiednik logiki z checkoutModal/shared.ts)
+function computeSauceCostServer(
+  sauceCounts: Map<string, number>,
+  rule: SauceRuleServer
+): number {
+  if (!sauceCounts || sauceCounts.size === 0) return 0;
+
+  const eligible = Array.isArray(rule?.eligible) ? rule.eligible : [];
+  const eligibleSet = new Set(eligible);
+
+  // rozdzielamy na eligible i non-eligible (non-eligible zawsze płatne)
+  let nonEligibleCost = 0;
+  const countsEligible = new Map<string, number>();
+
+  for (const [s, qRaw] of sauceCounts.entries()) {
+    const q = Math.max(0, Math.floor(Number(qRaw || 0)));
+    if (!q) continue;
+
+    if (!eligibleSet.has(s)) {
+      nonEligibleCost += q * sauceUnitPriceServer(s);
+    } else {
+      countsEligible.set(s, q);
+    }
+  }
+
+  let eligibleCost = 0;
+
+  if (rule.kind === "none") {
+    for (const [s, q] of countsEligible.entries()) {
+      eligibleCost += q * sauceUnitPriceServer(s);
+    }
+    return eligibleCost + nonEligibleCost;
+  }
+
+  if (rule.kind === "perSauce") {
+    const fb = rule.freeBySauce || {};
+    for (const [s, q] of countsEligible.entries()) {
+      const free = Math.max(0, Math.floor(Number(fb[s] ?? 0)));
+      const freeUsed = Math.min(q, free);
+      const charged = Math.max(0, q - freeUsed);
+      eligibleCost += charged * sauceUnitPriceServer(s);
+    }
+    return eligibleCost + nonEligibleCost;
+  }
+
+  // kind === "count"
+  let freeRemaining = Math.max(0, Math.floor(Number(rule.freeCount || 0)));
+
+  const ordered = [
+    ...SAUCE_PRIORITY_SERVER.filter((s) => countsEligible.has(s)),
+    ...Array.from(countsEligible.keys()).filter(
+      (s) => !SAUCE_PRIORITY_SERVER.includes(s)
+    ),
+  ];
+
+  for (const s of ordered) {
+    const q = countsEligible.get(s) ?? 0;
+    const freeUsed = Math.min(q, freeRemaining);
+    freeRemaining -= freeUsed;
+    const charged = Math.max(0, q - freeUsed);
+    eligibleCost += charged * sauceUnitPriceServer(s);
+  }
+
+  return eligibleCost + nonEligibleCost;
+}
+
+
+function parseSetNumberServer(namePlain: string): number | null {
+  const m = namePlain.match(/\bzestaw[\s\-]*([0-9]{1,3})\b/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function getFreeSoyCountForItem(itemName: string, subcat?: string): number {
+  const namePlain = normalizePlainServer(itemName);
+  const subPlain = normalizePlainServer(subcat || "");
+
+  // 100 szt / 100szt => 4
+  if (/\b100\s*szt\b/i.test(namePlain) || /\b100szt\b/i.test(namePlain)) return 4;
+
+  // Zestawy numerowane
+  const setNo = parseSetNumberServer(namePlain);
+  if (setNo != null) {
+    if (setNo >= 1 && setNo <= 7) return 1;
+    if (setNo >= 8 && setNo <= 12) return 2;
+    if (setNo === 13) return 3;
+  }
+
+  // Tutaj Specjal
+  if (namePlain.includes("tutaj specjal") || namePlain.includes("turtaj specjal")) return 2;
+
+  // Zestaw miesiąca
+  if (namePlain.includes("zestaw miesiaca")) return 1;
+
+  // Nigiri set
+  if (namePlain.includes("nigiri set") || namePlain.includes("set nigiri")) return 1;
+
+  // Lunch 1/2/3
+  if (/\blunch[\s\-]*[123]\b/i.test(namePlain)) return 1;
+
+  // Vege set 1/2
+  if (/\bvege[\s\-]*set[\s\-]*[12]\b/i.test(namePlain)) return 1;
+
+  // Ogólny fallback: “set-like” (żeby nie wrócić do 0 dla nienumerowanych)
+  const isSetLike =
+    subPlain === "zestawy" ||
+    subPlain.includes("specja") ||
+    namePlain.includes("zestaw") ||
+    namePlain.includes(" set ") ||
+    namePlain.includes("lunch") ||
+    /\bset\b/i.test(namePlain);
+
+  return isSetLike ? 1 : 0;
+}
+
+
+
+function isSauceName(name: string): boolean {
+  const n = normalizePlainServer(String(name || ""));
+
+  // "sos ..." oraz popularne sosy bez słowa "sos" (np. Spicy Mayo)
+  return (
+    n.includes("sos") ||
+    n.includes("soj") ||
+    n.includes("teryiaki") ||
+    n.includes("mayo") ||
+    n.includes("sriracha") ||
+    n.includes("mango") ||
+    n.includes("zurawin") ||
+    n.includes("toffi") ||
+    n.includes("czekolad")
+  );
+}
+
+
+function computeAddonsCostBackend(
+  addonsAny: any,
+  itemName: string,
+  subcat?: string,
+  restaurantSlug?: string
+): number {
+  // 1) znormalizuj wejście (array/string/object-map) do listy etykiet
+  let labels: string[] = [];
+
+  if (Array.isArray(addonsAny)) {
+    labels = addonsAny.filter(Boolean).map((x) => String(x));
+  } else if (typeof addonsAny === "string") {
+    labels = addonsAny.trim() ? [addonsAny] : [];
+  } else if (addonsAny && typeof addonsAny === "object") {
+    for (const [k, v] of Object.entries(addonsAny)) {
+      if (!k) continue;
+      if (typeof v === "number" && Number.isFinite(v)) {
+        labels.push(`${k} ×${Math.max(1, Math.floor(v))}`);
+      } else if (typeof v === "string") {
+        const m = v.match(/\d+/);
+        const q = m ? Math.max(1, parseInt(m[0], 10)) : 1;
+        labels.push(`${k} ×${q}`);
+      } else if (v === true) {
+        labels.push(k);
+      }
+    }
+  }
+
+  // 2) rozwiń ilości typu ×2 do powtórzeń
+  const expanded: string[] = [];
+  for (const label of labels) {
+    const { base, qty } = extractInlineQty(label);
+    if (!base || qty <= 0) continue;
+    for (let i = 0; i < qty; i++) expanded.push(base);
+  }
+
+  // 3) rozdziel: sosy (z regułami gratis) vs reszta
+  const sauceCounts = new Map<string, number>();
+  let otherCost = 0;
+
+  for (const rawLabel of expanded) {
+    const displayName = addonDisplayNameForRules(rawLabel);
+
+    // UWAGA: ta funkcja pochodzi z kroku 1 (SERVER SAUCE PRICING)
+    const sauceCanon = canonicalSauceNameServer(displayName);
+
+    if (sauceCanon) {
+      sauceCounts.set(sauceCanon, (sauceCounts.get(sauceCanon) ?? 0) + 1);
+      continue;
+    }
+
+    const isDbEncoded =
+      rawLabel.startsWith("DBMOD|") || rawLabel.startsWith("DBVAR|");
+
+    otherCost += computeAddonPriceBackend(isDbEncoded ? rawLabel : displayName);
+  }
+
+  // UWAGA: ta funkcja pochodzi z kroku 1 (SERVER SAUCE PRICING)
+  const rule = getSauceRuleForItemServer({
+    itemName,
+    subcat,
+    restaurantSlug: restaurantSlug || "",
+  });
+
+  // UWAGA: ta funkcja pochodzi z kroku 1 (SERVER SAUCE PRICING)
+  const sauceCost = computeSauceCostServer(sauceCounts, rule);
+
+  return otherCost + sauceCost;
+}
+
+
+function recomputeTotalFromItems(
+  itemsPayload: any[],
+  productsMap: Map<string, ProductRow>,
+  restaurantSlug: string
+): number {
+  return (itemsPayload || []).reduce((acc, it) => {
+    const qty = it?.quantity || 1;
+
+    const base =
+      typeof it?.unit_price === "string"
+        ? parseFloat(it.unit_price)
+        : it?.unit_price || 0;
+
+    const itemName = String(it?.name ?? it?.product?.name ?? "");
+    const pid = String(it?.product_id ?? it?.productId ?? it?.id ?? "");
+    const db = pid ? productsMap.get(pid) : undefined;
+
+    const subcat = String(
+      db?.subcategory ?? db?.category ?? it?.product?.subcategory ?? it?.product?.category ?? ""
+    );
+
+    const a1 = it?.addons;
+    const a2 = it?.options?.addons;
+
+    // jeśli oba są tablicami, sklej; inaczej weź to co istnieje
+    const addonsAny =
+      Array.isArray(a1) || Array.isArray(a2)
+        ? [...(Array.isArray(a1) ? a1 : []), ...(Array.isArray(a2) ? a2 : [])]
+        : (a2 ?? a1);
+
+    // <-- TUTAJ przekazujemy restaurantSlug
+    const addonsCost = computeAddonsCostBackend(addonsAny, itemName, subcat, restaurantSlug);
+
     return acc + (base + addonsCost) * qty;
   }, 0);
 }
+
+
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -180,6 +603,67 @@ async function trySpendLoyalty(userId: string, count: number): Promise<{ ok: boo
   const after = Number((row as any)?.after ?? before);
   return { ok: true, before, after };
 }
+
+async function tryClaimRollReward(userId: string): Promise<{
+  ok: boolean;
+  before: number;
+  after: number; // bez zmiany, bo nie “spalamy” naklejek
+  alreadyClaimed: boolean;
+}> {
+  // Atomowo: jeden UPDATE, który przejdzie tylko raz (roll_reward_claimed=false)
+  // i tylko jeśli user ma >= 4 naklejki.
+  const { data: upd, error: updErr } = await supabaseAdmin
+    .from("loyalty_accounts")
+    .update({ roll_reward_claimed: true })
+    .eq("user_id", userId)
+    .eq("roll_reward_claimed", false)
+    .gte("stickers", LOYALTY_REWARD_ROLL_COUNT)
+    .select("stickers, roll_reward_claimed")
+    .maybeSingle();
+
+  // kompatybilność: jeśli kolumna nie istnieje (migracja nie wdrożona),
+  // traktujemy jak brak możliwości claimu -> "keep"
+  if (updErr && /roll_reward_claimed/i.test(String(updErr.message || ""))) {
+    const { data: legacy } = await supabaseAdmin
+      .from("loyalty_accounts")
+      .select("stickers")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const before = Math.max(0, Number((legacy as any)?.stickers ?? 0));
+    return { ok: false, before, after: before, alreadyClaimed: false };
+  }
+
+  // Jeśli update zwrócił rekord -> claim poszedł (TYLKO w jednym requestcie)
+  if (upd) {
+    const before = Math.max(0, Number((upd as any)?.stickers ?? 0));
+    return { ok: true, before, after: before, alreadyClaimed: false };
+  }
+
+  // Jeśli nie zaktualizowało nic (0 wierszy), to albo:
+  // - już było claimed, albo
+  // - za mało naklejek, albo
+  // - brak konta
+  const { data, error } = await supabaseAdmin
+    .from("loyalty_accounts")
+    .select("stickers, roll_reward_claimed")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return { ok: false, before: 0, after: 0, alreadyClaimed: false };
+  }
+
+  const before = Math.max(0, Number((data as any)?.stickers ?? 0));
+  const alreadyClaimed = !!(data as any)?.roll_reward_claimed;
+
+  if (before < LOYALTY_REWARD_ROLL_COUNT) {
+    return { ok: false, before, after: before, alreadyClaimed };
+  }
+
+  return { ok: false, before, after: before, alreadyClaimed: true };
+}
+
 
 function roundUpToStep(value: number, step = 0.5): number {
   if (!Number.isFinite(value) || !Number.isFinite(step) || step <= 0) return 0;
@@ -302,6 +786,8 @@ type ProductRow = {
   label?: string | null;
   description?: string | null;
   description_pl?: string | null;
+  subcategory?: string | null;
+  category?: string | null;
   ingredients?: any;
   composition?: any;
   sklad?: any;
@@ -318,8 +804,8 @@ async function fetchProductsByIds(idsMixed: (string | number)[]) {
     const { data, error } = await supabaseAdmin
       .from(table)
       .select(
-        "id,name,title,label,description,description_pl,ingredients,composition,sklad"
-      )
+  "id,name,title,label,description,description_pl,subcategory,category,ingredients,composition,sklad"
+)
       .in("id", ids);
     if (!error && data && data.length) {
       const map = new Map<string, ProductRow>();
@@ -843,9 +1329,15 @@ const now = nowPL(now0);     // komponenty w PL do grafiku/blokad
     const packagingFee = n.selected_option ? 3 : 0;
 
     // 2.3) Suma pozycji (produkty + addony)
-    const itemsTotal = recomputeTotalFromItems(n.itemsArray);
-    // Baza do progów min/free_over i programu lojalnościowego – produkty + opakowanie, bez dostawy
-    const baseWithoutDelivery = itemsTotal + packagingFee;
+    const productIds = n.itemsArray
+  .map((it: any) => it.product_id ?? it.productId ?? it.id ?? null)
+  .filter(Boolean)
+  .map((x: any) => String(x));
+
+const productsMap = await fetchProductsByIds(productIds);
+
+const itemsTotal = recomputeTotalFromItems(n.itemsArray, productsMap, restaurantSlug);
+const baseWithoutDelivery = itemsTotal + packagingFee;
 
     // 2.4) restaurant_id z DB po slugu (+ aktywność lokalu)
     const { data: restRow, error: restErr } = await supabaseAdmin
@@ -1061,125 +1553,6 @@ const now = nowPL(now0);     // komponenty w PL do grafiku/blokad
       n.delivery_cost = roundUpToStep(Math.max(0, serverCost), 0.5);
     }
 
-      // 2.9) Program lojalnościowy (Opcja A – saldo z loyalty_accounts + rezerwacja nagrody) + finalne przeliczenie total_price
-const deliveryCostFinal =
-  n.selected_option === "delivery" ? Number(n.delivery_cost || 0) : 0;
-
-// Baza rabatów (kody + lojalność) – tylko produkty + opakowanie
-const discountBase = baseWithoutDelivery;
-
-// ile naklejek to zamówienie da po accepted/completed (wg progów 50/200/300)
-let earnedOnComplete =
-  n.user_id ? computeEarnedStickersFromBase(discountBase) : 0;
-
-let loyalty_stickers_before = 0;
-let loyalty_stickers_after = 0;
-let loyalty_stickers_used = 0; // <- NOWE (use_4/use_8)
-let loyalty_applied = false;
-let loyalty_reward_type: string | null = null;
-let loyalty_reward_value: number | null = null;
-let loyalty_discount_amount = 0;
-let effectiveLoyaltyChoice: LoyaltyChoice = "keep";
-
-if (n.user_id) {
-  const balanceBefore = await getLoyaltyBalance(n.user_id);
-  loyalty_stickers_before = balanceBefore;
-
-  const rawChoice = (n.loyalty_choice as LoyaltyChoice | null) || "keep";
-  let balanceAfterSpend = balanceBefore;
-
-  if (rawChoice === "use_4") {
-    const r = await trySpendLoyalty(n.user_id, LOYALTY_REWARD_ROLL_COUNT);
-    if (r.ok) {
-      effectiveLoyaltyChoice = "use_4";
-      loyalty_applied = true;
-      loyalty_reward_type = "roll_free";
-      loyalty_reward_value = LOYALTY_REWARD_ROLL_COUNT;
-      loyalty_stickers_used = LOYALTY_REWARD_ROLL_COUNT;
-      balanceAfterSpend = r.after;
-    }
-  } else if (rawChoice === "use_8") {
-    const r = await trySpendLoyalty(n.user_id, LOYALTY_REWARD_PERCENT_COUNT);
-    if (r.ok) {
-      effectiveLoyaltyChoice = "use_8";
-      loyalty_applied = true;
-      loyalty_reward_type = "percent";
-      loyalty_reward_value = LOYALTY_PERCENT;
-      loyalty_stickers_used = LOYALTY_REWARD_PERCENT_COUNT;
-      balanceAfterSpend = r.after;
-
-      loyalty_discount_amount =
-        Math.max(0, Math.round(discountBase * (LOYALTY_PERCENT / 100) * 100)) /
-        100;
-    }
-  }
-
-  // WAŻNE: jeśli klient wykorzystał nagrodę (4/8), to nie nabijamy naklejek na tym samym zamówieniu
-  if (loyalty_applied) earnedOnComplete = 0;
-
-  // przewidywany stan po accepted/completed
-  loyalty_stickers_after = Math.min(
-    LOYALTY_REWARD_PERCENT_COUNT,
-    balanceAfterSpend + earnedOnComplete
-  );
-
-  n.legal_accept = {
-    ...n.legal_accept,
-    loyalty: {
-      stickers_before: balanceBefore,
-      stickers_after_projected: loyalty_stickers_after,
-      earned_on_complete: earnedOnComplete,
-      spent_now: loyalty_stickers_used,
-      applied: loyalty_applied,
-      reward_type: loyalty_reward_type,
-      reward_value: loyalty_reward_value,
-      min_order: LOYALTY_MIN_ORDER_BASE,
-      discount_amount: loyalty_discount_amount,
-      choice: effectiveLoyaltyChoice,
-    },
-  };
-}
-
-n.loyalty_choice = effectiveLoyaltyChoice;
-
-
-// Rabat końcowy: kody + lojalność
-const manualDiscountRaw = Number(n.discount_amount || 0);
-const totalDiscountRaw =
-  Math.max(0, manualDiscountRaw) + Math.max(0, loyalty_discount_amount);
-
-const discountClamped = Math.max(0, Math.min(totalDiscountRaw, discountBase));
-
-const serverTotal =
-  Math.max(
-    0,
-    Math.round(((discountBase - discountClamped) + deliveryCostFinal) * 100)
-  ) / 100;
-
-n.discount_amount = discountClamped;
-n.total_price = serverTotal;
-
-if (n.user_id) {
-  n.loyalty_stickers_before = loyalty_stickers_before;
-  n.loyalty_stickers_after = loyalty_stickers_after;
-
-  // NOWE: zapis “ile użyto” i “ile to zamówienie ma nabić”
-  n.loyalty_stickers_used = n.legal_accept?.loyalty?.spent_now ?? 0;
-  n.loyalty_stickers_earned = n.legal_accept?.loyalty?.earned_on_complete ?? 0;
-
-  n.loyalty_applied = loyalty_applied;
-  n.loyalty_reward_type = loyalty_reward_type;
-  n.loyalty_reward_value = loyalty_reward_value;
-  n.loyalty_min_order = LOYALTY_MIN_ORDER_BASE;
-}
-
-    // 3) Produkty
-    const productIds = n.itemsArray
-      .map((it: any) => it.product_id ?? it.productId ?? it.id ?? null)
-      .filter(Boolean)
-      .map((x: any) => String(x));
-    const productsMap = await fetchProductsByIds(productIds);
-
     // 4) Normalizacja pozycji
     const normalizedItems: NormalizedItem[] = n.itemsArray.map((it: any) => {
       const key = String(it.product_id ?? it.productId ?? it.id ?? "");
@@ -1311,6 +1684,138 @@ try {
 
 // 5.1) Notatka dla kuchni
 const kitchen_note = buildKitchenNote(normalizedItems as any);
+
+ // 2.9) Program lojalnościowy (Opcja A – saldo z loyalty_accounts + rezerwacja nagrody) + finalne przeliczenie total_price
+const deliveryCostFinal =
+  n.selected_option === "delivery" ? Number(n.delivery_cost || 0) : 0;
+
+// Baza rabatów (kody + lojalność) – tylko produkty + opakowanie
+const discountBase = baseWithoutDelivery;
+
+// ile naklejek to zamówienie da po accepted/completed (wg progów 50/200/300)
+let earnedOnComplete =
+  n.user_id ? computeEarnedStickersFromBase(discountBase) : 0;
+
+let loyalty_stickers_before = 0;
+let loyalty_stickers_after = 0;
+let loyalty_stickers_used = 0; // <- NOWE (use_4/use_8)
+let loyalty_applied = false;
+let loyalty_reward_type: string | null = null;
+let loyalty_reward_value: number | null = null;
+let loyalty_discount_amount = 0;
+let effectiveLoyaltyChoice: LoyaltyChoice = "keep";
+
+if (n.user_id) {
+  const balanceBefore = await getLoyaltyBalance(n.user_id);
+  loyalty_stickers_before = balanceBefore;
+
+  const rawChoice = (n.loyalty_choice as LoyaltyChoice | null) || "keep";
+  let balanceAfterSpend = balanceBefore;
+
+  if (rawChoice === "use_4") {
+  // use_4: NIE spalaj naklejek, tylko oznacz “odebrane w cyklu”
+  const r = await tryClaimRollReward(n.user_id);
+
+  if (r.ok) {
+    effectiveLoyaltyChoice = "use_4";
+    loyalty_applied = true;
+    loyalty_reward_type = "roll_free";
+    loyalty_reward_value = LOYALTY_REWARD_ROLL_COUNT;
+
+    // kluczowe: nie wydajemy naklejek przy nagrodzie 4
+    loyalty_stickers_used = 0;
+
+    // saldo bez zmian
+    balanceAfterSpend = r.after;
+  } else {
+    // brak warunków / już odebrane -> traktuj jak keep
+    effectiveLoyaltyChoice = "keep";
+  }
+} else if (rawChoice === "use_8") {
+  // use_8: spalaj 8 i nalicz rabat %
+  const r = await trySpendLoyalty(n.user_id, LOYALTY_REWARD_PERCENT_COUNT);
+
+  if (r.ok) {
+    effectiveLoyaltyChoice = "use_8";
+    loyalty_applied = true;
+    loyalty_reward_type = "percent";
+    loyalty_reward_value = LOYALTY_PERCENT;
+    loyalty_stickers_used = LOYALTY_REWARD_PERCENT_COUNT;
+    balanceAfterSpend = r.after;
+
+    // reset “odebrano 4” po wejściu w nowy cykl (po nagrodzie 8)
+    await supabaseAdmin
+      .from("loyalty_accounts")
+      .update({ roll_reward_claimed: false })
+      .eq("user_id", n.user_id);
+
+    loyalty_discount_amount =
+      Math.max(0, Math.round(discountBase * (LOYALTY_PERCENT / 100) * 100)) /
+      100;
+  } else {
+    effectiveLoyaltyChoice = "keep";
+  }
+}
+
+
+  // WAŻNE: jeśli klient wykorzystał nagrodę (4/8), to nie nabijamy naklejek na tym samym zamówieniu
+  if (loyalty_applied) earnedOnComplete = 0;
+
+  // przewidywany stan po accepted/completed
+  loyalty_stickers_after = Math.min(
+    LOYALTY_REWARD_PERCENT_COUNT,
+    balanceAfterSpend + earnedOnComplete
+  );
+
+  n.legal_accept = {
+    ...n.legal_accept,
+    loyalty: {
+      stickers_before: balanceBefore,
+      stickers_after_projected: loyalty_stickers_after,
+      earned_on_complete: earnedOnComplete,
+      spent_now: loyalty_stickers_used,
+      applied: loyalty_applied,
+      reward_type: loyalty_reward_type,
+      reward_value: loyalty_reward_value,
+      min_order: LOYALTY_MIN_ORDER_BASE,
+      discount_amount: loyalty_discount_amount,
+      choice: effectiveLoyaltyChoice,
+    },
+  };
+}
+
+n.loyalty_choice = effectiveLoyaltyChoice;
+
+
+// Rabat końcowy: kody + lojalność
+const manualDiscountRaw = Number(n.discount_amount || 0);
+const totalDiscountRaw =
+  Math.max(0, manualDiscountRaw) + Math.max(0, loyalty_discount_amount);
+
+const discountClamped = Math.max(0, Math.min(totalDiscountRaw, discountBase));
+
+const serverTotal =
+  Math.max(
+    0,
+    Math.round(((discountBase - discountClamped) + deliveryCostFinal) * 100)
+  ) / 100;
+
+n.discount_amount = discountClamped;
+n.total_price = serverTotal;
+
+if (n.user_id) {
+  n.loyalty_stickers_before = loyalty_stickers_before;
+  n.loyalty_stickers_after = loyalty_stickers_after;
+
+  // NOWE: zapis “ile użyto” i “ile to zamówienie ma nabić”
+  n.loyalty_stickers_used = n.legal_accept?.loyalty?.spent_now ?? 0;
+  n.loyalty_stickers_earned = n.legal_accept?.loyalty?.earned_on_complete ?? 0;
+
+  n.loyalty_applied = loyalty_applied;
+  n.loyalty_reward_type = loyalty_reward_type;
+  n.loyalty_reward_value = loyalty_reward_value;
+  n.loyalty_min_order = LOYALTY_MIN_ORDER_BASE;
+}
 
     // 6) Insert orders
     const itemsForOrdersColumn = JSON.stringify(normalizedItems);

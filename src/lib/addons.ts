@@ -2,6 +2,32 @@
 
 export const EXTRAS = ["Tempura", "Płatek sojowy", "Tamago", "Ryba pieczona"] as const;
 
+const DBMOD_PREFIX = "DBMOD|"; // DBMOD|<groupId>|<modifierId>|<priceCents>|<name>
+const DBVAR_PREFIX = "DBVAR|"; // DBVAR|<variantId>|<priceCents>|<name>
+
+function parseDbModAddon(addon: string): { priceCents: number; name: string } | null {
+  if (!addon.startsWith(DBMOD_PREFIX)) return null;
+  const parts = addon.split("|");
+  // ["DBMOD", groupId, modifierId, priceCents, ...nameParts]
+  if (parts.length < 5) return null;
+  const priceCents = Number(parts[3]);
+  const name = parts.slice(4).join("|").trim();
+  if (!Number.isFinite(priceCents)) return null;
+  return { priceCents, name };
+}
+
+function parseDbVarAddon(addon: string): { priceCents: number; name: string } | null {
+  if (!addon.startsWith(DBVAR_PREFIX)) return null;
+  const parts = addon.split("|");
+  // ["DBVAR", variantId, priceCents, ...nameParts]
+  if (parts.length < 4) return null;
+  const priceCents = Number(parts[2]);
+  const name = parts.slice(3).join("|").trim();
+  if (!Number.isFinite(priceCents)) return null;
+  return { priceCents, name };
+}
+
+
 const BASE_SAUCES = [
   "Sos sojowy",
   "Teryiaki",
@@ -41,6 +67,13 @@ const TARTAR_BASES = [
 ];
 
 export function computeAddonPriceBackend(addon: string): number {
+
+  const dbm = parseDbModAddon(addon);
+  if (dbm) return Math.max(0, dbm.priceCents) / 100;
+
+  const dbv = parseDbVarAddon(addon);
+  if (dbv) return Math.max(0, dbv.priceCents) / 100;
+
   // Sosy – tak jak na froncie: 2 zł
   if (ALL_SAUCES.includes(addon)) return 2;
 
@@ -81,6 +114,10 @@ export function computeAddonPriceBackend(addon: string): number {
   const extraPrice = EXTRA_PRICES[label as keyof typeof EXTRA_PRICES];
   if (typeof extraPrice === "number") return extraPrice;
 
-  // Fallback, gdy pojawi się nietypowy addon
-  return 4;
+  // Fallback: nie naliczaj opłaty za nieznane etykiety (bezpieczniej niż „losowe 4 zł”).
+  // Log do wykrycia braków w mappingu.
+  try {
+    console.warn("[addons] Unknown addon label:", addon);
+  } catch {}
+  return 0;
 }
