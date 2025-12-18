@@ -6,6 +6,7 @@ import { listActiveRestaurants } from "@/lib/tenant";
 import SeasonalSnow from "@/components/SeasonalSnow";
 import AuthToast from "@/components/AuthToast";
 import ResetPasswordToast from "@/components/ResetPasswordToast";
+import IntroOverlay from "@/components/IntroOverlay";
 
 export const dynamic = "force-dynamic";
 
@@ -26,23 +27,48 @@ export const metadata: Metadata = {
 const ACCENT =
   "bg-gradient-to-b from-[#b31217] to-[#7a0b0b] text-white ring-1 ring-black/30 shadow-[0_10px_22px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)] hover:[filter:brightness(1.06)] active:[filter:brightness(0.96)]";
 
+type RestaurantLite = {
+  slug: string;
+  city_name?: string | null;
+  name?: string | null;
+};
+
+const normSlug = (s: unknown) => String(s ?? "").trim().toLowerCase();
+
 export default async function Page() {
-  const restaurants = (await listActiveRestaurants()) || [];
+  const restaurantsRaw = (await listActiveRestaurants()) || [];
+
+  // bierzemy tylko takie, które faktycznie mają slug
+  const restaurants: RestaurantLite[] = restaurantsRaw
+    .map((r: any) => ({
+      slug: normSlug(r?.slug),
+      city_name: r?.city_name ?? null,
+      name: r?.name ?? null,
+    }))
+    .filter((r) => Boolean(r.slug));
 
   // preferowana kolejność; fallback do pierwszych dostępnych
   const preferred = ["ciechanow", "przasnysz", "szczytno"];
-  const bySlug = new Map(
-    restaurants.map((r: any) => [String(r.slug || "").toLowerCase(), r])
+
+  const bySlug = new Map<string, RestaurantLite>(
+    restaurants.map((r) => [normSlug(r.slug), r])
   );
 
-  const picked: any[] = preferred
-    .map((s) => bySlug.get(s))
-    .filter(Boolean) as any[];
+  const picked: RestaurantLite[] = [];
 
-  for (const r of restaurants as any[]) {
-    if (picked.length >= 3) break;
-    if (!picked.find((x) => x.slug === r.slug)) picked.push(r);
+  for (const s of preferred) {
+    const rr = bySlug.get(normSlug(s));
+    if (rr) picked.push(rr);
   }
+
+  for (const r of restaurants) {
+    if (picked.length >= 3) break;
+    if (!picked.find((x) => normSlug(x.slug) === normSlug(r.slug))) picked.push(r);
+  }
+
+  const introCities = picked
+    .slice(0, 3)
+    .map((r) => String(r.city_name || r.name || r.slug));
 
   // lekka logika sezonowa – śnieg w grudniu i styczniu
   const now = new Date();
@@ -54,6 +80,16 @@ export default async function Page() {
       {/* popup po udanej rejestracji / aktywacji konta */}
       <AuthToast />
       <ResetPasswordToast />
+
+      {/* intro overlay (klientowe), trzyma MIN czas + fade-out */}
+      <IntroOverlay
+        cities={introCities}
+        minMs={1800}          // <- ustaw ile ma “wisieć” minimalnie
+        fadeMs={520}          // <- fade-out
+        logoSize={250}         // <- logo na mobile (px)
+        logoSizeSm={300}      // <- logo na desktop (px)
+        storageKey="intro_seen:choose-restaurant:v1"
+      />
 
       <main className="relative min-h-[100svh] pt-28 pb-16 text-white">
         {/* śnieg (overlay, nie blokuje kliknięć) */}
@@ -93,13 +129,12 @@ export default async function Page() {
             <div className="mx-auto grid max-w-3xl grid-cols-1 sm:grid-cols-3 gap-3">
               {picked.slice(0, 3).map((r) => {
                 const label = r.city_name || r.name || r.slug;
-                const slug = String(r.slug || "").toLowerCase();
+                const slug = normSlug(r.slug);
+
                 return (
                   <Link
                     key={slug}
-                    href={`/${encodeURIComponent(slug)}?slug=${encodeURIComponent(
-                      slug
-                    )}`}
+                    href={`/${encodeURIComponent(slug)}?slug=${encodeURIComponent(slug)}`}
                     prefetch={false}
                     className={`block rounded-3xl px-3 py-2.5 text-center text-sm sm:text-base ${ACCENT}`}
                     aria-label={`Przejdź do restauracji SUSHI Tutaj w mieście ${label} – menu i zamówienia online`}
