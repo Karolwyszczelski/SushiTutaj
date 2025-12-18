@@ -5,6 +5,17 @@ import { useEffect, useState } from "react";
 import type { Database } from "@/types/supabase";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 
+const WEEKDAYS = [
+  "Poniedziałek",
+  "Wtorek",
+  "Środa",
+  "Czwartek",
+  "Piątek",
+  "Sobota",
+  "Niedziela",
+] as const;
+
+
 export interface DayHours {
   day: string;
   open: string;
@@ -17,13 +28,11 @@ export interface DayHours {
 type Props = { supabase: ReturnType<typeof createClientComponentClient<Database>> };
 
 export default function OpeningHoursForm({ supabase }: Props) {
-  const weekdays = ["Poniedziałek","Wtorek","Środa","Czwartek","Piątek","Sobota","Niedziela"];
   const [hours, setHours] = useState<DayHours[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
+ useEffect(() => {
     (async () => {
       const res = await fetch("/api/settings");
       const data = await res.json();
@@ -31,7 +40,16 @@ export default function OpeningHoursForm({ supabase }: Props) {
         setHours(data.opening_hours);
       } else {
         // domyślne puste godziny
-        setHours(weekdays.map(d => ({ day: d, open: "09:00", close: "17:00", breakStart: "", breakEnd: "", closed: false })));
+        setHours(
+          WEEKDAYS.map((d) => ({
+            day: d,
+            open: "09:00",
+            close: "17:00",
+            breakStart: "",
+            breakEnd: "",
+            closed: false,
+          }))
+        );
       }
       setLoading(false);
     })();

@@ -1,7 +1,7 @@
 // src/components/admin/settings/BlockedTimesForm.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, CalendarX2, Trash2 } from "lucide-react";
 
 type BlockKind = "reservation" | "order" | "both";
@@ -118,15 +118,13 @@ export default function BlockedTimesForm({
     }
   }, [openDay, groupedByDay]);
 
-  async function fetchSlots() {
+    const fetchSlots = useCallback(async () => {
     if (!restaurantSlug) return;
     setLoading(true);
     setError(null);
     try {
       const res = await fetch(
-        `/api/admin/blocked-times?restaurant=${encodeURIComponent(
-          restaurantSlug
-        )}`,
+        `/api/admin/blocked-times?restaurant=${encodeURIComponent(restaurantSlug)}`,
         { cache: "no-store" }
       );
       const json = await res.json();
@@ -134,18 +132,15 @@ export default function BlockedTimesForm({
       setSlots(json.slots || []);
     } catch (e: any) {
       setSlots([]);
-      setError(
-        e?.message || "Błąd sieci podczas pobierania listy blokad godzin."
-      );
+      setError(e?.message || "Błąd sieci podczas pobierania listy blokad godzin.");
     } finally {
       setLoading(false);
     }
-  }
+  }, [restaurantSlug]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     void fetchSlots();
-  }, [restaurantSlug]);
+  }, [fetchSlots]);
 
   function resetForm() {
     setDate("");

@@ -4,6 +4,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
+import Image from "next/image";
 import productsData from "@/data/product.json";
 
 // Lokalny typ zamiast importu ze strony admin/menu
@@ -127,10 +128,13 @@ export default function EditMenuItemModal({ item, onClose, onSave }: Props) {
             />
           </div>
           {preview && (
-            <img
+            <Image
               src={preview}
-              className="w-full rounded border"
               alt="Podgląd"
+              width={1200}
+              height={900}
+              className="w-full h-auto rounded border"
+              unoptimized
             />
           )}
           <div>

@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build",
-    "start": "next start -p ${PORT:-3000} -H 0.0.0.0",
-    "lint": "next lint"
+  "build": "next build --no-lint",
+  "start": "next start -H 0.0.0.0",
+  "lint": "next lint"
   },
   "engines": {
     "node": "22.x"

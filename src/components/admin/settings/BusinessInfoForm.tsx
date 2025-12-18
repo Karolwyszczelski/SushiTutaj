@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import type { Database } from "@/types/supabase";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import Image from "next/image";
 
 type Props = { supabase: ReturnType<typeof createClientComponentClient<Database>> };
 
@@ -113,9 +114,17 @@ export default function BusinessInfoForm({ supabase }: Props) {
             onChange={e => setS({ ...s, logo_url: e.target.value })}
             className="mt-1 w-full border rounded px-3 py-2"
           />
-          {s.logo_url && (
-            <img src={s.logo_url} alt="Logo" className="mt-2 h-16 object-contain" />
+                    {s.logo_url && (
+            <Image
+              src={s.logo_url}
+              alt="Logo"
+              width={256}
+              height={64}
+              className="mt-2 h-16 w-auto object-contain"
+              unoptimized
+            />
           )}
+
         </div>
       </div>
       <button

@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { Dialog, Switch } from "@headlessui/react";
 import EditMenuItemModal from "./EditMenuItemModal";
+import Image from "next/image";
 
 // lokalne typy zamiast bazowania na Database["public"]["Tables"]
 type Category = {
@@ -80,15 +81,19 @@ export default function MenuTable({ categories, items }: MenuTableProps) {
             <tr key={it.id} className="border-t">
               <td className="px-4 py-2">{i + 1}</td>
               <td className="px-4 py-2">
-                {it.image_url ? (
-                  <img
+                                {it.image_url ? (
+                  <Image
                     src={it.image_url}
-                    className="w-16 h-12 object-cover"
                     alt={it.name}
+                    width={64}
+                    height={48}
+                    className="w-16 h-12 object-cover"
+                    unoptimized
                   />
                 ) : (
                   <span className="text-gray-400">brak</span>
                 )}
+
               </td>
               <td className="px-4 py-2">{it.name}</td>
               <td className="px-4 py-2">
