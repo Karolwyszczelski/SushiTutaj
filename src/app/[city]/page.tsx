@@ -6,6 +6,7 @@ import OnasSection from "@/components/OnasSection";
 import ContactSection from "@/components/ContactSection";
 import { getRestaurantBySlug } from "@/lib/tenant";
 import PromoModal from "@/components/PromoModal";
+import { getActivePopupsByRestaurantId } from "@/lib/popups";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_URL || "https://www.sushitutaj.pl";
 
@@ -101,21 +102,12 @@ export default async function Home({ params }: CityPageProps) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      {/* DODANY POP-UP */}
+      {/* POP-UPY (Slider) */}
       <PromoModal
-  restaurantId={r?.id}
-  restaurantPhone={r?.phone} // <--- Dodaj przekazanie telefonu
-  data={{
-    active: r?.popup_active,
-    title: r?.popup_title,
-    content: r?.popup_content,
-    image_url: r?.popup_image_url,
-    // Przekazanie nowych pól
-    btn_type: r?.popup_btn_type,
-    btn_label: r?.popup_btn_label,
-    btn_url: r?.popup_btn_url,
-  }}
-/>
+        restaurantId={r?.id ?? null}
+        restaurantPhone={r?.phone ?? null}
+        popups={r?.id ? await getActivePopupsByRestaurantId(r.id) : []}
+      />
 
       <Hero />
       <ZestawMiesiaca />

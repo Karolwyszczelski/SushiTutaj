@@ -1,49 +1,77 @@
 "use client";
 
+import React, { useCallback } from "react";
+import { Minus, Plus, Utensils } from "lucide-react";
+import clsx from "clsx";
 
-import React from "react";
-
-/* Kontrolka ilości pałeczek – używana w podsumowaniu / koszyku */
-function ChopsticksControl({
-  value,
-  onChange,
-}: {
+type Props = {
   value: number;
-  onChange: (v: number) => void;
-}) {
-  const clamp = (n: number) => Math.max(0, Math.min(10, n));
-  const dec = () => onChange(clamp(value - 1));
-  const inc = () => onChange(clamp(value + 1));
+  onChange: (next: number) => void;
+  min?: number;
+  max?: number;
+};
+
+export function ChopsticksControl({ value, onChange, min = 0, max = 10 }: Props) {
+  const v = Number.isFinite(value) ? value : 0;
+
+  const setClamped = useCallback(
+    (next: number) => {
+      const n = Math.max(min, Math.min(max, Math.round(next)));
+      onChange(n);
+    },
+    [min, max, onChange]
+  );
+
+  const dec = () => setClamped(v - 1);
+  const inc = () => setClamped(v + 1);
 
   return (
-    <div className="mt-4 space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-black">Ilość pałeczek</span>
-        <span className="text-[11px] text-black/60">
-          0 = nie potrzebuję
-        </span>
-      </div>
-      <div className="flex items-center justify-center gap-4">
-        <button
-          type="button"
-          onClick={dec}
-          className="h-11 w-11 rounded-[20px] border border-black/20 bg-transparent text-black text-xl flex items-center justify-center"
-        >
-          –
-        </button>
-        <div className="min-w-[56px] text-center text-lg font-semibold">
-          {value}
+    <div className="w-full rounded-xl border border-black/10 bg-white px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex items-center gap-2">
+          <Utensils size={16} className="shrink-0 opacity-70" />
+          <div className="min-w-0">
+            <div className="text-sm font-semibold leading-tight truncate">
+              Pałeczki
+            </div>
+            <div className="text-[11px] text-black/50 leading-tight hidden sm:block">
+              0 = bez pałeczek
+            </div>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={inc}
-          className="h-11 w-11 rounded-full border border-black/20 bg-black text-white text-xl flex items-center justify-center"
-        >
-          +
-        </button>
+
+        <div className="shrink-0 inline-flex items-center rounded-xl border border-black/10 overflow-hidden">
+          <button
+            type="button"
+            onClick={dec}
+            disabled={v <= min}
+            className={clsx(
+              "h-9 w-9 grid place-items-center",
+              v <= min ? "opacity-40 cursor-not-allowed" : "hover:bg-black/5"
+            )}
+            aria-label="Mniej pałeczek"
+          >
+            <Minus size={16} />
+          </button>
+
+          <div className="h-9 w-10 grid place-items-center text-sm font-semibold tabular-nums border-x border-black/10">
+            {v}
+          </div>
+
+          <button
+            type="button"
+            onClick={inc}
+            disabled={v >= max}
+            className={clsx(
+              "h-9 w-9 grid place-items-center",
+              v >= max ? "opacity-40 cursor-not-allowed" : "hover:bg-black/5"
+            )}
+            aria-label="Więcej pałeczek"
+          >
+            <Plus size={16} />
+          </button>
+        </div>
       </div>
     </div>
   );
 }
-
-export { ChopsticksControl };

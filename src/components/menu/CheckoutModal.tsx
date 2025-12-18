@@ -1568,6 +1568,11 @@ const PriceSummaryCard = (
       </div>
     </div>
 
+        <div className="pt-1">
+      <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
+    </div>
+
+
     <PromoSection
       promo={promo}
       promoError={promoError}
@@ -1725,9 +1730,6 @@ return (
 
                       <div className="-mx-6 sticky bottom-0 z-30 mt-4 border-t border-black/10 bg-white/95 backdrop-blur px-6 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
   <div className="flex items-center gap-3">
-    <div className="shrink-0">
-      <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
-    </div>
 
     <button
       onClick={nextStep}
@@ -2021,6 +2023,10 @@ return (
     ? "Sposób: odbiór osobisty"
     : "Sposób: —"}
 </p>
+
+<div className="mt-3">
+  <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
+</div>
 
 {/* Lista pozycji (żeby było widać co wybrane) */}
 <div className="space-y-2 max-h-[180px] overflow-y-auto border-y border-black/10 py-2">
@@ -2415,11 +2421,7 @@ return (
         >
           ← Cofnij
         </button>
-
-        <div className="flex-1 flex justify-center">
-          <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
-        </div>
-
+        
         {!shouldHideOrderActions && (
           <button
             onClick={handleSubmitOrder}
@@ -2575,6 +2577,11 @@ return (
                       )}
                     </div>
                   )}
+
+                                    <div className="pt-1">
+                    <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
+                  </div>
+
 
                   <PromoSection
                     promo={promo}
