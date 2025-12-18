@@ -1695,10 +1695,10 @@ return (
                       <h3 className="text-2xl font-bold">Wybrane produkty</h3>
 
                       {/* START: lista pozycji koszyka */}
-<div className="space-y-3 max-h-[360px] overflow-y-auto">
+{/* START: lista pozycji koszyka */}
+<div className="space-y-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
   {items.map((item: any, idx: number) => {
-    // Stabilny key: preferuj unikalne ID pozycji koszyka, a jak nie ma – kompozyt
-   const itemKey = getItemKey(item, idx);
+    const itemKey = getItemKey(item, idx);
     return (
       <div key={itemKey} className="space-y-1">
         <ProductItem
@@ -1728,25 +1728,26 @@ return (
   )}
 </div>
 
-                      <div className="-mx-6 sticky bottom-0 z-30 mt-4 border-t border-black/10 bg-white/95 backdrop-blur px-6 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-  <div className="flex items-center gap-3">
-
+{/* MOBILE: fixed footer – przycisk na samym dole */}
+<div className="fixed inset-x-0 bottom-0 z-[70] lg:hidden">
+  <div className="mx-auto max-w-5xl border-t border-black/10 bg-white/95 backdrop-blur px-6 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
     <button
       onClick={nextStep}
       disabled={items.length === 0}
-      className={`ml-auto min-w-[160px] py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
+      className={`w-full py-3 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
     >
       Dalej →
     </button>
   </div>
 </div>
+
                     </div>
                   )}
 
                   {/* KROK 1 DESKTOP / KROK 2 MOBILE: sposób odbioru */}
                   {/* KROK 2: sposób odbioru */}
 {checkoutStep === 2 && (
-                    <div className="space-y-6">
+  <div className="space-y-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))]">
                       <h3 className="text-2xl font-bold">Sposób odbioru</h3>
 
                       <div className="grid grid-cols-2 gap-3">
@@ -1834,24 +1835,27 @@ return (
   </div>
 )}
 
-                      <div className="-mx-6 sticky bottom-0 z-30 mt-4 border-t border-black/10 bg-white/95 backdrop-blur px-6 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-  <div className="flex items-center gap-3">
-    <button
-      type="button"
-      onClick={() => goToStep(1)}
-      className="px-4 py-2 rounded-xl border border-black/15"
-    >
-      ← Cofnij
-    </button>
+                      {/* MOBILE: fixed footer – na sam dół (Pałeczki zostają na środku) */}
+<div className="fixed inset-x-0 bottom-0 z-[70] lg:hidden">
+  <div className="mx-auto max-w-5xl border-t border-black/10 bg-white/95 backdrop-blur px-6 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+    <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={() => goToStep(1)}
+        className="shrink-0 px-4 py-2 rounded-xl border border-black/15"
+      >
+        ← Cofnij
+      </button>
 
-    <div className="flex-1 flex justify-center">
-      <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
+      <div className="flex-1 flex justify-center">
+        <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
+      </div>
     </div>
 
     <button
       onClick={nextStep}
       disabled={!selectedOption}
-      className={`min-w-[220px] py-2 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
+      className={`mt-3 w-full py-3 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
     >
       Dalej →
     </button>
@@ -1987,10 +1991,6 @@ return (
     >
       ← Cofnij
     </button>
-
-    <div className="flex-1 flex justify-center">
-      <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
-    </div>
 
     <button
       onClick={goNextFromStep3}
