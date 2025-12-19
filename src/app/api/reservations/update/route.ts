@@ -202,7 +202,17 @@ export async function POST(req: Request) {
       .select("*")
       .maybeSingle();
 
-    if (e2) throw e2;
+        if (e2) {
+      // Walidacje z DB (np. trigger: "Nie można rezerwować przeszłych terminów.")
+      if ((e2 as any)?.code === "P0001") {
+        return NextResponse.json(
+          { error: e2.message, code: "P0001" },
+          { status: 409, headers: { "Cache-Control": "no-store" } }
+        );
+      }
+      throw e2;
+    }
+
 
     if (!updated) {
       return NextResponse.json(
@@ -265,10 +275,21 @@ export async function POST(req: Request) {
     });
 
     return res;
-  } catch (err: any) {
-    console.error("POST /api/reservations/update error:", err);
+    } catch (err: any) {
+    const code = err?.code ?? err?.cause?.code ?? null;
+    const message = err?.message || "Server error";
+
+    // Nie rób 500 z błędu walidacji
+    if (code === "P0001") {
+      return NextResponse.json(
+        { error: message, code: "P0001" },
+        { status: 409, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    console.error("POST /api/reservations/update error:", { code, message });
     return NextResponse.json(
-      { error: err?.message || "Server error" },
+      { error: message },
       { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
