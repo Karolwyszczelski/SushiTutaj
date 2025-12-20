@@ -50,20 +50,27 @@ export async function POST(req: Request) {
     let restaurantId = ck.get("restaurant_id")?.value ?? null;
     let restaurantSlug = ck.get("restaurant_slug")?.value ?? null;
 
-    // 3) fallback: jak cookie brak (np. user kliknął „Włącz push” zanim ensure-cookie zdążył ustawić),
-    // weź pierwszy przypisany lokal z restaurant_admins
-    if (!restaurantId) {
-      const { data: row, error } = await supabase
-        .from("restaurant_admins")
-        .select("restaurant_id")
-        .eq("user_id", userId)
-        .order("added_at", { ascending: true })
-        .limit(1)
-        .maybeSingle<{ restaurant_id: string }>();
+    // 3) Jeśli cookie brak: nie zgadujemy przy wielu lokalach (bo to przepina endpoint do złej restauracji).
+//    Fallback tylko gdy admin ma dokładnie 1 lokal.
+if (!restaurantId) {
+  const { data: rows, error } = await supabase
+    .from("restaurant_admins")
+    .select("restaurant_id")
+    .eq("user_id", userId);
 
-      if (error) return makeRes({ error: error.message }, 500);
-      restaurantId = row?.restaurant_id ?? null;
-    }
+  if (error) return makeRes({ error: error.message }, 500);
+
+  const unique = Array.from(
+    new Set((rows as any[] | null | undefined)?.map((r) => r.restaurant_id).filter(Boolean))
+  ) as string[];
+
+  if (unique.length === 1) {
+    restaurantId = unique[0]!;
+  } else {
+    return makeRes({ error: "NO_RESTAURANT_COOKIE" }, 409);
+  }
+}
+
 
     if (!restaurantId) {
       return makeRes({ error: "NO_RESTAURANT" }, 400);

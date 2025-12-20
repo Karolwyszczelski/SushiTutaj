@@ -33,7 +33,7 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(title, {
       body,
-      icon: "/hamburger.png", // upewnij się, że istnieje w /public
+      icon: "/android-chrome-192x192.png", // upewnij się, że istnieje w /public
       badge: "/favicon.ico",
       data: { url: targetUrl },
       requireInteraction: true,

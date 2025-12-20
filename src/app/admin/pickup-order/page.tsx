@@ -1831,17 +1831,46 @@ const enablePush = useCallback(async () => {
   }, [loadRestaurantPackagingCost]);
 
 
-  /* BOOT: ustaw serwerowe cookie, ale ignoruj 401 */
-  useEffect(() => {
-    const url = urlSlug
-      ? `/api/restaurants/ensure-cookie?restaurant=${encodeURIComponent(
-          urlSlug
-        )}`
-      : "/api/restaurants/ensure-cookie";
-    fetch(url, { cache: "no-store" }).catch(() => {});
-    setRestaurantSlug(urlSlug);
-    setBooted(true);
-  }, [urlSlug]);
+  /* BOOT: ustaw serwerowe cookie (i POCZEKAJ aż się ustawi – krytyczne dla push) */
+useEffect(() => {
+  let cancelled = false;
+
+  const init = async () => {
+    try {
+      const slug = (urlSlug || "").toLowerCase().trim();
+      const url = slug
+        ? `/api/restaurants/ensure-cookie?restaurant=${encodeURIComponent(slug)}`
+        : "/api/restaurants/ensure-cookie";
+
+      const r = await fetch(url, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      const j = (await r.json().catch(() => ({} as any))) as any;
+      if (cancelled) return;
+
+      const srvSlug =
+        typeof j?.restaurant_slug === "string" ? j.restaurant_slug.toLowerCase() : null;
+
+      if (typeof j?.restaurant_id === "string") setRestaurantId(j.restaurant_id);
+
+      // źródło prawdy: URL (jeśli jest) > odpowiedź serwera > null
+      setRestaurantSlug(urlSlug || srvSlug || null);
+    } catch {
+      if (!cancelled) setRestaurantSlug(urlSlug || null);
+    } finally {
+      if (!cancelled) setBooted(true);
+    }
+  };
+
+  void init();
+
+  return () => {
+    cancelled = true;
+  };
+}, [urlSlug]);
 
   // Push: po BOOT (gdy cookies restauracji są już ustawione) dosyłamy istniejącą subskrypcję do backendu
 useEffect(() => {
@@ -1863,6 +1892,30 @@ useEffect(() => {
         typeof (sub as any).toJSON === "function"
           ? (sub as any).toJSON()
           : JSON.parse(JSON.stringify(sub));
+
+          // Upewnij się, że cookies restauracji są ustawione zanim zapiszesz subskrypcję (eliminuje race na starcie)
+const cookieSlug =
+  typeof document !== "undefined"
+    ? document.cookie
+        .split("; ")
+        .find((x) => x.startsWith("restaurant_slug="))
+        ?.split("=")[1]
+    : null;
+
+const rs = (urlSlug || (cookieSlug ? decodeURIComponent(cookieSlug) : "") || "")
+  .toLowerCase()
+  .trim();
+
+const ensureUrl = rs
+  ? `/api/restaurants/ensure-cookie?restaurant=${encodeURIComponent(rs)}`
+  : "/api/restaurants/ensure-cookie";
+
+await fetch(ensureUrl, {
+  method: "GET",
+  credentials: "include",
+  cache: "no-store",
+}).catch(() => {});
+
 
       const doPost = () =>
         fetch("/api/admin/push/subscribe", {
