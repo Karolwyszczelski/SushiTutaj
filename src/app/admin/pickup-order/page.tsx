@@ -1191,16 +1191,48 @@ const optionsAddonLabels = [
   .map((s) => (s || "").trim())
   .filter((s) => s && s !== "0");
 
-  // Łączy listy addonów z różnych źródeł w jedną płaską listę.
-// NIE USUWA duplikatów tutaj, żeby collapseLabelsWithQty mogło je zsumować (np. Sos free + Sos paid).
-// Zmodyfikowana funkcja łączenia list dodatków
+// Łączy listy addonów z różnych źródeł w jedną płaską listę.
+// Cel: nie dublować tego samego dodatku z dwóch źródeł, ale też nie gubić unikatów z `options`.
 function mergeAddonLists(source: string[] = [], options: string[] = []): string[] {
-  // Jeśli source ma dane, używamy tylko ich, aby uniknąć duplikacji z options
-  if (source.length > 0) {
-    return source.filter(s => s && s !== "0");
+  const src = (source || [])
+    .map((s) => (s || "").toString().trim())
+    .filter((s) => s && s !== "0");
+
+  const opt = (options || [])
+    .map((s) => (s || "").toString().trim())
+    .filter((s) => s && s !== "0");
+
+  if (src.length === 0) return opt;
+  if (opt.length === 0) return src;
+
+  // Kanoniczny klucz porównania: usuń DBMOD/DBVAR, obetnij "+X zł", obetnij ilości, znormalizuj spacje/małe litery
+  const canonKey = (raw: string): string => {
+    const pretty = prettyAddonLabel(raw);
+    const noPrice = stripPriceSuffix(pretty);
+    const cleaned = (noPrice || "")
+      .normalize("NFKC")
+      .trim()
+      .replace(/\s+/g, " ");
+    if (!cleaned) return "";
+
+    const { base } = extractExplicitQty(cleaned); // usuwa prefix/suffix typu "2×" / "×2"
+    const key = normalizeLabelKey(base);
+    return key || normalizeLabelKey(cleaned);
+  };
+
+  const srcKeys = new Set<string>();
+  for (const s of src) {
+    const k = canonKey(s);
+    if (k) srcKeys.add(k);
   }
-  // Jeśli source jest puste, bierzemy dane z options
-  return options.filter(s => s && s !== "0");
+
+  // dodaj z options tylko to, czego nie ma w source
+  const extraFromOptions = opt.filter((s) => {
+    const k = canonKey(s);
+    return k ? !srcKeys.has(k) : true;
+  });
+
+  return [...src, ...extraFromOptions];
 }
 
 // Wywołanie funkcji pozostaje bez zmian, ale jej logika zapobiegnie dublowaniu

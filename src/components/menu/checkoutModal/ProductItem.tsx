@@ -154,40 +154,45 @@ export const ProductItem: React.FC<{
   );
 
   const normalizeSetRowKey = (
-    row: { qty: number; cat: string; from: string }
-  ) => {
-    const cat = (row.cat || "").trim();
-    const from = (row.from || "").trim();
-    if (!from) return cat;
+  row: { qty: number; cat: string; from: string }
+) => {
+  const cat = (row.cat || "").trim();
+  const from = (row.from || "").trim();
+  if (!from) return cat;
 
-    // rozbijamy po "+" bo w zestawach często są miksy typu
-    // "krewetka + łosoś surowy"
-    const parts = from.split("+").map((p) => p.trim()).filter(Boolean);
+  // rozbijamy po "+" bo w zestawach często są miksy typu
+  // "krewetka + łosoś surowy"
+  const parts = from
+    .split("+")
+    .map((p) => p.trim())
+    .filter(Boolean);
 
-    const isFishPart = (s: string) => {
-      const l = s.toLowerCase();
-      return (
-        l.includes("łosoś") ||
-        l.includes("losos") ||
-        l.includes("tuńczyk") ||
-        l.includes("tunczyk")
-      );
-    };
-
-    if (parts.length > 1) {
-      const fishParts = parts.filter(isFishPart);
-      if (fishParts.length === 1) {
-        // preferujemy część z łososiem / tuńczykiem
-        return `${cat} ${fishParts[0]}`.replace(/\s+/g, " ").trim();
-      }
-      if (fishParts.length > 1) {
-        return `${cat} ${fishParts.join(" + ")}`.replace(/\s+/g, " ").trim();
-      }
-    }
-
-    // fallback: cały opis, ale znormalizowane spacje
-    return `${cat} ${from}`.replace(/\s+/g, " ").trim();
+  const isFishPart = (s: string) => {
+    const l = s.toLowerCase();
+    return (
+      l.includes("łosoś") ||
+      l.includes("losos") ||
+      l.includes("tuńczyk") ||
+      l.includes("tunczyk")
+    );
   };
+
+  // KLUCZ MUSI zachować cały miks, inaczej różne rolki z tym samym łososiem się zderzają
+  // i dopłaty typu Tempura naliczają się tylko raz.
+  if (parts.length > 1) {
+    const fishParts = parts.filter(isFishPart);
+    const nonFishParts = parts.filter((p) => !isFishPart(p));
+
+    // ryba na początek, ale reszta zostaje (żeby miks był unikalny)
+    const ordered =
+      fishParts.length > 0 ? [...fishParts, ...nonFishParts] : parts;
+
+    return `${cat} ${ordered.join(" + ")}`.replace(/\s+/g, " ").trim();
+  }
+
+  return `${cat} ${from}`.replace(/\s+/g, " ").trim();
+};
+
 
   // dopłata za wersję pieczoną całego zestawu (jeśli jest przewidziana w menu)
   const setBakePrice = isSet ? getSetBakePriceForProduct(prodInfo) : null;
@@ -227,6 +232,33 @@ export const ProductItem: React.FC<{
   });
 }, [prod.addons, prodInfo, prod.name, subcat, restaurantSlug]);
   const lineTotal = (priceNum + addonsCost) * (prod.quantity || 1);
+
+  // ===== helpery do zliczania addonów (pozwala mieć N× ten sam addon) =====
+const countAddon = (label: string): number => {
+  const arr: string[] = Array.isArray(prod.addons)
+    ? ((prod.addons as any[]).filter((x) => typeof x === "string") as string[])
+    : [];
+  return arr.reduce((acc, a) => (a === label ? acc + 1 : acc), 0);
+};
+
+const syncAddonCount = (label: string, desiredCount: number) => {
+  const desired = Math.max(0, Math.floor(Number(desiredCount || 0)));
+  const current = countAddon(label);
+
+  if (current < desired) {
+    for (let i = 0; i < desired - current; i++) {
+      addAddon(prod.name, label, { allowDuplicate: true });
+    }
+    return;
+  }
+
+  if (current > desired) {
+    for (let i = 0; i < current - desired; i++) {
+      removeAddon(prod.name, label, { removeOne: true });
+    }
+  }
+};
+
 
 
   // Czy dany extra jest dozwolony dla tego produktu
@@ -303,56 +335,46 @@ export const ProductItem: React.FC<{
   };
 
   const doSetSwap = (rowFrom: string, to: string) => {
-    const current = getSetSwapCurrent(rowFrom);
-    if (!to || to === current) return;
+  const current = getSetSwapCurrent(rowFrom);
+  if (!to || to === current) return;
 
-    const swaps = Array.isArray(prod.swaps) ? prod.swaps : [];
-    
-    // Używamy trim() i toLowerCase() dla pewności porównania
-    const rowFromLc = rowFrom.trim().toLowerCase();
-    const toLc = to.trim().toLowerCase();
+  const swaps = Array.isArray(prod.swaps) ? prod.swaps : [];
 
-    // 1. Najpierw wykonaj zamianę w stanie koszyka
-    swapIngredient(prod.name, rowFrom, to);
+  const rowFromLc = rowFrom.trim().toLowerCase();
+  const toLc = to.trim().toLowerCase();
 
-    // 2. Teraz oblicz, czy po tej operacji nadal istnieje jakakolwiek PŁATNA zamiana.
-    // Symulujemy stan tablicy swaps po aktualizacji:
-    const nextSwaps = [...swaps]; 
-    const existingIdx = nextSwaps.findIndex(
-      (s: any) => s && s.from && s.from.trim().toLowerCase() === rowFromLc
-    );
+  // 1) wykonaj zamianę w stanie koszyka
+  swapIngredient(prod.name, rowFrom, to);
 
-    if (existingIdx >= 0) {
-      if (toLc === rowFromLc) {
-        // Użytkownik wrócił do oryginału -> usuwamy wpis o zamianie
-        nextSwaps.splice(existingIdx, 1);
-      } else {
-        // Aktualizacja istniejącej zamiany na coś innego
-        nextSwaps[existingIdx] = { ...nextSwaps[existingIdx], to };
-      }
+  // 2) zasymuluj nextSwaps po tej zmianie
+  const nextSwaps = [...swaps];
+  const existingIdx = nextSwaps.findIndex(
+    (s: any) => s && s.from && String(s.from).trim().toLowerCase() === rowFromLc
+  );
+
+  if (existingIdx >= 0) {
+    if (toLc === rowFromLc) {
+      nextSwaps.splice(existingIdx, 1);
     } else {
-      // Nowa zamiana (jeśli nie jest tożsama z oryginałem)
-      if (toLc !== rowFromLc) {
-        nextSwaps.push({ from: rowFrom, to });
-      }
+      nextSwaps[existingIdx] = { ...nextSwaps[existingIdx], to };
     }
+  } else {
+    if (toLc !== rowFromLc) nextSwaps.push({ from: rowFrom, to });
+  }
 
-    // Sprawdź, czy w tablicy pozostał jakikolwiek wpis, gdzie 'from' różni się od 'to'
-    const hasAnyActiveSwap = nextSwaps.some(
-      (s: any) => 
-        s.from && s.to && 
-        s.from.trim().toLowerCase() !== s.to.trim().toLowerCase()
-    );
+  // 3) policz ile jest aktywnych (płatnych) zamian
+  const activeSwapCount = nextSwaps.filter(
+    (s: any) =>
+      s &&
+      typeof s.from === "string" &&
+      typeof s.to === "string" &&
+      s.from.trim().toLowerCase() !== s.to.trim().toLowerCase()
+  ).length;
 
-    const hasFee = (prod.addons ?? []).includes(SWAP_FEE_NAME);
+  // 4) ustaw liczbę addonów "Zamiana w zestawie" = liczba aktywnych zamian
+  syncAddonCount(SWAP_FEE_NAME, activeSwapCount);
+};
 
-    // 3. Dodaj lub usuń opłatę 5 zł
-    if (hasAnyActiveSwap) {
-      if (!hasFee) addAddon(prod.name, SWAP_FEE_NAME);
-    } else {
-      if (hasFee) removeAddon(prod.name, SWAP_FEE_NAME);
-    }
-  };
 
 
   // Frytki z batatów z przystawek – tylko w Szczytnie i Przasnyszu

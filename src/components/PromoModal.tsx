@@ -234,7 +234,7 @@ export default function PromoModal({
         </button>
 
         {/* Box */}
-        <div className="bg-white shadow-2xl rounded-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 max-h-[80vh]">
+        <div className="bg-white shadow-2xl rounded-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 max-h-[70vh]">
           {/* Nagłówek slidera */}
           {visible.length > 1 && (
             <div className="px-5 sm:px-6 pt-4 pb-2 text-xs text-gray-500 flex items-center justify-between">

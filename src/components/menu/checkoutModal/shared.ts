@@ -1220,6 +1220,8 @@ function normalizeSetRowKeyForPayload(row: {
   const from = (row.from || "").trim();
   if (!from) return cat;
 
+  // rozbijamy po "+" bo w zestawach często są miksy typu
+  // "krewetka + łosoś surowy"
   const parts = from
     .split("+")
     .map((p) => p.trim())
@@ -1235,18 +1237,22 @@ function normalizeSetRowKeyForPayload(row: {
     );
   };
 
+  // Nie redukujemy klucza do samej "ryby" – inaczej dodatki (np. Tempura)
+  // mogą mieć ten sam prefix i zliczać się tylko raz.
   if (parts.length > 1) {
     const fishParts = parts.filter(isFishPart);
-    if (fishParts.length === 1) {
-      return `${cat} ${fishParts[0]}`.replace(/\s+/g, " ").trim();
-    }
-    if (fishParts.length > 1) {
-      return `${cat} ${fishParts.join(" + ")}`.replace(/\s+/g, " ").trim();
-    }
+    const nonFishParts = parts.filter((p) => !isFishPart(p));
+
+    // ryba na początek, ale reszta zostaje (żeby miks był unikalny)
+    const ordered =
+      fishParts.length > 0 ? [...fishParts, ...nonFishParts] : parts;
+
+    return `${cat} ${ordered.join(" + ")}`.replace(/\s+/g, " ").trim();
   }
 
   return `${cat} ${from}`.replace(/\s+/g, " ").trim();
 }
+
 
 /** Buduje strukturalne info o zamianach w zestawie + dodatkach per rolka dla danej pozycji z koszyka */
 function buildSetSwapsPayload(
