@@ -1742,6 +1742,7 @@ useEffect(() => {
   }, []);
 
  // Włączenie powiadomień push „na żądanie”
+// Włączenie powiadomień push „na żądanie”
 const enablePush = useCallback(async () => {
   try {
     setPushError(null);
@@ -1762,20 +1763,34 @@ const enablePush = useCallback(async () => {
       return;
     }
 
+    // --- helper: cookie read (client) ---
+    const readCookie = (name: string): string | null => {
+      try {
+        const v = document.cookie
+          .split("; ")
+          .find((x) => x.startsWith(`${name}=`))
+          ?.split("=")[1];
+        return v ? decodeURIComponent(v) : null;
+      } catch {
+        return null;
+      }
+    };
+
+    // 1) Permisja
     const perm = await Notification.requestPermission();
     if (perm !== "granted") {
       setPushStatus("not-allowed");
       return;
     }
 
+    // 2) SW reg + subscribe
     const reg =
       (await navigator.serviceWorker.getRegistration()) ||
-(await navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }));
+      (await navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }));
 
-await reg.update().catch(() => {});
+    await reg.update().catch(() => {});
 
     const existing = await reg.pushManager.getSubscription();
-
     const sub =
       existing ??
       (await reg.pushManager.subscribe({
@@ -1788,34 +1803,45 @@ await reg.update().catch(() => {});
         ? (sub as any).toJSON()
         : JSON.parse(JSON.stringify(sub));
 
-        const slugToSend =
-  (restaurantSlug || urlSlug || "").toLowerCase().trim() || null;
+    // 3) Ustal slug: URL > state > cookie
+    const cookieSlug = readCookie("restaurant_slug");
+    const desiredSlug = (urlSlug || restaurantSlug || cookieSlug || "")
+      .toLowerCase()
+      .trim();
 
-// Najpierw dopnij cookie restauracji (eliminuje race przy kliknięciu)
-const ensureUrl = slugToSend
-  ? `/api/restaurants/ensure-cookie?restaurant=${encodeURIComponent(slugToSend)}`
-  : "/api/restaurants/ensure-cookie";
+    // 4) ZAWSZE dopnij cookies serwerowe przed POST (eliminuje race)
+    const ensureUrl = desiredSlug
+      ? `/api/restaurants/ensure-cookie?restaurant=${encodeURIComponent(desiredSlug)}`
+      : "/api/restaurants/ensure-cookie";
 
-await fetch(ensureUrl, {
-  method: "GET",
-  credentials: "include",
-  cache: "no-store",
-}).catch(() => {});
+    const ensureRes = await fetch(ensureUrl, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    }).catch(() => null);
 
-const doPost = () =>
-  fetch("/api/admin/push/subscribe", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    cache: "no-store",
-    body: JSON.stringify({
-      subscription: payload,
-      restaurant_slug: slugToSend,
-    }),
-  });
+    if (ensureRes?.ok) {
+      const j = (await ensureRes.json().catch(() => ({} as any))) as any;
+      if (typeof j?.restaurant_id === "string") setRestaurantId(j.restaurant_id);
+      if (typeof j?.restaurant_slug === "string")
+        setRestaurantSlug(j.restaurant_slug.toLowerCase());
+    }
 
-let res = await doPost();
+    const slugToSend = desiredSlug || null;
 
+    const doPost = () =>
+      fetch("/api/admin/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        cache: "no-store",
+        body: JSON.stringify({
+          subscription: payload,
+          restaurant_slug: slugToSend, // <-- KROK 2: slug w body
+        }),
+      });
+
+    let res = await doPost();
 
     // Retry po 401 (typowe po nocy / uśpieniu)
     if (res.status === 401) {
@@ -1837,7 +1863,7 @@ let res = await doPost();
     setPushStatus("error");
     setPushError("Nie udało się włączyć powiadomień.");
   }
-}, [supabase, restaurantSlug, urlSlug]);
+}, [supabase, urlSlug, restaurantSlug]);
 
   const [page, setPage] = useState(1);
   const perPage = 10;
@@ -3702,11 +3728,14 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
   <button
     type="button"
     onClick={enablePush}
-    className="h-9 rounded-md bg-emerald-600 px-3 text-xs font-semibold text-white shadow hover:bg-emerald-500"
+    disabled={!booted}
+    className="h-9 rounded-md bg-emerald-600 px-3 text-xs font-semibold text-white shadow hover:bg-emerald-500 disabled:opacity-50"
+    title={!booted ? "Trwa inicjalizacja restauracji (cookies)..." : undefined}
   >
     Włącz powiadomienia
   </button>
 )}
+
 
           {pushStatus === "not-allowed" && (
             <span className="text-[11px] text-slate-500 sm:text-xs">

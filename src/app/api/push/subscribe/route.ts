@@ -106,28 +106,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     }
 
-    // 5) Upsert subskrypcji
-    // Uwaga: jeśli NIE masz kolumny restaurant_slug w admin_push_subscriptions,
-    // usuń pole restaurant_slug z obiektu poniżej.
-    const { error } = await supabaseAdmin
-      .from("admin_push_subscriptions")
-      .upsert(
-        {
-          restaurant_id: restaurantId,
-          restaurant_slug: restaurantSlug,
-          endpoint: subscription.endpoint,
-          subscription, // jsonb
-        },
-        { onConflict: "restaurant_id,endpoint" }
-      );
+    // 5) Upsert subskrypcji (zapisz też keys: p256dh/auth jeśli masz takie kolumny)
+    const keys = (subscription as any)?.keys || {};
+const p256dh = typeof subscription?.keys?.p256dh === "string" ? subscription.keys.p256dh : null;
+const auth = typeof subscription?.keys?.auth === "string" ? subscription.keys.auth : null;
 
-    if (error) {
-      // nie loguj pełnego endpoint/subscription (wrażliwe tokeny)
-      console.error("[push.subscribe] upsert error:", error.message);
-      return NextResponse.json({ error: "DB_ERROR" }, { status: 500 });
-    }
 
-    return NextResponse.json({ ok: true }, { status: 200 });
+const { error } = await supabaseAdmin
+  .from("admin_push_subscriptions")
+  .upsert(
+    {
+      restaurant_id: restaurantId,
+      restaurant_slug: restaurantSlug, // OK jeśli kolumna istnieje
+      endpoint: subscription.endpoint,
+      subscription, // jsonb
+      p256dh,        // jeśli kolumny istnieją
+      auth,          // jeśli kolumny istnieją
+    },
+    { onConflict: "restaurant_id,endpoint" }
+  );
+
+if (error) {
+  console.error("[push.subscribe] upsert error:", error.message);
+  return NextResponse.json({ error: "DB_ERROR" }, { status: 500 });
+}
+
+return NextResponse.json({ ok: true }, { status: 200 });
+
   } catch (e: any) {
     console.error("[push.subscribe] unexpected:", e?.message || e);
     return NextResponse.json({ error: "INTERNAL_ERROR" }, { status: 500 });
