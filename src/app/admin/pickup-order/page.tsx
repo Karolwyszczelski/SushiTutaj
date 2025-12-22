@@ -1789,22 +1789,33 @@ await reg.update().catch(() => {});
         : JSON.parse(JSON.stringify(sub));
 
         const slugToSend =
-      (restaurantSlug || urlSlug || "").toLowerCase().trim() || null;
+  (restaurantSlug || urlSlug || "").toLowerCase().trim() || null;
 
-    const doPost = () =>
-      fetch("/api/admin/push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        cache: "no-store",
-        body: JSON.stringify({
-          subscription: payload,
-          restaurant_slug: slugToSend,
-        }),
-      });
+// Najpierw dopnij cookie restauracji (eliminuje race przy kliknięciu)
+const ensureUrl = slugToSend
+  ? `/api/restaurants/ensure-cookie?restaurant=${encodeURIComponent(slugToSend)}`
+  : "/api/restaurants/ensure-cookie";
 
+await fetch(ensureUrl, {
+  method: "GET",
+  credentials: "include",
+  cache: "no-store",
+}).catch(() => {});
 
-    let res = await doPost();
+const doPost = () =>
+  fetch("/api/admin/push/subscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    cache: "no-store",
+    body: JSON.stringify({
+      subscription: payload,
+      restaurant_slug: slugToSend,
+    }),
+  });
+
+let res = await doPost();
+
 
     // Retry po 401 (typowe po nocy / uśpieniu)
     if (res.status === 401) {
