@@ -1694,6 +1694,11 @@ useEffect(() => {
   const [pushStatus, setPushStatus] = useState<PushStatus>("checking");
   const [pushError, setPushError] = useState<string | null>(null);
 
+    const [restaurantId, setRestaurantId] = useState<string | null>(null);
+  const [restaurantSlug, setRestaurantSlug] = useState<string | null>(null);
+  const [booted, setBooted] = useState(false);
+
+
   // Sprawdzenie, czy przeglądarka obsługuje push i czy jest już subskrypcja
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1720,6 +1725,8 @@ useEffect(() => {
           setPushStatus(perm === "denied" ? "not-allowed" : "idle");
           return;
         }
+                await reg.update().catch(() => {});
+
 
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
@@ -1763,7 +1770,9 @@ const enablePush = useCallback(async () => {
 
     const reg =
       (await navigator.serviceWorker.getRegistration()) ||
-      (await navigator.serviceWorker.register("/sw.js"));
+(await navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }));
+
+await reg.update().catch(() => {});
 
     const existing = await reg.pushManager.getSubscription();
 
@@ -1779,14 +1788,21 @@ const enablePush = useCallback(async () => {
         ? (sub as any).toJSON()
         : JSON.parse(JSON.stringify(sub));
 
+        const slugToSend =
+      (restaurantSlug || urlSlug || "").toLowerCase().trim() || null;
+
     const doPost = () =>
       fetch("/api/admin/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         cache: "no-store",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          subscription: payload,
+          restaurant_slug: slugToSend,
+        }),
       });
+
 
     let res = await doPost();
 
@@ -1810,7 +1826,7 @@ const enablePush = useCallback(async () => {
     setPushStatus("error");
     setPushError("Nie udało się włączyć powiadomień.");
   }
-}, [supabase]);
+}, [supabase, restaurantSlug, urlSlug]);
 
   const [page, setPage] = useState(1);
   const perPage = 10;
@@ -1825,10 +1841,6 @@ const enablePush = useCallback(async () => {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
-
-  const [restaurantId, setRestaurantId] = useState<string | null>(null);
-  const [restaurantSlug, setRestaurantSlug] = useState<string | null>(null);
-  const [booted, setBooted] = useState(false);
 
     // Koszt opakowania z ustawień restauracji (fallback na 3.00)
   const [restaurantPackagingCost, setRestaurantPackagingCost] = useState<number>(
@@ -1917,6 +1929,8 @@ useEffect(() => {
       const reg = await navigator.serviceWorker.getRegistration();
       if (!reg) return;
 
+            await reg.update().catch(() => {});
+
       const sub = await reg.pushManager.getSubscription();
       if (!sub) return;
 
@@ -1949,13 +1963,19 @@ await fetch(ensureUrl, {
 }).catch(() => {});
 
 
+      const slugToSend =
+        (restaurantSlug || urlSlug || "").toLowerCase().trim() || null;
+
       const doPost = () =>
         fetch("/api/admin/push/subscribe", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           cache: "no-store",
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            subscription: payload,
+            restaurant_slug: slugToSend,
+          }),
         });
 
       let res = await doPost();
@@ -1983,7 +2003,7 @@ await fetch(ensureUrl, {
   return () => {
     cancelled = true;
   };
-}, [booted, restaurantSlug, supabase]);
+}, [booted, restaurantSlug, urlSlug, supabase]);
 
  /* AUDIO – dźwięk nowego zamówienia */
 const newOrderAudio = useRef<HTMLAudioElement | null>(null);

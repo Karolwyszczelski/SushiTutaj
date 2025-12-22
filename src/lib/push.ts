@@ -58,8 +58,21 @@ export async function sendPushForRestaurant(
     return;
   }
 
-  const subs = (data as AdminPushSubscriptionRow[]) || [];
-  if (!subs.length) return;
+    const subs = (data as AdminPushSubscriptionRow[]) || [];
+
+  if (!subs.length) {
+    console.warn("[push] skip (0 subs) restaurant_id ->", restaurantId, {
+      type: payload.type,
+      title: payload.title,
+    });
+    return;
+  }
+
+  console.log("[push] start ->", restaurantId, {
+    subs: subs.length,
+    type: payload.type,
+    title: payload.title,
+  });
 
   const basePayload = {
     type: payload.type ?? "order",
@@ -96,8 +109,18 @@ export async function sendPushForRestaurant(
           return;
         }
 
-        await webpush.sendNotification(sub, payloadJson);
-        console.log("[push] sent ->", short(sub.endpoint));
+                const res: any = await webpush.sendNotification(sub, payloadJson, {
+          TTL: 60 * 60 * 6, // 6h
+          urgency: "high",
+        });
+
+        console.log(
+          "[push] sent ->",
+          short(sub.endpoint),
+          "status:",
+          res?.statusCode ?? res?.status ?? "?"
+        );
+
       } catch (err: any) {
         const status = Number(
           err?.statusCode ?? err?.status ?? err?.status_code ?? NaN

@@ -19,9 +19,12 @@ export default function ClientWrapper({ children }: { children: React.ReactNode 
     if (typeof window === "undefined") return;
     if (!("serviceWorker" in navigator)) return;
 
-    navigator.serviceWorker
-      .register("/sw.js", { scope: "/" })
-      .then((reg) => {
+        navigator.serviceWorker
+      .register("/sw.js", { scope: "/", updateViaCache: "none" })
+      .then(async (reg) => {
+        try {
+          await reg.update();
+        } catch {}
         console.log("[sw] Zarejestrowano service workera:", reg.scope);
       })
       .catch((err) => {

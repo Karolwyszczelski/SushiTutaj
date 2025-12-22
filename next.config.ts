@@ -5,6 +5,26 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
 
+    async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-store, no-cache, max-age=0, must-revalidate" },
+          { key: "Pragma", value: "no-cache" },
+        ],
+      },
+      {
+        source: "/manifest.webmanifest",
+        headers: [
+          { key: "Cache-Control", value: "no-store, no-cache, max-age=0, must-revalidate" },
+          { key: "Pragma", value: "no-cache" },
+        ],
+      },
+    ];
+  },
+
+
   // 1. Konfiguracja dla zdjęć z Supabase (Pop-up)
   images: {
     remotePatterns: [

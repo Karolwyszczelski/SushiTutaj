@@ -212,7 +212,7 @@ if (!userId) {
     rslug = data?.[0]?.slug?.toLowerCase() ?? null;
   }
 
-  const sel = `
+    const sel = `
     id, created_at, status, total_price,
     name, selected_option,
     items,
@@ -224,8 +224,12 @@ if (!userId) {
     promo_code, discount_amount,
     loyalty_stickers_before, loyalty_stickers_after,
     loyalty_applied, loyalty_reward_type, loyalty_reward_value,
-    loyalty_min_order
+    loyalty_min_order,
+    packaging_cost,
+    note,
+    kitchen_note
   `;
+
 
   let q = supabase
     .from("orders")
@@ -264,6 +268,9 @@ if (!userId) {
     reservation_date: o.reservation_date ?? null,
     reservation_time: o.reservation_time ?? null,
     chopsticks_qty: o.chopsticks_qty ?? null,
+    packaging_cost: o.packaging_cost ?? null,
+    note: o.note ?? null,
+    kitchen_note: o.kitchen_note ?? null,
 
     promo_code: o.promo_code ?? null,
     discount_amount: Number(o.discount_amount ?? 0) || 0,
