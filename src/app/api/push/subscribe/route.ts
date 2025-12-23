@@ -106,32 +106,45 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
     }
 
-    // 5) Upsert subskrypcji (zapisz też keys: p256dh/auth jeśli masz takie kolumny)
-    const keys = (subscription as any)?.keys || {};
-const p256dh = typeof subscription?.keys?.p256dh === "string" ? subscription.keys.p256dh : null;
-const auth = typeof subscription?.keys?.auth === "string" ? subscription.keys.auth : null;
+   // 5) Upsert subskrypcji
+const p256dh =
+  typeof (subscription as any)?.keys?.p256dh === "string"
+    ? (subscription as any).keys.p256dh
+    : null;
 
+const auth =
+  typeof (subscription as any)?.keys?.auth === "string"
+    ? (subscription as any).keys.auth
+    : null;
 
 const { error } = await supabaseAdmin
   .from("admin_push_subscriptions")
   .upsert(
     {
       restaurant_id: restaurantId,
-      restaurant_slug: restaurantSlug, // OK jeśli kolumna istnieje
+      restaurant_slug: restaurantSlug,
       endpoint: subscription.endpoint,
-      subscription, // jsonb
-      p256dh,        // jeśli kolumny istnieją
-      auth,          // jeśli kolumny istnieją
+      subscription,
+      p256dh,
+      auth,
     },
-    { onConflict: "restaurant_id,endpoint" }
+    // endpoint jest unikalny globalnie → aktualizujemy wpis dla tego endpointu
+    { onConflict: "endpoint" }
   );
+
 
 if (error) {
   console.error("[push.subscribe] upsert error:", error.message);
-  return NextResponse.json({ error: "DB_ERROR" }, { status: 500 });
+  // DEV: pokaż dokładniej, PROD: nie wypluwaj szczegółów
+  const dev = process.env.NODE_ENV !== "production";
+  return NextResponse.json(
+    { error: "DB_ERROR", detail: dev ? error.message : undefined },
+    { status: 500 }
+  );
 }
 
 return NextResponse.json({ ok: true }, { status: 200 });
+
 
   } catch (e: any) {
     console.error("[push.subscribe] unexpected:", e?.message || e);

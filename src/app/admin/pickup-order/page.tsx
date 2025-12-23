@@ -1629,6 +1629,13 @@ export default function PickupOrdersPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlSlug = (searchParams.get("restaurant") || "").toLowerCase() || null;
+  // === START: state restauracji (musi być PRZED ensureRestaurantContext) ===
+  const [restaurantId, setRestaurantId] = useState<string | null>(null);
+  const [restaurantSlug, setRestaurantSlug] = useState<string | null>(null);
+  const [booted, setBooted] = useState(false);
+// === END: state restauracji ===
+
+
 
   const [authChecked, setAuthChecked] = useState(false);
   // Sprawdzenie sesji admina (uodpornione na "noc / uśpienie taba")
@@ -1685,6 +1692,45 @@ useEffect(() => {
   };
 }, [supabase, router]);
 
+const ensureRestaurantContext = useCallback(
+  async (preferredSlug?: string | null) => {
+    const slug =
+      (preferredSlug || restaurantSlug || urlSlug || "")
+        .toLowerCase()
+        .trim() || null;
+
+    const url = slug
+      ? `/api/restaurants/ensure-cookie?restaurant=${encodeURIComponent(slug)}`
+      : `/api/restaurants/ensure-cookie`;
+
+    const r = await fetch(url, {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+
+    const j: any = await r.json().catch(() => ({}));
+
+    if (!r.ok) {
+      return { ok: false as const, error: j?.error || `HTTP_${r.status}` };
+    }
+
+    const rid = typeof j?.restaurant_id === "string" ? j.restaurant_id : null;
+    const rslug =
+      typeof j?.restaurant_slug === "string"
+        ? String(j.restaurant_slug).toLowerCase()
+        : null;
+
+    if (rid) setRestaurantId(rid);
+    if (rslug) setRestaurantSlug(rslug);
+
+    return { ok: true as const, rid, rslug };
+  },
+  [restaurantSlug, urlSlug]
+);
+
+
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -1693,11 +1739,6 @@ useEffect(() => {
     // Powiadomienia push – status dla obsługi
   const [pushStatus, setPushStatus] = useState<PushStatus>("checking");
   const [pushError, setPushError] = useState<string | null>(null);
-
-    const [restaurantId, setRestaurantId] = useState<string | null>(null);
-  const [restaurantSlug, setRestaurantSlug] = useState<string | null>(null);
-  const [booted, setBooted] = useState(false);
-
 
   // Sprawdzenie, czy przeglądarka obsługuje push i czy jest już subskrypcja
   useEffect(() => {
@@ -1803,31 +1844,16 @@ const enablePush = useCallback(async () => {
         ? (sub as any).toJSON()
         : JSON.parse(JSON.stringify(sub));
 
-    // 3) Ustal slug: URL > state > cookie
-    const cookieSlug = readCookie("restaurant_slug");
-    const desiredSlug = (urlSlug || restaurantSlug || cookieSlug || "")
-      .toLowerCase()
-      .trim();
+   // 3) Ustal slug: URL > state > cookie
+const cookieSlug = readCookie("restaurant_slug");
+const desiredSlug =
+  (urlSlug || restaurantSlug || cookieSlug || "").toLowerCase().trim() || null;
 
-    // 4) ZAWSZE dopnij cookies serwerowe przed POST (eliminuje race)
-    const ensureUrl = desiredSlug
-      ? `/api/restaurants/ensure-cookie?restaurant=${encodeURIComponent(desiredSlug)}`
-      : "/api/restaurants/ensure-cookie";
+// 4) ZAWSZE dopnij cookies serwerowe przed POST (eliminuje race)
+await ensureRestaurantContext(desiredSlug).catch(() => ({ ok: false as const }));
 
-    const ensureRes = await fetch(ensureUrl, {
-      method: "GET",
-      credentials: "include",
-      cache: "no-store",
-    }).catch(() => null);
+const slugToSend = desiredSlug;
 
-    if (ensureRes?.ok) {
-      const j = (await ensureRes.json().catch(() => ({} as any))) as any;
-      if (typeof j?.restaurant_id === "string") setRestaurantId(j.restaurant_id);
-      if (typeof j?.restaurant_slug === "string")
-        setRestaurantSlug(j.restaurant_slug.toLowerCase());
-    }
-
-    const slugToSend = desiredSlug || null;
 
     const doPost = () =>
       fetch("/api/admin/push/subscribe", {
@@ -1976,32 +2002,16 @@ useEffect(() => {
           ? (sub as any).toJSON()
           : JSON.parse(JSON.stringify(sub));
 
-          // Upewnij się, że cookies restauracji są ustawione zanim zapiszesz subskrypcję (eliminuje race na starcie)
-const cookieSlug =
-  typeof document !== "undefined"
-    ? document.cookie
-        .split("; ")
-        .find((x) => x.startsWith("restaurant_slug="))
-        ?.split("=")[1]
-    : null;
 
-const rs = (urlSlug || (cookieSlug ? decodeURIComponent(cookieSlug) : "") || "")
-  .toLowerCase()
-  .trim();
+        // dopnij cookies restauracji przed zapisem (eliminuje race + brak dubli ensureUrl)
+const desiredSlug =
+  (urlSlug || restaurantSlug || "").toLowerCase().trim() || null;
 
-const ensureUrl = rs
-  ? `/api/restaurants/ensure-cookie?restaurant=${encodeURIComponent(rs)}`
-  : "/api/restaurants/ensure-cookie";
+await ensureRestaurantContext(desiredSlug).catch(() => ({ ok: false as const }));
 
-await fetch(ensureUrl, {
-  method: "GET",
-  credentials: "include",
-  cache: "no-store",
-}).catch(() => {});
+const slugToSend = desiredSlug;
 
 
-      const slugToSend =
-        (restaurantSlug || urlSlug || "").toLowerCase().trim() || null;
 
       const doPost = () =>
         fetch("/api/admin/push/subscribe", {
@@ -2329,7 +2339,7 @@ const fetchOrders = useCallback(
       }
     }
   },
-  [booted, page, perPage, restaurantSlug, urlSlug, sortOrder, playDing, supabase]
+  [booted, page, perPage, restaurantSlug, urlSlug, sortOrder, dingOnce, supabase]
 );
 
 // aktualizuj ref po każdej zmianie fetchOrders

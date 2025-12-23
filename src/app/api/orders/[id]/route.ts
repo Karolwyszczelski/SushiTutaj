@@ -165,13 +165,31 @@ const clientTime: string | null = hasClientTime ? body.client_delivery_time ?? n
     updateData.status = body.status;
   }
 
-  // "deliveryTime" (timestamptz) i "client_delivery_time" (text)
+    // "deliveryTime" (kanoniczne) + kompatybilność: scheduled_delivery_at (timestamptz)
+  const isIsoString = (v: any) =>
+    typeof v === "string" && v.length > 10 && !Number.isNaN(Date.parse(v));
+
   if (hasEmployeeTime) {
     updateData.deliveryTime = employeeTime;
+
+    // dual-write: jeśli mamy ISO -> wpisz też do scheduled_delivery_at
+    // jeśli null -> wyczyść oba
+    if (employeeTime == null) {
+      updateData.scheduled_delivery_at = null;
+    } else if (isIsoString(employeeTime)) {
+      updateData.scheduled_delivery_at = employeeTime;
+    }
   }
+
   if (hasClientTime) {
     updateData.client_delivery_time = clientTime;
   }
+
+  // jeśli frontend jawnie wysyła scheduled_delivery_at, to ma pierwszeństwo
+  if ("scheduled_delivery_at" in body) {
+    updateData.scheduled_delivery_at = body.scheduled_delivery_at ?? null;
+  }
+
 
   // items
   if ("items" in body) {
@@ -303,19 +321,40 @@ const statusJustCompleted =
     }
   }
   
-  const whenIso: string | null =
-  updated.deliveryTime ?? updated.scheduled_delivery_at ?? null;
+   const whenIso: string | null =
+    updated.deliveryTime ?? updated.scheduled_delivery_at ?? null;
 
-const whenText: string | null =
-  typeof updated.client_delivery_time === "string" ? updated.client_delivery_time : null;
+  const whenText: string | null =
+    typeof updated.client_delivery_time === "string"
+      ? updated.client_delivery_time
+      : null;
 
-const fmtWhen = () => {
-  const t = fmtTime(whenIso);
-  if (t) return t;
-  if (whenText && whenText !== "asap" && /^\d{1,2}:\d{2}$/.test(whenText)) return whenText;
-  return null;
-};
+  const isHHMM = (v: any) =>
+    typeof v === "string" && /^\d{1,2}:\d{2}$/.test(v);
 
+  const isIso = (v: any) =>
+    typeof v === "string" && v.length > 10 && !Number.isNaN(Date.parse(v));
+
+  const fmtWhen = () => {
+    // 1) employee ISO -> format do HH:mm w TZ
+    const t1 = fmtTime(whenIso);
+    if (t1) return t1;
+
+    // 2) employee HH:mm (gdyby ktoś kiedyś tak zapisał)
+    if (isHHMM(whenIso)) return whenIso;
+
+    // 3) client czas (asap ignorujemy)
+    if (whenText && whenText !== "asap") {
+      // client ISO
+      const t2 = isIso(whenText) ? fmtTime(whenText) : null;
+      if (t2) return t2;
+
+      // client HH:mm
+      if (isHHMM(whenText)) return whenText;
+    }
+
+    return null;
+  };
 
   /* ====== SMS (SMSAPI przez sendSms) ====== */
 

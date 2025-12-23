@@ -36,6 +36,20 @@ function makeRes(body: any, code = 200) {
 type RestaurantBySlugRow = { id: string; slug: string | null };
 type RestaurantSlugRow = { slug: string | null };
 
+function inferSlugFromReferer(req: Request): string | null {
+  const ref = req.headers.get("referer");
+  if (!ref) return null;
+
+  try {
+    const u = new URL(ref);
+    const seg = (u.pathname || "/").split("/").filter(Boolean)[0] || null;
+    return seg ? seg.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+
 export async function GET(req: Request) {
   const supabase = createRouteHandlerClient<Database>({ cookies });
   const url = new URL(req.url);
@@ -53,7 +67,10 @@ export async function GET(req: Request) {
   const cookieSlug = cookieStore.get("restaurant_slug")?.value ?? null;
 
   // kandydaci (z URL/cookies)
-  const desiredSlug = (paramSlugRaw || cookieSlug || null)?.toLowerCase() || null;
+    const refererSlug = inferSlugFromReferer(req);
+  const desiredSlug =
+    (paramSlugRaw || cookieSlug || refererSlug || null)?.toLowerCase() || null;
+
   let restaurantId: string | null = cookieId;
   let restaurantSlug: string | null = desiredSlug;
 
@@ -159,7 +176,7 @@ export async function GET(req: Request) {
       restaurantSlug = data.slug?.toLowerCase() ?? restaurantSlug;
     }
 
-    // 2) Mamy ID, ale nie mamy slugu → dociągnij slug po ID (wspólne dla admin/public)
+       // 2) Mamy ID, ale nie mamy slugu → dociągnij slug po ID (wspólne dla admin/public)
     if (restaurantId && !restaurantSlug) {
       const { data, error } = await supabase
         .from("restaurants")
@@ -171,13 +188,34 @@ export async function GET(req: Request) {
         console.error("ensure-cookie restaurants by id error:", error.message);
         return makeRes({ error: error.message }, 500);
       }
-      restaurantSlug = data?.slug?.toLowerCase() ?? null;
+
+      // jeśli cookieId wskazuje nieistniejącą restaurację → traktuj jak brak kontekstu
+      if (!data) {
+        restaurantId = null;
+        restaurantSlug = null;
+      } else {
+        restaurantSlug = data.slug?.toLowerCase() ?? null;
+      }
     }
 
-    // 3) Nadal nie ma ID → nie wiemy jaki lokal
+    // 3) Nadal nie ma ID → public: nie spamuj 404 (np. homepage "/"), admin: 404 zostaje
     if (!restaurantId) {
-      return makeRes({ error: "NO_RESTAURANT" }, 404);
+      if (userId) {
+        return makeRes({ error: "NO_RESTAURANT" }, 404);
+      }
+
+      // public bez kontekstu – zwróć 200 i (opcjonalnie) wyczyść stare cookies
+      const res = makeRes(
+        { ok: false, restaurant_id: null, restaurant_slug: null },
+        200
+      );
+
+      if (cookieId) res.cookies.set("restaurant_id", "", { ...CK_ID, maxAge: 0 });
+      if (cookieSlug) res.cookies.set("restaurant_slug", "", { ...CK_SLUG, maxAge: 0 });
+
+      return res;
     }
+
 
     // 4) Ustaw cookies + zwróć
     const res = makeRes(
