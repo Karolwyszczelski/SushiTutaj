@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { Plus, RotateCw, Trash2, Save, Info } from "lucide-react";

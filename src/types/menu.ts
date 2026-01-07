@@ -3,10 +3,11 @@ import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
 export async function fetchMenu(restaurantSlug: string) {
   const supabase = getSupabaseBrowser();
-  const { data, error } = await supabase.rpc("get_menu", {
-    p_restaurant_slug: restaurantSlug,
-    p_now: new Date().toISOString(),
-  });
+  // Use the view instead of RPC
+  const { data, error } = await supabase
+    .from("v_menu_by_slug")
+    .select("*")
+    .eq("restaurant_slug", restaurantSlug);
   if (error) throw error;
-  return data as any; // potem typujesz
+  return data as any;
 }

@@ -18,12 +18,12 @@ export default function ReservationsTable({ limit }: { limit?: number }) {
   const [reservations, setReservations] = useState<Reservation[]>([]);
 
   useEffect(() => {
-    supabase
-      .from("reservations")
+    (supabase
+      .from("reservations") as any)
       .select("id, customer_name, reservation_time, party_size, status")
       .order("reservation_time", { ascending: false })
       .limit(limit ?? 10)
-      .then(({ data, error }) => {
+      .then(({ data, error }: { data: any; error: any }) => {
         if (error) {
           console.error("Błąd pobierania rezerwacji:", error.message);
         } else {

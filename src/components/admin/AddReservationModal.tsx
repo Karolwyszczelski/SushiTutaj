@@ -21,15 +21,14 @@ export default function AddReservationModal({
     // rozbijamy datetime-local na datę + godzinę
     const [reservation_date, reservation_time] = reserveDateTime.split("T");
 
-    const { error } = await supabase
-      .from("reservations")
+    const { error } = await (supabase.from("reservations") as any)
       .insert({
         customer_name:    customerName,
         customer_phone:   phone,
         reservation_date: reservation_date,
         reservation_time: reservation_time,
         number_of_guests: partySize,
-      });
+      } as any);
 
     if (error) {
       console.error("Nie udało się dodać rezerwacji:", error.message);

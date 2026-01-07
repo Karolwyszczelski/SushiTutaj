@@ -220,18 +220,18 @@ export default function DiscountCodesForm() {
         ? parseList(editing.excludeProducts) ?? []
         : [];
 
-    const payload: Partial<DiscountCodeRow> = {
+    const payload = {
       code: editing.requireCode ? editing.code.trim() || null : null,
       description: editing.description.trim() || null,
-      active: editing.active,
-      type: editing.type,
-      value: valueNum,
+      active: editing.active ?? undefined,
+      type: editing.type ?? undefined,
+      value: valueNum ?? 0,
       min_order: minOrderNum,
       expires_at: editing.expiresAt
         ? new Date(editing.expiresAt).toISOString()
         : null,
-      require_code: editing.requireCode,
-      apply_scope: editing.applyScope,
+      require_code: editing.requireCode ?? undefined,
+      apply_scope: editing.applyScope ?? undefined,
       include_categories: includeCategoriesArr,
       exclude_categories: excludeCategoriesArr,
       include_products: includeProductsArr,
@@ -244,13 +244,13 @@ export default function DiscountCodesForm() {
       if (editing.id) {
         const { error } = await supabase
           .from("discount_codes")
-          .update(payload)
+          .update(payload as any)
           .eq("id", editing.id);
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from("discount_codes")
-          .insert(payload);
+          .insert(payload as any);
         if (error) throw error;
       }
 

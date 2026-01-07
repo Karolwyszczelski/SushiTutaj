@@ -247,7 +247,7 @@ export default function SushiOfMonthForm() {
       // 5) Update wszystkich istniejących "current"
       const { error: upAllErr } = await supabase
         .from("sushi_of_month")
-        .update(payload)
+        .update(payload as any)
         .eq("legacy_id", "current");
       if (upAllErr && upAllErr.code !== "PGRST116") throw upAllErr;
 

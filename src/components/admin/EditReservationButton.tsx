@@ -39,20 +39,18 @@ export default function EditReservationButton({
   useEffect(() => {
     if (!open) return;
     (async () => {
-      const { data } = await supabase
-        .from("restaurant_tables")
+      const { data } = await (supabase.from as any)("restaurant_tables")
         .select("id, table_number, seats")
         .order("table_number", { ascending: true });
       if (data) {
-        setTables(data);
+        setTables(data as any);
         // optionally prefill selectedTable from existing assignment
-        const { data: assign } = await supabase
-          .from("table_assignments")
+        const { data: assign } = await (supabase.from as any)("table_assignments")
           .select("table_id")
           .eq("reservation_id", reservation.id)
           .single();
-        if (assign?.table_id) {
-          setSelectedTable(assign.table_id);
+        if ((assign as any)?.table_id) {
+          setSelectedTable((assign as any).table_id);
         }
       }
     })();
@@ -67,7 +65,7 @@ export default function EditReservationButton({
       .update({
         reservation_time: time,
         number_of_guests: partySize,
-      })
+      } as any)
       .eq("id", reservation.id);
     if (resErr) {
       console.error("Błąd aktualizacji rezerwacji:", resErr.message);
@@ -77,8 +75,7 @@ export default function EditReservationButton({
 
     // upsert table assignment
     if (selectedTable) {
-      const { error: upsertErr } = await supabase
-        .from("table_assignments")
+      const { error: upsertErr } = await (supabase.from as any)("table_assignments")
         .upsert({
           reservation_id: reservation.id,
           table_id: selectedTable,
@@ -89,8 +86,7 @@ export default function EditReservationButton({
       }
     } else {
       // if unselecting table, remove assignment
-      await supabase
-        .from("table_assignments")
+      await (supabase.from as any)("table_assignments")
         .delete()
         .eq("reservation_id", reservation.id);
     }
@@ -102,8 +98,8 @@ export default function EditReservationButton({
 
   // cancel reservation: set cancelled_at
   const handleCancel = async () => {
-    const { error } = await supabase
-      .from("reservations")
+    const { error } = await (supabase
+      .from("reservations") as any)
       .update({ cancelled_at: new Date().toISOString() })
       .eq("id", reservation.id);
     if (error) {

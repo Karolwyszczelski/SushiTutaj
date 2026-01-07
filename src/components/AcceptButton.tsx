@@ -80,8 +80,7 @@ export default function AcceptButton({ orderId, orderType, onAccept }: Props) {
 
         // 3) Czytaj ustawienia z restaurant_settings z uwzględnieniem restaurant_id
         //    Fallback: bez filtra jeżeli brak per-restauracja
-        const baseQuery = supabase
-          .from("restaurant_settings")
+        const baseQuery = (supabase.from as any)("restaurant_settings")
           .select("setting_key, setting_value")
           .in("setting_key", KEYS);
 
@@ -90,7 +89,7 @@ export default function AcceptButton({ orderId, orderType, onAccept }: Props) {
 
         if (!error && data && data.length) {
           const obj: Settings = {};
-          for (const r of data) {
+          for (const r of data as any[]) {
             const k = String(r.setting_key) as SettingKey;
             if (KEYS.includes(k)) obj[k] = Number.parseInt(String(r.setting_value ?? "0"), 10) || 0;
           }
@@ -101,17 +100,16 @@ export default function AcceptButton({ orderId, orderType, onAccept }: Props) {
         // 4) Drugi fallback: próbuj z tabeli restaurants (jeśli kolumny istnieją)
         //    prep_time_delivery, prep_time_takeaway, prep_time_local
         if (restaurantId) {
-          const { data: rs } = await supabase
-            .from("restaurants")
+          const { data: rs } = await (supabase.from as any)("restaurants")
             .select("prep_time_delivery, prep_time_takeaway, prep_time_local")
             .eq("id", restaurantId)
             .maybeSingle();
 
           if (rs) {
             const obj: Settings = {
-              prep_time_delivery: Number(rs.prep_time_delivery) || 0,
-              prep_time_takeaway: Number(rs.prep_time_takeaway) || 0,
-              prep_time_local: Number(rs.prep_time_local) || 0,
+              prep_time_delivery: Number((rs as any).prep_time_delivery) || 0,
+              prep_time_takeaway: Number((rs as any).prep_time_takeaway) || 0,
+              prep_time_local: Number((rs as any).prep_time_local) || 0,
             };
             if (!stop) setSettings(obj);
             return;
