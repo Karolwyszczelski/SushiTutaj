@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import clsx from "clsx";
-import { createBrowserClient } from "@supabase/ssr";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { Plus, RotateCw, Trash2, Save, Info } from "lucide-react";
 
 type UUID = string;
@@ -28,7 +28,7 @@ const DEFAULT_SIZE = { w: 140, h: 90 };
 const DEFAULT_SEATS = 2;
 
 export default function TableLayoutForm() {
-  const supabase = useMemo(() => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!), []);
+  const supabase = getSupabaseBrowser();
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const [restaurantId, setRestaurantId] = useState<UUID | null>(null);

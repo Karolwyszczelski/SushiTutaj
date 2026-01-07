@@ -1,8 +1,8 @@
 // lib/menu.ts
-import { createBrowserClient } from "@supabase/ssr";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
 export async function fetchMenu(restaurantSlug: string) {
-  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+  const supabase = getSupabaseBrowser();
   const { data, error } = await supabase.rpc("get_menu", {
     p_restaurant_slug: restaurantSlug,
     p_now: new Date().toISOString(),

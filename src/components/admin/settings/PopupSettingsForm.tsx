@@ -1,8 +1,8 @@
 
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import React, { useCallback, useEffect, useState } from "react";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import {
   Upload,
   X,
@@ -34,7 +34,7 @@ type PopupRow = {
 };
 
 export default function PopupSettingsForm({ restaurantId }: { restaurantId: string }) {
-  const supabase = useMemo(() => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!), []);
+  const supabase = getSupabaseBrowser();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

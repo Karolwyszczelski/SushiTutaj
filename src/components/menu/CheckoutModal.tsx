@@ -11,12 +11,12 @@ import Script from "next/script";
 import { X, ShoppingBag, Truck } from "lucide-react";
 import clsx from "clsx";
 import QRCode from "react-qr-code";
-import { useSession } from "@supabase/auth-helpers-react";
+import { useSession } from "@/contexts/SessionContext";
 import { toZonedTime } from "date-fns-tz";
 import useIsClient from "@/lib/useIsClient";
 import useCartStore from "@/store/cartStore";
 import AddressAutocomplete from "@/components/menu/AddressAutocomplete";
-import { createBrowserClient } from "@supabase/ssr";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { useIsMobile } from "./checkoutModal/hooks";
 import { ChopsticksControl } from "./checkoutModal/ChopsticksControl";
 import { ProductItem } from "./checkoutModal/ProductItem";
@@ -90,7 +90,7 @@ export default function CheckoutModal() {
   const isClient = useIsClient();
   const session = useSession();
   const isLoggedIn = !!session?.user;
-  const supabaseAuth = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+  const supabaseAuth = getSupabaseBrowser();
 
   const {
     isCheckoutOpen,

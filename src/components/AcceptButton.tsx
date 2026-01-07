@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { useSearchParams } from "next/navigation";
 
 type OrderType = "takeaway" | "delivery";
@@ -34,7 +34,7 @@ const getCookie = (k: string): string | null => {
 };
 
 export default function AcceptButton({ orderId, orderType, onAccept }: Props) {
-  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+  const supabase = getSupabaseBrowser();
   const searchParams = useSearchParams();
 
   const [settings, setSettings] = useState<Settings | null>(null);

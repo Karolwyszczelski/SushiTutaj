@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
 type Mode = "loading" | "recovery" | "done" | "error";
 
 export default function AuthCallbackPage() {
-  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+  const supabase = getSupabaseBrowser();
   const [mode, setMode] = useState<Mode>("loading");
   const [error, setError] = useState<string | null>(null);
   const [pass, setPass] = useState("");

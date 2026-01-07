@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import Link from "next/link";
 
 type Reservation = {
@@ -14,7 +14,7 @@ type Reservation = {
 };
 
 export default function ReservationsTable({ limit }: { limit?: number }) {
-  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+  const supabase = getSupabaseBrowser();
   const [reservations, setReservations] = useState<Reservation[]>([]);
 
   useEffect(() => {

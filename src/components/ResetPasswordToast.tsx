@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { X, KeyRound } from "lucide-react";
-import { createBrowserClient } from "@supabase/ssr";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 const gradBtn =
@@ -16,7 +16,7 @@ const inputCls =
 const ALLOWED_CITIES = new Set(["ciechanow", "przasnysz", "szczytno"]);
 
 export default function ResetPasswordToast() {
-  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+  const supabase = getSupabaseBrowser();
   const router = useRouter();
   const pathname = usePathname() ?? "/";
   const sp = useSearchParams();

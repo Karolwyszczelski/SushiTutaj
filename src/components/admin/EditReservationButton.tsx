@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from "react";
 import { X } from "lucide-react";
-import { createBrowserClient } from "@supabase/ssr";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
 export default function EditReservationButton({
   reservation,
@@ -17,7 +17,7 @@ export default function EditReservationButton({
   };
   onUpdated?(): void;
 }) {
-  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+  const supabase = getSupabaseBrowser();
 
   // modal open
   const [open, setOpen] = useState(false);

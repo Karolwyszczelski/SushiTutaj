@@ -61,12 +61,14 @@ export async function POST(req: Request) {
     let ctx: Awaited<ReturnType<typeof getAdminContext>>;
     try {
       ctx = await getAdminContext();
-    } catch {
+    } catch (e: any) {
+      console.error("[admin.push.subscribe] getAdminContext failed:", e?.message || e);
       return makeRes({ error: "Unauthorized" }, 401);
     }
 
-    // 2) Walidacja subskrypcji
-    const body = (await req.json().catch(() => null)) as PushSubscriptionJSON | null;
+    // 2) Walidacja subskrypcji (obsługa obu formatów: { subscription: {...} } lub bezpośrednio {...})
+    const rawBody = await req.json().catch(() => null);
+    const body = (rawBody?.subscription ?? rawBody) as PushSubscriptionJSON | null;
 
     const endpoint = sanitizeEndpoint(body?.endpoint);
     const p256dh = sanitizeKey(body?.keys?.p256dh);

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
 export default function AddReservationModal({
   onClose,
@@ -10,7 +10,7 @@ export default function AddReservationModal({
   onClose(): void;
   onCreated(): void;
 }) {
-  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+  const supabase = getSupabaseBrowser();
   const [customerName, setCustomerName] = useState("");
   const [reserveDateTime, setReserveDateTime] = useState(""); // "YYYY-MM-DDTHH:MM"
   const [partySize, setPartySize] = useState(1);

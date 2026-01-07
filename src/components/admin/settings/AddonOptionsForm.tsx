@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import React, { useCallback, useEffect, useState } from "react";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import {
   Plus,
   Trash2,
@@ -40,7 +40,7 @@ const zlToCents = (priceStr: string) => {
 const centsToZl = (cents?: number | null) => ((cents ?? 0) / 100).toFixed(2);
 
 export default function AddonOptionsForm({ restaurantSlug }: { restaurantSlug: string | null }) {
-  const supabase = useMemo(() => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!), []);
+  const supabase = getSupabaseBrowser();
 
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
 

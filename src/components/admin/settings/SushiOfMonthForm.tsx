@@ -2,12 +2,11 @@
 
 import React, {
   useEffect,
-  useMemo,
   useState,
   FormEvent,
   useCallback,
 } from "react";
-import { createBrowserClient } from "@supabase/ssr";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import { RotateCcw, Save, Upload, X, Image as ImageIcon } from "lucide-react";
 
 type Row = {
@@ -61,7 +60,7 @@ function withCacheBuster(url: string, buster: number) {
 }
 
 export default function SushiOfMonthForm() {
-  const supabase = useMemo(() => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!), []);
+  const supabase = getSupabaseBrowser();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

@@ -2,16 +2,16 @@
 "use client";
 
 // START: imports
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import type { Route } from "next";
 // END: imports
 
 export default function VerifyClient() {
-  // START: memoized supabase
-  const supabase = useMemo(() => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!), []);
-  // END: memoized supabase
+  // START: supabase client
+  const supabase = getSupabaseBrowser();
+  // END: supabase client
 
   const router = useRouter();
   const [msg, setMsg] = useState("Weryfikuję link…");
