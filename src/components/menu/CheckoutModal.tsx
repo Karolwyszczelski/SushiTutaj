@@ -1140,18 +1140,33 @@ const hasAutoLoyaltyDiscount =
   typeof loyaltyStickers === "number" &&
   loyaltyStickers >= 8;
 
-  // Automatycznie włącz darmową rolkę gdy user ma 4-7 naklejek i nie wykorzystał jeszcze
+  // Automatycznie włącz nagrodę lojalnościową:
+  // - 8+ naklejek → automatycznie use_8 (-30%)
+  // - 4-7 naklejek → automatycznie use_4 (darmowa rolka)
   useEffect(() => {
-    if (loyaltyRollClaimed === true && loyaltyChoice === "use_4") {
+    if (canUseLoyalty8 && loyaltyChoice !== "use_8") {
+      // 8+ naklejek - automatycznie -30%
+      setLoyaltyChoice("use_8");
+    } else if (loyaltyRollClaimed === true && loyaltyChoice === "use_4") {
       setLoyaltyChoice("keep");
-    } else if (canUseLoyalty4 && loyaltyChoice === "keep") {
-      // Automatycznie ustaw use_4 gdy spełnione warunki
+    } else if (canUseLoyalty4 && !canUseLoyalty8 && loyaltyChoice === "keep") {
+      // 4-7 naklejek - automatycznie darmowa rolka
       setLoyaltyChoice("use_4");
     }
-  }, [loyaltyRollClaimed, loyaltyChoice, canUseLoyalty4]);
+  }, [loyaltyRollClaimed, loyaltyChoice, canUseLoyalty4, canUseLoyalty8]);
 
+// Oblicz rabat lojalnościowy -30% (gdy use_8)
+const loyaltyDiscount = useMemo(() => {
+  if (loyaltyChoice !== "use_8" || !canUseLoyalty8) return 0;
+  // -30% od produktów + opakowania (bez dostawy)
+  const base = baseTotal + packagingCost;
+  return Math.round(base * 0.30 * 100) / 100;
+}, [loyaltyChoice, canUseLoyalty8, baseTotal, packagingCost]);
 
-const totalWithDelivery = Math.max(0, subtotal + deliveryCost - discount);
+// Łączny rabat = promocyjny + lojalnościowy
+const totalDiscount = discount + loyaltyDiscount;
+
+const totalWithDelivery = Math.max(0, subtotal + deliveryCost - totalDiscount);
   const shouldHideOrderActions = Boolean(TURNSTILE_SITE_KEY && turnstileError);
 
   const productHelpers = {
@@ -1574,7 +1589,8 @@ const orderPayload: any = {
   delivery_cost: selectedOption === "delivery" ? (deliveryInfo?.cost || 0) : 0,
   packaging_cost: packagingCost,
   total_price: totalWithDelivery,
-  discount_amount: discount || 0,
+  discount_amount: totalDiscount || 0,
+  loyalty_discount_amount: loyaltyDiscount || 0,
   promo_code: promo?.code || (promo && !promo.require_code ? "AUTO" : null),
   legal_accept: {
     terms_version: TERMS_VERSION,
@@ -1788,9 +1804,18 @@ const PriceSummaryCard = (
 
       {discount > 0 ? (
         <div className="flex items-center justify-between">
-          <span className="text-black/70">Rabat</span>
+          <span className="text-black/70">Rabat promocyjny</span>
           <span className="font-semibold text-green-700">
             -{pln(discount)}
+          </span>
+        </div>
+      ) : null}
+
+      {loyaltyDiscount > 0 ? (
+        <div className="flex items-center justify-between">
+          <span className="text-black/70">Rabat lojalnościowy −30%</span>
+          <span className="font-semibold text-green-700">
+            -{pln(loyaltyDiscount)}
           </span>
         </div>
       ) : null}
@@ -2399,9 +2424,7 @@ return (
                                       {!canUseLoyalty4 &&
                                         hasAutoLoyaltyDiscount && (
                                           <div className="font-semibold text-sm">
-                                            Masz już co najmniej 8 naklejek –
-                                            rabat lojalnościowy doliczymy przy
-                                            realizacji zamówienia.
+                                            Masz 8+ naklejek – rabat −30% ({pln(loyaltyDiscount)}) został automatycznie naliczony!
                                           </div>
                                         )}
                                     </div>
@@ -2417,10 +2440,10 @@ return (
                               onClear={clearPromo}
                             />
 
-                            {discount > 0 && (
+                            {totalDiscount > 0 && (
                               <div className="flex justify-between text-sm text-green-700">
-                                <span>Rabat:</span>
-                                <span>-{discount.toFixed(2)} zł</span>
+                                <span>Rabat łącznie:</span>
+                                <span>-{totalDiscount.toFixed(2)} zł</span>
                               </div>
                             )}
 
@@ -2799,9 +2822,7 @@ return (
 
                             {!canUseLoyalty4 && hasAutoLoyaltyDiscount && (
                               <div className="font-semibold text-sm text-center">
-                                Masz już co najmniej 8 naklejek – rabat
-                                lojalnościowy doliczymy przy realizacji
-                                zamówienia.
+                                Masz 8+ naklejek – rabat −30% ({pln(loyaltyDiscount)}) został automatycznie naliczony!
                               </div>
                             )}
                           </div>
@@ -2822,10 +2843,10 @@ return (
                     onClear={clearPromo}
                   />
 
-                  {discount > 0 && (
+                  {totalDiscount > 0 && (
                     <div className="flex justify-between text-green-700">
-                      <span>Rabat:</span>
-                      <span>-{discount.toFixed(2)} zł</span>
+                      <span>Rabat łącznie:</span>
+                      <span>-{totalDiscount.toFixed(2)} zł</span>
                     </div>
                   )}
                   <div className="flex justify-between font-semibold border-t pt-2">

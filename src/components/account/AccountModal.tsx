@@ -21,6 +21,75 @@ import useCartStore from "@/store/cartStore";
 const gradBtn =
   "bg-gradient-to-r from-[var(--accent-red-dark,#7a0d0d)] via-[var(--accent-red,#a61b1b)] to-[var(--accent-red-dark-2,#b11212)] text-white";
 
+/** Status zamówienia → czytelna etykieta */
+function getStatusLabel(status?: string | null): string {
+  switch ((status || "").toLowerCase()) {
+    case "new":
+    case "placed":
+      return "Złożone";
+    case "accepted":
+      return "Przyjęte";
+    case "preparing":
+      return "W przygotowaniu";
+    case "ready":
+      return "Gotowe";
+    case "out_for_delivery":
+      return "W dostawie";
+    case "completed":
+      return "Zrealizowane";
+    case "cancelled":
+      return "Anulowane";
+    default:
+      return status || "Przyjęte";
+  }
+}
+
+/** Status zamówienia → kolor badge'a */
+function getStatusColor(status?: string | null): string {
+  switch ((status || "").toLowerCase()) {
+    case "new":
+    case "placed":
+      return "bg-blue-100 text-blue-700";
+    case "accepted":
+      return "bg-yellow-100 text-yellow-700";
+    case "preparing":
+      return "bg-orange-100 text-orange-700";
+    case "ready":
+      return "bg-green-100 text-green-700";
+    case "out_for_delivery":
+      return "bg-purple-100 text-purple-700";
+    case "completed":
+      return "bg-green-100 text-green-700";
+    case "cancelled":
+      return "bg-red-100 text-red-700";
+    default:
+      return "bg-gray-100 text-gray-700";
+  }
+}
+
+/** Wyciągnij dodatki z options jako string */
+function extractAddons(options?: any): string | null {
+  if (!options) return null;
+  const parts: string[] = [];
+
+  // addons array
+  if (Array.isArray(options.addons) && options.addons.length > 0) {
+    parts.push(...options.addons.filter((a: any) => typeof a === "string" && a.trim()));
+  }
+
+  // sosy
+  if (Array.isArray(options.sauces) && options.sauces.length > 0) {
+    parts.push(...options.sauces.filter((s: any) => typeof s === "string" && s.trim()));
+  }
+
+  // note
+  if (options.note && typeof options.note === "string" && options.note.trim()) {
+    parts.push(`"${options.note.trim()}"`);
+  }
+
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
 const inputCls =
   "w-full rounded-xl bg-white border border-black/10 px-3 py-2 text-sm " +
   "focus:outline-none focus:ring-2 focus:ring-[var(--accent-red,#a61b1b)] focus:border-transparent";
@@ -28,19 +97,21 @@ const inputCls =
 type Tab = "auth" | "orders" | "loyalty" | "profile";
 type AuthMode = "login" | "register";
 
-type OrderRow = {
-  id: string | number;
-  created_at?: string;
-  total_price?: number;
-  status?: string;
-};
-
 type OrderItemRow = {
   product_id?: string | number | null;
   name: string;
   unit_price: number;
   quantity: number;
   options?: any;
+};
+
+type OrderRow = {
+  id: string | number;
+  created_at?: string;
+  total_price?: number;
+  status?: string;
+  selected_option?: string;
+  items?: OrderItemRow[];
 };
 
 export default function AccountModal({
@@ -166,18 +237,38 @@ export default function AccountModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, user?.id]);
 
-  // pobierz zamówienia po zalogowaniu
+  // pobierz zamówienia po zalogowaniu (z pozycjami)
   useEffect(() => {
     const fetchOrders = async () => {
       if (!user) return;
       setOrdersLoading(true);
       const { data, error } = await supabase
         .from("orders")
-        .select("id, created_at, total_price, status")
+        .select(`
+          id, 
+          created_at, 
+          total_price, 
+          status,
+          selected_option,
+          order_items (
+            product_id,
+            name,
+            unit_price,
+            quantity,
+            options
+          )
+        `)
         .eq("user", user.id)
         .order("created_at", { ascending: false })
-        .limit(50);
-      if (!error && data) setOrders(data as any);
+        .limit(20);
+      if (!error && data) {
+        // Mapuj order_items na items
+        const mapped = (data as any[]).map((o) => ({
+          ...o,
+          items: o.order_items || [],
+        }));
+        setOrders(mapped);
+      }
       setOrdersLoading(false);
     };
     if (tab === "orders" && user) fetchOrders();
@@ -428,7 +519,7 @@ useEffect(() => {
       }}
     >
       <div
-        className="relative w-full max-w-3xl bg-white text-black shadow-2xl grid lg:grid-cols-2 rounded-2xl max-h-[92vh] overflow-hidden"
+        className="relative w-full max-w-3xl bg-white text-black shadow-2xl grid lg:grid-cols-2 rounded-2xl max-h-[92vh] overflow-hidden min-h-0"
         onMouseDown={(e) => e.stopPropagation()}
       >
         {/* LEWA: desktop tabs */}
@@ -484,7 +575,7 @@ useEffect(() => {
         </aside>
 
         {/* PRAWA: treść */}
-        <div className="p-6 overflow-y-auto">
+        <div className="p-6 overflow-y-auto max-h-[85vh]">
           {/* Zamknięcie */}
           <button
             onClick={onClose}
@@ -745,30 +836,103 @@ useEffect(() => {
               ) : orders.length === 0 ? (
                 <p className="text-black/70 text-sm">Brak zamówień.</p>
               ) : (
-                <ul className="space-y-2">
-                  {orders.map((o) => (
-                    <li
-                      key={String(o.id)}
-                      className="rounded-xl border border-black/10 px-3 py-2 flex items-start sm:items-center justify-between gap-3"
-                    >
-                      <div className="text-sm min-w-0">
-                        <div className="font-semibold truncate">#{o.id}</div>
-                        <div className="text-black/70">
-                          {o.created_at ? new Date(o.created_at).toLocaleString() : ""} •{" "}
-                          {(o.total_price ?? 0).toFixed(2)} zł • {o.status || "przyjęte"}
+                <div className="space-y-4">
+                  {orders.map((o) => {
+                    const statusLabel = getStatusLabel(o.status);
+                    const statusColor = getStatusColor(o.status);
+                    const items = o.items || [];
+                    const optionLabel = o.selected_option === "delivery" ? "Dostawa" : "Odbiór";
+
+                    return (
+                      <div
+                        key={String(o.id)}
+                        className="rounded-2xl border border-black/10 overflow-hidden bg-white shadow-sm"
+                      >
+                        {/* Nagłówek zamówienia */}
+                        <div className="px-4 py-3 bg-gradient-to-r from-black/[0.02] to-transparent border-b border-black/5">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-mono text-black/50">#{String(o.id).slice(-8)}</span>
+                              <span className={clsx(
+                                "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
+                                statusColor
+                              )}>
+                                {statusLabel}
+                              </span>
+                              <span className="text-xs text-black/60 bg-black/5 px-2 py-0.5 rounded-full">
+                                {optionLabel}
+                              </span>
+                            </div>
+                            <span className="text-lg font-bold text-[var(--accent-red,#a61b1b)]">
+                              {(o.total_price ?? 0).toFixed(2)} zł
+                            </span>
+                          </div>
+                          <div className="text-xs text-black/50 mt-1">
+                            {o.created_at
+                              ? new Date(o.created_at).toLocaleDateString("pl-PL", {
+                                  weekday: "long",
+                                  day: "numeric",
+                                  month: "long",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : ""}
+                          </div>
+                        </div>
+
+                        {/* Lista pozycji */}
+                        {items.length > 0 && (
+                          <div className="px-4 py-3">
+                            <div className="text-xs font-semibold text-black/40 uppercase tracking-wide mb-2">
+                              Co zamawiałeś
+                            </div>
+                            <ul className="space-y-2">
+                              {items.slice(0, 5).map((it, idx) => {
+                                const addons = extractAddons(it.options);
+                                return (
+                                  <li key={idx} className="flex items-start gap-3">
+                                    <span className="shrink-0 w-6 h-6 rounded-full bg-[var(--accent-red,#a61b1b)] text-white text-xs flex items-center justify-center font-semibold">
+                                      {it.quantity}×
+                                    </span>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-medium text-sm truncate">{it.name}</div>
+                                      {addons && (
+                                        <div className="text-xs text-black/50 truncate">{addons}</div>
+                                      )}
+                                    </div>
+                                    <span className="text-sm text-black/70 shrink-0">
+                                      {((it.unit_price || 0) * (it.quantity || 1)).toFixed(2)} zł
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                              {items.length > 5 && (
+                                <li className="text-xs text-black/50 italic">
+                                  +{items.length - 5} więcej pozycji…
+                                </li>
+                              )}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Przycisk zamów ponownie */}
+                        <div className="px-4 py-3 border-t border-black/5 bg-black/[0.01]">
+                          <button
+                            onClick={() => reorder(o.id)}
+                            className={clsx(
+                              "w-full rounded-xl px-4 py-2.5 text-sm font-semibold inline-flex items-center justify-center gap-2 transition",
+                              gradBtn
+                            )}
+                          >
+                            <RefreshCcw className="w-4 h-4" />
+                            Zamów to samo
+                          </button>
                         </div>
                       </div>
-                      <button
-                        onClick={() => reorder(o.id)}
-                        className="shrink-0 inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm border hover:bg-black/5"
-                        title="Dodaj pozycje z tego zamówienia do koszyka"
-                      >
-                        <RefreshCcw className="w-4 h-4" />
-                        Zamów ponownie
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                    );
+                  })}
+                </div>
               )}
             </div>
           )}
