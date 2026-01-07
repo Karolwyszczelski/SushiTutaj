@@ -78,7 +78,7 @@ export function DeliveryTimeSelector({
 
         {deliveryTimeOption === "schedule" && !canSchedule && (
           <span className="text-xs text-red-600">
-            Brak dostępnych godzin na dziś — wybierz „Jak najszybciej".
+            Brak dostępnych godzin na dziś — wybierz &bdquo;Jak najszybciej&rdquo;.
           </span>
         )}
       </div>

@@ -168,7 +168,7 @@ export default function DiscountCodesForm() {
     };
 
     loadRestaurantAndCodes();
-  }, []);
+  }, [supabase]);
 
   const startCreate = () => {
     setEditing(emptyForm());
