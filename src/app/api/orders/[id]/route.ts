@@ -282,43 +282,85 @@ const statusJustCompleted =
 
   if (statusJustCompleted) {
     try {
-      const { data: proc, error: procErr } = await (supabaseAdmin as any).rpc(
-        "process_loyalty_for_order",
-        { p_order_id: orderId }
-      );
-
-      if (!procErr) {
-  const { data: fresh, error: freshErr } = await (supabaseAdmin as any)
-    .from("orders")
-.select("loyalty_awarded, loyalty_stickers_before, loyalty_stickers_after, loyalty_awarded_at")
-    .eq("id", orderId)
-    .maybeSingle();
-
-  if (!freshErr && fresh) {
-    updated.loyalty_awarded = fresh.loyalty_awarded ?? updated.loyalty_awarded;
-    updated.loyalty_stickers_before = fresh.loyalty_stickers_before ?? updated.loyalty_stickers_before;
-    updated.loyalty_stickers_after = fresh.loyalty_stickers_after ?? updated.loyalty_stickers_after;
-    updated.loyalty_processed_at = fresh.loyalty_processed_at ?? updated.loyalty_processed_at;
-  }
-}
-
-
-      if (procErr) {
-        orderLogger.error("process_loyalty_for_order error", { error: procErr });
-      } else {
-        const row = Array.isArray(proc) ? proc[0] : proc;
-
-        // opcjonalnie: dołącz do odpowiedzi, żeby UI mogło od razu pokazać before/after
-        if (row) {
-          updated.loyalty_awarded = row.earned ?? updated.loyalty_awarded;
-          updated.loyalty_stickers_before =
-            row.stickers_before ?? updated.loyalty_stickers_before;
-          updated.loyalty_stickers_after =
-            row.stickers_after ?? updated.loyalty_stickers_after;
+      // Logika loyalty przepisana z SQL na TypeScript
+      // (funkcja process_loyalty_for_order została usunięta z bazy)
+      
+      const userId = existing.user_id;
+      const baseForLoyalty = Number(existing.total_price || 0) - Number(existing.delivery_cost || 0);
+      
+      // Oblicz ile naklejek przyznać
+      let earnedStickers = 0;
+      if (baseForLoyalty >= 50) {
+        if (baseForLoyalty <= 200) earnedStickers = 1;
+        else if (baseForLoyalty <= 300) earnedStickers = 2;
+        else earnedStickers = 3;
+      }
+      
+      // Jeśli user_id istnieje i zamówienie kwalifikuje się do naklejek
+      if (userId && earnedStickers > 0 && !existing.loyalty_awarded_at) {
+        // Pobierz aktualny stan konta
+        const { data: account } = await supabaseAdmin
+          .from("loyalty_accounts")
+          .select("stickers, roll_reward_claimed")
+          .eq("user_id", userId)
+          .maybeSingle();
+        
+        const stickersBefore = Math.min(8, Number(account?.stickers ?? 0));
+        
+        // Jeśli użył 8 naklejek przy zamówieniu, zresetuj do 0
+        const wasReset = existing.loyalty_choice === "use_8";
+        const baseStickers = wasReset ? 0 : stickersBefore;
+        
+        // Nowe saldo (max 8)
+        const stickersAfter = Math.min(8, baseStickers + earnedStickers);
+        
+        // Upsert loyalty_accounts
+        if (account) {
+          await supabaseAdmin
+            .from("loyalty_accounts")
+            .update({ 
+              stickers: stickersAfter,
+              // Reset roll_reward_claimed gdy przekroczono 8 i użyto rabat
+              roll_reward_claimed: wasReset ? false : account.roll_reward_claimed
+            })
+            .eq("user_id", userId);
+        } else {
+          await supabaseAdmin
+            .from("loyalty_accounts")
+            .insert({ 
+              user_id: userId, 
+              stickers: stickersAfter,
+              roll_reward_claimed: false
+            });
         }
+        
+        // Zaktualizuj zamówienie z danymi loyalty
+        await supabaseAdmin
+          .from("orders")
+          .update({
+            loyalty_awarded: earnedStickers,
+            loyalty_stickers_before: stickersBefore,
+            loyalty_stickers_after: stickersAfter,
+            loyalty_awarded_at: new Date().toISOString(),
+          })
+          .eq("id", orderId);
+        
+        // Zaktualizuj obiekt odpowiedzi
+        updated.loyalty_awarded = earnedStickers;
+        updated.loyalty_stickers_before = stickersBefore;
+        updated.loyalty_stickers_after = stickersAfter;
+        updated.loyalty_awarded_at = new Date().toISOString();
+        
+        orderLogger.info("loyalty processed", {
+          orderId,
+          userId,
+          earnedStickers,
+          stickersBefore,
+          stickersAfter,
+        });
       }
     } catch (e) {
-      orderLogger.error("loyalty rpc exception", { error: e });
+      orderLogger.error("loyalty processing exception", { error: e });
     }
   }
   

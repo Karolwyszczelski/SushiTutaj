@@ -41,6 +41,10 @@ export default function AuthCallbackPage() {
 
         // 1) RESET HASŁA
         if (type === "recovery") {
+          // WAŻNE: wyloguj obecną sesję przed wymianą kodu na nową
+          // To rozwiązuje problem "Auth session missing" gdy user jest zalogowany
+          await supabase.auth.signOut().catch(() => {});
+          
           // Dla projektu z PKCE Supabase doda tu ?code=...
           if (code) {
             const { error } = await supabase.auth.exchangeCodeForSession(code);
@@ -149,12 +153,24 @@ export default function AuthCallbackPage() {
         )}
 
         {mode === "done" && (
-          <div className="space-y-2 text-sm text-black/80">
-            <h1 className="text-xl font-semibold">Hasło zmienione</h1>
+          <div className="space-y-4 text-sm text-black/80">
+            <h1 className="text-xl font-semibold text-green-700">✓ Hasło zmienione</h1>
             <p>
-              Twoje hasło zostało zaktualizowane. Możesz wrócić na stronę
-              restauracji i zalogować się nowymi danymi.
+              Twoje hasło zostało zaktualizowane. Możesz teraz zalogować się
+              nowymi danymi.
             </p>
+            <button
+              onClick={() => {
+                // Pobierz city z URL jeśli jest
+                const url = new URL(window.location.href);
+                const city = url.searchParams.get("city") || "";
+                const dest = city ? `/${city}?auth=login` : "/?auth=login";
+                window.location.href = dest;
+              }}
+              className="w-full rounded-xl px-4 py-2 font-semibold bg-gradient-to-r from-[var(--accent-red-dark,#7a0d0d)] via-[var(--accent-red,#a61b1b)] to-[var(--accent-red-dark-2,#b11212)] text-white"
+            >
+              Wróć i zaloguj się
+            </button>
           </div>
         )}
 

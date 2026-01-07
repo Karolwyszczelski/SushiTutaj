@@ -163,3 +163,61 @@ export async function enforceRestaurantBlockedTimes(args: {
     return null; // jak było: błąd checka nie blokuje zamówienia
   }
 }
+
+/**
+ * Sprawdza czy restauracja jest zamknięta według closure_windows (dynamiczne zamknięcia).
+ * Zwraca NextResponse z błędem jeśli zamknięte, null jeśli otwarte.
+ */
+export async function enforceClosureWindows(args: {
+  supabaseAdmin: any;
+  restaurant_id: string;
+  now: Date; // Data w PL (z nowPL())
+}): Promise<NextResponse | null> {
+  const { supabaseAdmin, restaurant_id, now } = args;
+
+  try {
+    const { data: closures, error: closureErr } = await supabaseAdmin
+      .from("closure_windows")
+      .select("start_time, end_time, weekday, is_active, reason")
+      .eq("restaurant_id", restaurant_id)
+      .eq("is_active", true);
+
+    if (closureErr) {
+      orderLogger.error("closure_windows error", {
+        error: (closureErr as any)?.message || closureErr,
+      });
+      return null; // błąd checka nie blokuje zamówienia
+    }
+
+    if (!closures || closures.length === 0) return null;
+
+    const ts = now.getTime();
+    const weekday = now.getDay();
+
+    const inClosure = (closures as any[]).find((c) => {
+      const st = c.start_time ? new Date(c.start_time).getTime() : null;
+      const en = c.end_time ? new Date(c.end_time).getTime() : null;
+      
+      // weekday match: null = każdy dzień, number = konkretny dzień
+      const match = c.weekday !== null ? (c.weekday === weekday) : true;
+      if (!match) return false;
+      
+      // przedział czasowy
+      if (st && en) return ts >= st && ts <= en;
+      return false;
+    });
+
+    if (inClosure) {
+      const reason = inClosure.reason || "Restauracja jest chwilowo zamknięta.";
+      return NextResponse.json(
+        { error: reason },
+        { status: 400 }
+      );
+    }
+
+    return null;
+  } catch (e) {
+    orderLogger.error("closure_windows check error", { error: e });
+    return null;
+  }
+}

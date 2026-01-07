@@ -4,9 +4,36 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { Redis } from "@upstash/redis";
+import { Ratelimit } from "@upstash/ratelimit";
 import { orderLogger } from "@/lib/logger";
 import { buildKitchenNote } from "@/lib/kitchenNote";
 import { supabaseAdmin, TURNSTILE_SECRET_KEY } from "./_lib/clients";
+
+/* ===================== Rate Limiting ===================== */
+const hasUpstash =
+  !!process.env.UPSTASH_REDIS_REST_URL && !!process.env.UPSTASH_REDIS_REST_TOKEN;
+
+const redis = hasUpstash ? Redis.fromEnv() : null;
+
+// 5 zamówień / 1 min na IP — chroni przed spamem
+const ratelimit = redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(5, "1 m"),
+      analytics: true,
+      prefix: "rl:orders",
+    })
+  : null;
+
+function clientIp(req: Request): string {
+  const xff =
+    req.headers.get("cf-connecting-ip") ||
+    req.headers.get("x-forwarded-for") ||
+    req.headers.get("x-real-ip") ||
+    "";
+  return xff.split(",")[0].trim() || "anon";
+}
 
 
 import { isOpenFor, nowInstant, nowPL } from "./_lib/schedule";
@@ -49,6 +76,7 @@ import { enforceBlockedContact } from "./_lib/blockedContact";
 import {
   parseClientDeliveryTime,
   enforceRestaurantBlockedTimes,
+  enforceClosureWindows,
 } from "./_lib/clientTime";
 
 import {
@@ -73,6 +101,22 @@ function optLabel(option: string): string {
 
 export async function POST(req: Request) {
   try {
+    // 0) Rate limiting - 5 zamówień/min na IP
+    if (ratelimit) {
+      const ip = clientIp(req);
+      const { success, remaining } = await ratelimit.limit(ip);
+      if (!success) {
+        orderLogger.warn("rate-limited", { ip, remaining });
+        return NextResponse.json(
+          { error: "Zbyt wiele zamówień. Spróbuj ponownie za chwilę." },
+          {
+            status: 429,
+            headers: { "Retry-After": "60" },
+          }
+        );
+      }
+    }
+
     // 1) Body + Turnstile
     let raw: any;
     try {
@@ -265,7 +309,15 @@ const {
   now, // PL components
 });
 
-// 5.0) Sprawdzenie blokad czasowych (restaurant_blocked_times)
+// 5.0) Sprawdzenie closure_windows (dynamiczne zamknięcia restauracji)
+const closureRes = await enforceClosureWindows({
+  supabaseAdmin,
+  restaurant_id,
+  now, // PL components
+});
+if (closureRes) return closureRes;
+
+// 5.0.1) Sprawdzenie blokad czasowych (restaurant_blocked_times)
 const blockedTimeRes = await enforceRestaurantBlockedTimes({
   supabaseAdmin,
   restaurant_id,

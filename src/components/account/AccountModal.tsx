@@ -244,7 +244,9 @@ const allowed = ["ciechanow", "przasnysz", "szczytno"];
 const seg0 = pathname.split("/").filter(Boolean)[0]?.toLowerCase() || "";
 const cityParam = allowed.includes(seg0) ? seg0 : "";
 
-const resetPath = `/auth/reset-password${
+// Zmiana: używamy /auth/callback zamiast /auth/reset-password
+// /auth/callback ma logikę signOut + exchangeCodeForSession
+const resetPath = `/auth/callback${
   cityParam ? `?city=${encodeURIComponent(cityParam)}` : ""
 }`;
 

@@ -19,6 +19,7 @@
     "@lottiefiles/dotlottie-react": "^0.14.1",
     "@lottiefiles/react-lottie-player": "^3.6.0",
     "@react-google-maps/api": "^2.20.6",
+    "@sentry/nextjs": "^10.32.1",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.81.1",
     "@tabler/icons-react": "^3.31.0",

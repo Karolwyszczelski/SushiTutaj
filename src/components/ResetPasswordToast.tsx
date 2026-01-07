@@ -66,15 +66,31 @@ export default function ResetPasswordToast() {
 
     (async () => {
       try {
+        // WAŻNE: wyloguj obecną sesję przed wymianą kodu na nową
+        // To rozwiązuje problem "Auth session missing" gdy user jest zalogowany
+        await supabase.auth.signOut().catch(() => {});
+        
         // to jest kluczowe – bez tego nie będziesz miał sesji do updateUser(password)
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (cancelled) return;
         if (error) {
-          // nadal pokaż modal, ale wyświetl błąd
-          setErr(error.message || "Nie udało się zweryfikować linku resetu hasła.");
+          // Mapuj błędy Supabase na czytelne komunikaty
+          let errorMsg = error.message || "Nie udało się zweryfikować linku resetu hasła.";
+          if (error.message?.includes("session missing") || error.message?.includes("expired")) {
+            errorMsg = "Link do resetu hasła wygasł lub został już użyty. Poproś o nowy link.";
+          } else if (error.message?.includes("invalid")) {
+            errorMsg = "Nieprawidłowy link do resetu hasła. Sprawdź czy skopiowałeś cały link z emaila.";
+          }
+          setErr(errorMsg);
         }
       } catch (e: any) {
-        if (!cancelled) setErr(e?.message || "Błąd weryfikacji linku resetu hasła.");
+        if (!cancelled) {
+          let errorMsg = e?.message || "Błąd weryfikacji linku resetu hasła.";
+          if (errorMsg.includes("session missing") || errorMsg.includes("expired")) {
+            errorMsg = "Link do resetu hasła wygasł lub został już użyty. Poproś o nowy link.";
+          }
+          setErr(errorMsg);
+        }
       }
     })();
 
