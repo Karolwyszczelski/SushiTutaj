@@ -251,7 +251,7 @@ const countAddon = (label: string): number => {
   return arr.reduce((acc, a) => (a === label ? acc + 1 : acc), 0);
 };
 
-const syncAddonCount = (label: string, desiredCount: number) => {
+const syncAddonCount = useCallback((label: string, desiredCount: number) => {
   const desired = Math.max(0, Math.floor(Number(desiredCount || 0)));
   const current = countAddon(label);
 
@@ -267,7 +267,7 @@ const syncAddonCount = (label: string, desiredCount: number) => {
       removeAddon(prod.name, label, { removeOne: true });
     }
   }
-};
+}, [prod.name]);
 
 
 
@@ -391,7 +391,7 @@ useEffect(() => {
   if (!isSetMonth) return;
   // jeśli kiedyś była dopłata za zamiany – czyścimy ją dla Zestawu miesiąca
   syncAddonCount(SWAP_FEE_NAME, 0);
-}, [isSetMonth, prod.addons, prod.name, syncAddonCount]); // eslint-disable-line react-hooks/exhaustive-deps
+}, [isSetMonth, prod.addons, prod.name, syncAddonCount]);
 
 
 

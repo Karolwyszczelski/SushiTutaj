@@ -105,7 +105,7 @@ export default function SettingsPage() {
   const initialSlug = useMemo(() => {
     const v = (searchParams.get("restaurant") || "").toLowerCase().trim();
     return v || null;
-  }, [qs, searchParams]);
+  }, [searchParams]);
 
   const [restaurantSlug, setRestaurantSlug] = useState<string | null>(initialSlug);
   // Dodajemy stan dla ID restauracji, bo jest potrzebny do PopupSettingsForm

@@ -822,7 +822,7 @@ export default function AdminMenuPage() {
 
   const onSearchChange = useCallback(
     debounce((v: string) => setSearch(v), 300),
-    []
+    [] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   /* Pomocniczy komponent do zakładek */

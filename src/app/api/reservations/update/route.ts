@@ -56,7 +56,6 @@ async function sendEmail(to: string, subject: string, html: string) {
 
   const url = process.env.SMTP_URL;
   if (url) {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     const nodemailerModule = await import("nodemailer");
     const nodemailer = (nodemailerModule as any).default ?? nodemailerModule;
