@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
+import { orderLogger } from "@/lib/logger";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 
@@ -45,7 +46,7 @@ async function findOrderIdByParam(param: string): Promise<string | null> {
       .maybeSingle();
 
     if (error) {
-      console.error("[orders.status] select by public_id error:", error.message);
+      orderLogger.error("select by public_id error", { error: error.message });
       return null;
     }
     return (data as any)?.id ? String((data as any).id) : null;
@@ -214,7 +215,7 @@ export async function GET(request: Request, ctx: any) {
           .maybeSingle();
 
         if (error) {
-          console.error("[orders.status] select(public_id+token) error:", error.message);
+          orderLogger.error("select(public_id+token) error", { error: error.message });
           return json({ error: "Błąd serwera" }, 500);
         }
 
@@ -276,7 +277,7 @@ export async function GET(request: Request, ctx: any) {
           .maybeSingle();
 
         if (error) {
-          console.error("[orders.status] select(public_id legacy->id) error:", error.message);
+          orderLogger.error("select(public_id legacy->id) error", { error: error.message });
           return json({ error: "Błąd serwera" }, 500);
         }
 
@@ -333,7 +334,7 @@ export async function GET(request: Request, ctx: any) {
         .maybeSingle();
 
       if (error) {
-        console.error("[orders.status] select(uuid+token) error:", error.message);
+        orderLogger.error("select(uuid+token) error", { error: error.message });
         return json({ error: "Błąd serwera" }, 500);
       }
 
@@ -397,7 +398,7 @@ export async function GET(request: Request, ctx: any) {
         .maybeSingle();
 
       if (error) {
-        console.error("[orders.status] select(legacy uuid) error:", error.message);
+        orderLogger.error("select(legacy uuid) error", { error: error.message });
         return json({ error: "Błąd serwera" }, 500);
       }
 
@@ -429,7 +430,7 @@ export async function GET(request: Request, ctx: any) {
     // Jeśli to nie wygląda ani jak public_id ani UUID -> nie obsługujemy
     return json({ error: "Nieprawidłowy identyfikator" }, 400);
   } catch (err: any) {
-    console.error("[orders.status] exception:", err?.message || err);
+    orderLogger.error("exception", { error: err?.message || err });
     return json({ error: "Błąd serwera" }, 500);
   }
 }

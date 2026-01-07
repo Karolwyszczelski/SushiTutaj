@@ -1,4 +1,5 @@
 // src/app/api/orders/create/_lib/loyalty.ts
+import { orderLogger } from "@/lib/logger";
 
 export type LoyaltyChoice = "keep" | "use_4" | "use_8";
 
@@ -45,7 +46,7 @@ export async function getLoyaltyBalance(
     .maybeSingle();
 
   if (error) {
-    console.error("[orders.create] loyalty_accounts read error:", error.message);
+    orderLogger.error("loyalty_accounts read error", { error: error.message });
     return 0;
   }
   return Number((data as any)?.stickers ?? 0) || 0;
@@ -63,7 +64,7 @@ export async function trySpendLoyalty(
   });
 
   if (error) {
-    console.warn("[orders.create] loyalty_spend rpc error:", error.message);
+    orderLogger.warn("loyalty_spend rpc error", { error: error.message });
     const b = await getLoyaltyBalance(supabaseAdmin, userId);
     return { ok: false, before: b, after: b };
   }
@@ -147,9 +148,8 @@ export async function resetRollRewardClaimed(
       .update({ roll_reward_claimed: false })
       .eq("user_id", userId);
   } catch (e: any) {
-    console.warn(
-      "[orders.create] reset roll_reward_claimed failed:",
-      e?.message || e
-    );
+    orderLogger.warn("reset roll_reward_claimed failed", {
+      error: e?.message || e,
+    });
   }
 }

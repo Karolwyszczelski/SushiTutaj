@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { pushLogger } from "@/lib/logger";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
 import { getAdminContext } from "@/lib/adminContext";
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
     try {
       ctx = await getAdminContext();
     } catch (e: any) {
-      console.error("[admin.push.subscribe] getAdminContext failed:", e?.message || e);
+      pushLogger.error("getAdminContext failed", { error: e?.message || e });
       return makeRes({ error: "Unauthorized" }, 401);
     }
 
@@ -104,7 +105,7 @@ export async function POST(req: Request) {
       );
 
     if (upsertError) {
-      console.error("[admin.push.subscribe] upsert error:", upsertError.message);
+      pushLogger.error("upsert error", { error: upsertError.message });
       return makeRes({ error: "DB_ERROR" }, 500);
     }
 
@@ -117,7 +118,7 @@ export async function POST(req: Request) {
       200
     );
   } catch (e: any) {
-    console.error("[admin.push.subscribe] unexpected", e?.message || e);
+    pushLogger.error("unexpected error", { error: e?.message || e });
     return makeRes({ error: "INTERNAL_ERROR" }, 500);
   }
 }

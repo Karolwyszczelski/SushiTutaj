@@ -1,5 +1,6 @@
 // src/api/orders/create/_lib/clientTime.ts
 import { NextResponse } from "next/server";
+import { orderLogger } from "@/lib/logger";
 import { fromZonedTime } from "date-fns-tz";
 import { nowPL, tz, pad2 as pad } from "./schedule";
 
@@ -119,10 +120,9 @@ export async function enforceRestaurantBlockedTimes(args: {
       .eq("block_date", requestedDateStr);
 
     if (blockedErr) {
-      console.error(
-        "[orders.create] restaurant_blocked_times error:",
-        (blockedErr as any)?.message || blockedErr
-      );
+      orderLogger.error("restaurant_blocked_times error", {
+        error: (blockedErr as any)?.message || blockedErr,
+      });
       return null; // jak było: logujemy, ale nie blokujemy zamówienia
     }
 
@@ -159,7 +159,7 @@ export async function enforceRestaurantBlockedTimes(args: {
 
     return null;
   } catch (e) {
-    console.error("[orders.create] restaurant_blocked_times check error:", e);
+    orderLogger.error("restaurant_blocked_times check error", { error: e });
     return null; // jak było: błąd checka nie blokuje zamówienia
   }
 }

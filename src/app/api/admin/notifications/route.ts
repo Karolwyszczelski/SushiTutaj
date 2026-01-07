@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { createClient } from "@supabase/supabase-js";
 import { getAdminContext } from "@/lib/adminContext";
 
@@ -38,7 +39,7 @@ export async function GET() {
       .limit(50);
 
     if (error) {
-      console.error("[admin.notifications] error:", error.message);
+      apiLogger.error("admin.notifications error", { error: error.message });
       return json(
         { notifications: [], error: "Błąd pobierania powiadomień." },
         500
@@ -47,7 +48,7 @@ export async function GET() {
 
     return json({ notifications: data ?? [] }, 200);
   } catch (e: any) {
-    console.error("[admin.notifications] unexpected:", e?.message || e);
+    apiLogger.error("admin.notifications unexpected", { error: e?.message || e });
     return json({ notifications: [], error: "INTERNAL_ERROR" }, 500);
   }
 }

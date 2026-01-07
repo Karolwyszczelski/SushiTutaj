@@ -97,7 +97,8 @@ function ProductModal({
           .order("name");
 
         if (groupsError) throw groupsError;
-        setAllGroups(groupsData || []);
+        // Map to handle null type
+        setAllGroups((groupsData || []).map(g => ({ ...g, type: g.type || "radio" })));
 
         // 2. Jeśli edytujemy, pobierz zaznaczone grupy
         if (isEditing && product) {

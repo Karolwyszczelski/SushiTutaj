@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import { NextRequest, NextResponse } from "next/server";
+import { orderLogger } from "@/lib/logger";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
@@ -375,7 +376,7 @@ export async function GET(request: NextRequest) {
     if (err instanceof HttpError) {
       return json({ error: err.message, code: err.code }, err.status);
     }
-    console.error("GET /api/orders/stats error:", err?.message || err);
+    orderLogger.error("GET /api/orders/stats error", { error: err?.message || err });
     return json({ error: err?.message || "Server error" }, 500);
   }
 }

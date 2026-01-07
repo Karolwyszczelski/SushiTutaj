@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { orderLogger } from "@/lib/logger";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { getSessionAndRole } from "@/lib/serverAuth";
@@ -124,7 +125,7 @@ const restaurantId = String(existing.restaurant_id);
 // zabezpieczenie robi twardy check członkostwa (restaurant_admins) poniżej
 const shouldFixCookie = cookieRid && cookieRid !== restaurantId;
 if (shouldFixCookie) {
-  console.warn("[orders.patch] cookie restaurant_id mismatch", { cookieRid, restaurantId });
+  orderLogger.warn("cookie restaurant_id mismatch", { cookieRid, restaurantId });
 }
 
 // twardy check członkostwa: user musi być przypisany do restauracji z tego zamówienia
@@ -259,7 +260,7 @@ const clientTime: string | null = hasClientTime ? body.client_delivery_time ?? n
   .maybeSingle();
 
   if (error) {
-    console.error("[orders.patch] supabase error:", error);
+    orderLogger.error("supabase error", { error: error.message });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!data) {
@@ -303,7 +304,7 @@ const statusJustCompleted =
 
 
       if (procErr) {
-        console.error("[loyalty] process_loyalty_for_order error:", procErr);
+        orderLogger.error("process_loyalty_for_order error", { error: procErr });
       } else {
         const row = Array.isArray(proc) ? proc[0] : proc;
 
@@ -317,7 +318,7 @@ const statusJustCompleted =
         }
       }
     } catch (e) {
-      console.error("[loyalty] rpc exception:", e);
+      orderLogger.error("loyalty rpc exception", { error: e });
     }
   }
   
@@ -398,7 +399,7 @@ const statusJustCompleted =
       try {
         await sendSms(to, smsBody);
       } catch (e) {
-        console.error("[orders.patch] sms error:", e);
+        orderLogger.error("sms error", { error: e });
       }
     }
   }
@@ -425,7 +426,7 @@ const statusJustCompleted =
 try {
   trackUrl = trackingUrl(String(orderId));
 } catch (e) {
-  console.error("[orders.patch] trackingUrl error:", e);
+  orderLogger.error("trackingUrl error", { error: e });
   trackUrl = null; // brak linku, ale mail dalej idzie
 }
 
@@ -505,7 +506,7 @@ try {
       }
     }
   } catch (e) {
-    console.error("[orders.patch] email error:", e);
+    orderLogger.error("email error", { error: e });
   }
 
   const resp = NextResponse.json(updated);

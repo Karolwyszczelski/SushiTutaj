@@ -360,7 +360,7 @@ useEffect(() => {
     const { data, error } = await supabase
       .from("order_items")
       .select("product_id,name,unit_price,quantity,options")
-      .eq("order_id", orderId);
+      .eq("order_id", String(orderId));
 
     if (error) {
       setErr("Nie udało się pobrać pozycji zamówienia.");

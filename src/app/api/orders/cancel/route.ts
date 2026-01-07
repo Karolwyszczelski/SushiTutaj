@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { orderLogger } from "@/lib/logger";
 import { createClient } from "@supabase/supabase-js";
 import { getAdminContext } from "@/lib/adminContext";
 
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
       const ctx = await getAdminContext();
       restaurantId = ctx.restaurantId;
     } catch (err) {
-      console.error("Brak kontekstu admina przy anulowaniu zamówienia:", err);
+      orderLogger.error("missing admin context", { error: err });
       return NextResponse.json(
         { error: "Brak uprawnień do anulowania zamówienia" },
         { status: 403 }
@@ -52,7 +53,7 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     if (error) {
-      console.error("Błąd anulowania zamówienia:", error);
+      orderLogger.error("cancel error", { error });
       return NextResponse.json(
         { error: "Błąd podczas anulowania zamówienia" },
         { status: 500 }
@@ -72,7 +73,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, data });
   } catch (err: any) {
-    console.error("Błąd w /api/orders/cancel:", err);
+    orderLogger.error("route error", { error: err });
     return NextResponse.json(
       { error: "Nie udało się anulować zamówienia" },
       { status: 500 }

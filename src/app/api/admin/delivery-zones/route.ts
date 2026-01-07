@@ -7,6 +7,7 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { z } from "zod";
 import type { Database } from "@/types/supabase";
+import { apiLogger } from "@/lib/logger";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -76,7 +77,7 @@ async function requireAdminAndRestaurant() {
     .maybeSingle();
 
   if (membershipError) {
-    console.error("[delivery_zones] membership error", membershipError);
+    apiLogger.error("delivery_zones membership error", { error: membershipError.message });
     return {
       error: NextResponse.json(
         { error: "Błąd sprawdzania uprawnień." },
@@ -111,7 +112,7 @@ export async function GET() {
     .order("min_distance_km", { ascending: true });
 
   if (error) {
-    console.error("[delivery_zones] select error", error);
+    apiLogger.error("delivery_zones select error", { error: error.message });
     return NextResponse.json(
       { error: "Błąd bazy danych przy pobieraniu stref." },
       { status: 500 }
@@ -145,7 +146,7 @@ export async function POST(req: Request) {
       cost_per_km: Number(body.cost_per_km),
     });
   } catch (e) {
-    console.error("[delivery_zones] invalid body", e);
+    apiLogger.error("delivery_zones invalid body", { error: (e as Error)?.message });
     return NextResponse.json(
       { error: "Nieprawidłowe dane formularza." },
       { status: 400 }
@@ -158,7 +159,7 @@ export async function POST(req: Request) {
   });
 
   if (error) {
-    console.error("[delivery_zones] insert error", error);
+    apiLogger.error("delivery_zones insert error", { error: error.message });
     return NextResponse.json(
       { error: "Błąd zapisu strefy w bazie." },
       { status: 500 }

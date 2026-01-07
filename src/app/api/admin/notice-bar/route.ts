@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { createClient } from "@supabase/supabase-js";
 import { getAdminContext } from "@/lib/adminContext";
 
@@ -109,7 +110,7 @@ export async function GET() {
       200
     );
   } catch (e: any) {
-    console.error("[admin.notice-bar][GET] error:", e?.message || e);
+    apiLogger.error("admin.notice-bar GET error", { error: e?.message || e });
     return json({ global: null, restaurant: null, error: "INTERNAL_ERROR" }, 500);
   }
 }
@@ -170,7 +171,7 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (error) {
-    console.error("[admin.notice-bar][POST] error:", error.message);
+    apiLogger.error("admin.notice-bar POST error", { error: error.message });
     return json({ error: error.message }, 500);
   }
 

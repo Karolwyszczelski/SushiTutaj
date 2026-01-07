@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
@@ -297,7 +298,7 @@ export async function POST(req: Request) {
       );
     }
 
-    console.error("POST /api/reservations/update error:", { code, message });
+    apiLogger.error("POST /api/reservations/update error", { code, message });
     return NextResponse.json(
       { error: message },
       { status: 500, headers: { "Cache-Control": "no-store" } }

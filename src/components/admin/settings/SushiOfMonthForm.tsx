@@ -3,6 +3,7 @@
 import React, {
   useEffect,
   useState,
+  useMemo,
   FormEvent,
   useCallback,
 } from "react";
@@ -233,7 +234,7 @@ export default function SushiOfMonthForm() {
       // 4) Payload wspólny (NIE DOTYKAMY product_id)
       const payload = {
         legacy_id: "current",
-        name: name || null,
+        name: name || undefined,
         description: description || null,
         image_url: finalImageUrl,
         starts_on: startsOn || null,

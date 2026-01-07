@@ -2,6 +2,7 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { createClient } from "@supabase/supabase-js";
 import { sendPushForRestaurant } from "@/lib/push";
 import { fromZonedTime } from "date-fns-tz";
@@ -35,7 +36,7 @@ async function pushAdminNotification(
       url,
     });
   } catch (e: any) {
-    console.error("[admin_notifications.insert/push] error:", e?.message || e);
+    apiLogger.error("admin_notifications.insert/push error", { error: e?.message || e });
   }
 }
 
@@ -217,10 +218,9 @@ const restaurantId = String(rid);
           .eq("block_date", day);
 
         if (blockedErr) {
-          console.error(
-            "[reservations.create] restaurant_blocked_times error:",
-            (blockedErr as any)?.message || blockedErr
-          );
+          apiLogger.error("reservations.create restaurant_blocked_times error", {
+            error: (blockedErr as any)?.message || blockedErr,
+          });
         } else if (blockedSlots && blockedSlots.length > 0) {
           const isBlocked = (blockedSlots as any[]).some((slot) => {
             const type = (slot.kind as string) || "both";
@@ -253,10 +253,9 @@ const restaurantId = String(rid);
         }
       }
     } catch (e) {
-      console.error(
-        "[reservations.create] restaurant_blocked_times check error:",
-        e
-      );
+      apiLogger.error("reservations.create restaurant_blocked_times check error", {
+        error: e,
+      });
     }
 
     // Lista dozwolonych slotów dla dnia

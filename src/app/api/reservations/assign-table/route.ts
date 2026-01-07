@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { createClient } from "@supabase/supabase-js";
 import { getAdminContext } from "@/lib/adminContext";
 
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
       const ctx = await getAdminContext();
       restaurantId = ctx.restaurantId;
     } catch (err) {
-      console.error("assign-table: brak kontekstu admina:", err);
+      apiLogger.error("assign-table: missing admin context", { error: err });
       return NextResponse.json(
         { error: "Brak uprawnień lub brak przypisanej restauracji" },
         { status: 403 }
@@ -68,7 +69,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, reservation: data });
   } catch (e: any) {
-    console.error("POST /api/reservations/assign-table error:", e);
+    apiLogger.error("POST /api/reservations/assign-table error", { error: e });
     return NextResponse.json(
       { error: e?.message || "Server error" },
       { status: 500 }

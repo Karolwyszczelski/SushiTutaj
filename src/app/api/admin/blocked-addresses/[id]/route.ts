@@ -8,6 +8,7 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { z } from "zod";
 import type { Database } from "@/types/supabase";
+import { apiLogger } from "@/lib/logger";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -73,7 +74,7 @@ async function requireAdminAndRestaurant() {
     .maybeSingle();
 
   if (membershipError) {
-    console.error("[blocked_addresses] membership error", membershipError);
+    apiLogger.error("blocked_addresses membership error", { error: membershipError.message });
     return {
       error: NextResponse.json(
         { error: "Błąd sprawdzania uprawnień." },
@@ -129,7 +130,7 @@ export async function PATCH(
           : String(body.type).trim().toLowerCase(),
     });
   } catch (e) {
-    console.error("[blocked_addresses] invalid body (PATCH)", e);
+    apiLogger.error("blocked_addresses invalid body (PATCH)", { error: (e as Error)?.message });
     return NextResponse.json(
       { error: "Nieprawidłowe dane formularza." },
       { status: 400 }
@@ -143,7 +144,7 @@ export async function PATCH(
     .eq("restaurant_id", restaurantId);
 
   if (error) {
-    console.error("[blocked_addresses] update error", error);
+    apiLogger.error("blocked_addresses update error", { error: error.message });
     return NextResponse.json(
       { error: "Błąd zapisu blokady w bazie." },
       { status: 500 }
@@ -174,7 +175,7 @@ export async function DELETE(
     .eq("restaurant_id", restaurantId);
 
   if (error) {
-    console.error("[blocked_addresses] delete error", error);
+    apiLogger.error("blocked_addresses delete error", { error: error.message });
     return NextResponse.json(
       { error: "Błąd usuwania blokady w bazie." },
       { status: 500 }

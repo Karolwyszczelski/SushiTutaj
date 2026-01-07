@@ -1,4 +1,5 @@
 // src/api/orders/create/_lib/notifyClient.ts
+import { orderLogger } from "@/lib/logger";
 import { sendEmail } from "@/lib/e-mail";
 import { sendSms } from "@/lib/sms";
 import {
@@ -63,10 +64,9 @@ export async function notifyClientAfterCreate(args: {
     }
   } catch (mailErr: any) {
     // Bez PII w logach
-    console.error(
-      "[orders.create] email to client error:",
-      mailErr?.message || mailErr
-    );
+    orderLogger.error("email to client error", {
+      error: mailErr?.message || mailErr,
+    });
   }
 
   // 2) SMS

@@ -1,6 +1,8 @@
 // src/app/api/orders/create/_lib/notifications.ts
 import "server-only";
 
+import { orderLogger } from "@/lib/logger";
+
 import { supabaseAdmin } from "./clients";
 import { sendPushForRestaurant } from "@/lib/push";
 
@@ -31,6 +33,6 @@ export async function pushAdminNotification(
       url,
     });
   } catch (e: any) {
-    console.error("[admin_notifications.insert/push] error:", e?.message || e);
+    orderLogger.error("admin_notifications.insert/push error", { error: e?.message || e });
   }
 }

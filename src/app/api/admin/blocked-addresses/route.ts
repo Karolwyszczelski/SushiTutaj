@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
@@ -70,7 +71,7 @@ async function requireAdminAndRestaurant() {
     .maybeSingle();
 
   if (membershipError) {
-    console.error("[blocked_addresses] membership error", membershipError);
+    apiLogger.error("blocked_addresses membership error", { error: membershipError });
     return {
       error: NextResponse.json(
         { error: "Błąd sprawdzania uprawnień." },
@@ -103,7 +104,7 @@ export async function GET() {
     .order("pattern", { ascending: true });
 
   if (error) {
-    console.error("[blocked_addresses] select error", error);
+    apiLogger.error("blocked_addresses select error", { error });
     return NextResponse.json(
       { error: "Błąd bazy danych przy pobieraniu blokad." },
       { status: 500 }
@@ -136,7 +137,7 @@ export async function POST(req: Request) {
           .toLowerCase() || "address",
     });
   } catch (e) {
-    console.error("[blocked_addresses] invalid body", e);
+    apiLogger.error("blocked_addresses invalid body", { error: e });
     return NextResponse.json(
       { error: "Nieprawidłowe dane formularza." },
       { status: 400 }
@@ -149,7 +150,7 @@ export async function POST(req: Request) {
   });
 
   if (error) {
-    console.error("[blocked_addresses] insert error", error);
+    apiLogger.error("blocked_addresses insert error", { error });
     return NextResponse.json(
       { error: "Błąd zapisu blokady w bazie." },
       { status: 500 }

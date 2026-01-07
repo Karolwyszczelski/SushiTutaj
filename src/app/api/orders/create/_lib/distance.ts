@@ -1,5 +1,6 @@
 // src/app/api/orders/create/_lib/distance.ts
 import "server-only";
+import { orderLogger } from "@/lib/logger";
 
 /* ===== Haversine ===== */
 export const haversineKm = (
@@ -42,7 +43,7 @@ export async function getDistanceKmFromGoogle(
       distance_km = json.distance_km;
     }
   } catch (e) {
-    console.error("[orders.create] /api/distance error:", e);
+    orderLogger.error("/api/distance error", { error: e });
   }
 
   return distance_km;

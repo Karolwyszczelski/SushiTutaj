@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { getAdminContext } from "@/lib/adminContext";
 
 function json(body: any, status = 200) {
@@ -49,7 +50,7 @@ export async function GET() {
     .order("from_time", { ascending: true });
 
   if (error) {
-    console.error("[admin.blocked-times][GET] error:", error.message);
+    apiLogger.error("admin.blocked-times GET error", { error: error.message });
     return json({ error: "Nie udało się pobrać listy blokad." }, 500);
   }
 
@@ -135,7 +136,7 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error || !data) {
-    console.error("[admin.blocked-times][POST] error:", error?.message || error);
+    apiLogger.error("admin.blocked-times POST error", { error: error?.message || error });
     return json({ error: "Nie udało się zapisać blokady." }, 500);
   }
 
@@ -166,7 +167,7 @@ export async function DELETE(req: NextRequest) {
     .eq("restaurant_id", ctx.restaurantId);
 
   if (error) {
-    console.error("[admin.blocked-times][DELETE] error:", error.message);
+    apiLogger.error("admin.blocked-times DELETE error", { error: error.message });
     return json({ error: "Nie udało się usunąć blokady." }, 500);
   }
 

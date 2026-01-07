@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import { NextResponse } from "next/server";
+import { orderLogger } from "@/lib/logger";
 import { z } from "zod";
 import { AdminAuthError, requireRestaurantAccess } from "@/lib/requireAdmin";
 import { sendOrderAcceptedEmail } from "@/lib/e-mail";
@@ -104,7 +105,7 @@ export async function POST(
       await sendSms((order as any).phone, msg);
     }
   } catch (e) {
-    console.error("[admin.orders.accept] sms error", (e as any)?.message || e);
+    orderLogger.error("admin.orders.accept sms error", { error: (e as any)?.message || e });
   }
 
   return json({

@@ -2,6 +2,7 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { clientIp } from "./normalize";
 
 export async function enforceTurnstile(
@@ -52,7 +53,7 @@ export async function enforceTurnstile(
       : [];
 
     if (!jr?.success) {
-      console.error("[turnstile.verify] fail", codes.length ? codes : jr);
+      apiLogger.error("turnstile verify fail", { codes: codes.length ? codes : jr });
 
       const retryable =
         codes.includes("timeout-or-duplicate") ||
@@ -72,7 +73,7 @@ export async function enforceTurnstile(
 
     return null;
   } catch (e: any) {
-    console.error("[turnstile.verify] error", e?.message || e);
+    apiLogger.error("turnstile verify error", { error: e?.message || e });
     return NextResponse.json(
       { error: "Błąd weryfikacji formularza.", code: "TURNSTILE_ERROR" },
       { status: 400 }

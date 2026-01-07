@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { orderLogger } from "@/lib/logger";
 import { buildKitchenNote } from "@/lib/kitchenNote";
 import { supabaseAdmin, TURNSTILE_SECRET_KEY } from "./_lib/clients";
 
@@ -344,10 +345,9 @@ loyalty_applied: n.loyalty_applied ?? false,
 
 
     if (orderErr || !orderRow) {
-      console.error(
-        "[orders.create] insert orders error:",
-        orderErr?.message || orderErr
-      );
+      orderLogger.error("insert orders error", {
+        error: orderErr?.message || orderErr,
+      });
       return NextResponse.json(
         { error: "Nie udało się zapisać zamówienia." },
         { status: 500 }
@@ -407,15 +407,13 @@ loyalty_applied: n.loyalty_applied ?? false,
           .from("order_items")
           .insert(shaped);
         if (oiErr)
-          console.warn(
-            "[orders.create] order_items insert skipped:",
-            oiErr.message
-          );
+          orderLogger.warn("order_items insert skipped", {
+            error: oiErr.message,
+          });
       } catch (e: any) {
-        console.warn(
-          "[orders.create] order_items insert not executed:",
-          e?.message
-        );
+        orderLogger.warn("order_items insert not executed", {
+          error: e?.message,
+        });
       }
     }
 // 8-9) Powiadomienia klienta (mail + SMS) – przeniesione do helpera
@@ -437,7 +435,7 @@ return NextResponse.json(
   { status: 201 }
 );
   } catch (e: any) {
-    console.error("[orders.create] unexpected error:", e?.message || e);
+    orderLogger.error("unexpected error", { error: e?.message || e });
     return NextResponse.json(
       { error: "Wystąpił nieoczekiwany błąd serwera." },
       { status: 500 }

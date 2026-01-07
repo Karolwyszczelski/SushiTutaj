@@ -2,6 +2,7 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
+import { orderLogger } from "@/lib/logger";
 
 type SupabaseLike = {
   from: (table: string) => any;
@@ -80,7 +81,7 @@ export async function resolveRestaurantContext(args: {
   const restErr: any = restRes.error;
 
   if (restErr) {
-    console.error("[orders.create] restaurants error:", restErr.message);
+    orderLogger.error("restaurants error", { error: restErr.message });
     return {
       ok: false,
       res: NextResponse.json(

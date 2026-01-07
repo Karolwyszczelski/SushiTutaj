@@ -1,5 +1,6 @@
 // src/api/orders/create/_lib/blockedContact.ts
 import { NextResponse } from "next/server";
+import { orderLogger } from "@/lib/logger";
 
 type Any = Record<string, any>;
 
@@ -27,10 +28,9 @@ export async function enforceBlockedContact({
       .eq("restaurant_id", restaurant_id);
 
     if (blocksErr) {
-      console.error(
-        "[orders.create] blocked_addresses error:",
-        (blocksErr as any)?.message || blocksErr
-      );
+      orderLogger.error("blocked_addresses error", {
+        error: (blocksErr as any)?.message || blocksErr,
+      });
       return null; // dokładnie jak było: nie blokujemy zamówień, tylko log
     }
 
@@ -87,7 +87,7 @@ export async function enforceBlockedContact({
 
     return null;
   } catch (e) {
-    console.error("[orders.create] blocked_addresses check error:", e);
+    orderLogger.error("blocked_addresses check error", { error: e });
     return null; // jak było: błąd checka nie blokuje zamówienia
   }
 }

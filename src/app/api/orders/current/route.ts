@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { orderLogger } from "@/lib/logger";
 import { cookies } from "next/headers";
 import type { Database } from "@/types/supabase";
 import { createServerClient } from "@supabase/ssr";
@@ -101,7 +102,7 @@ try {
   if (error) throw error;
   user = data.user;
 } catch (e: any) {
-  console.error("[orders.current] getUser error:", e?.message || e);
+  orderLogger.error("getUser error", { error: e?.message || e });
 
   const res = NextResponse.json(
     { error: "Unauthorized", code: "AUTH_REFRESH_TOKEN_MISSING" },

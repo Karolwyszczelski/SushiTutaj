@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { createClient } from "@supabase/supabase-js";
 import { getAdminContext } from "@/lib/adminContext";
 
@@ -38,16 +39,15 @@ export async function POST() {
       .eq("read", false);
 
     if (error) {
-      console.error("[notifications.read-all] update error:", error.message);
+      apiLogger.error("notifications.read-all update error", { error: error.message });
       return json({ ok: false, error: "Błąd zapisu powiadomień" }, 500);
     }
 
     return json({ ok: true }, 200);
   } catch (e: any) {
-    console.error(
-      "[notifications.read-all] unexpected error:",
-      e?.message || e
-    );
+    apiLogger.error("notifications.read-all unexpected error", {
+      error: e?.message || e,
+    });
     return json({ ok: false, error: "Nieoczekiwany błąd" }, 500);
   }
 }

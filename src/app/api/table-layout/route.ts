@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { createClient } from "@supabase/supabase-js";
 import { getAdminContext } from "@/lib/adminContext";
 
@@ -87,7 +88,7 @@ export async function GET() {
       .maybeSingle();
 
     if (error) {
-      console.error("[table-layout.GET] select error:", error.message);
+      apiLogger.error("table-layout.GET select error", { error: error.message });
       return json({ error: "Błąd pobierania układu" }, 500);
     }
 
@@ -120,14 +121,14 @@ export async function GET() {
         if (!retry.error && retry.data) return json({ layout: retry.data }, 200);
       }
 
-      console.error("[table-layout.GET] insert error:", ins.error.message);
+      apiLogger.error("table-layout.GET insert error", { error: ins.error.message });
       return json({ error: "Błąd tworzenia układu" }, 500);
     }
 
     return json({ layout: ins.data }, 200);
 
   } catch (e: any) {
-    console.error("[table-layout.GET] unexpected:", e?.message || e);
+    apiLogger.error("table-layout.GET unexpected", { error: e?.message || e });
     return json({ error: e?.message || "Server error" }, 500);
   }
 }
@@ -156,13 +157,13 @@ export async function POST(req: Request) {
       .single();
 
     if (up.error) {
-      console.error("[table-layout.POST] upsert error:", up.error.message);
+      apiLogger.error("table-layout.POST upsert error", { error: up.error.message });
       return json({ error: "Błąd zapisu układu" }, 500);
     }
 
     return json({ ok: true, layout: up.data }, 200);
   } catch (e: any) {
-    console.error("[table-layout.POST] unexpected:", e?.message || e);
+    apiLogger.error("table-layout.POST unexpected", { error: e?.message || e });
     return json({ error: e?.message || "Server error" }, 500);
   }
 }

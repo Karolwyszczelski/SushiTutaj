@@ -1,6 +1,7 @@
 // src/app/api/orders/webhook/route.ts
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 
 // Supabase Service Role key — nigdy nie wystawiaj go po stronie klienta!
 const supabase = createClient(
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
 
   try {
     const data = await request.json();
-    console.log("[Webhook] odebrano:", data);
+    apiLogger.info("Webhook received", { data });
 
     const orderId = data.orderId || data.sessionId || data.id;
     if (!orderId) {
@@ -38,13 +39,13 @@ export async function POST(request: Request) {
       .eq("id", orderId);
 
     if (error) {
-      console.error("[Webhook] błąd update’u:", error);
+      apiLogger.error("Webhook update error", { error: error.message, orderId });
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    console.error("[Webhook] nieoczekiwany błąd:", err);
+    apiLogger.error("Webhook unexpected error", { error: err });
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

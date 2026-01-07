@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { apiLogger } from "@/lib/logger";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
@@ -144,7 +145,7 @@ export async function GET(req: Request) {
           .maybeSingle();
 
         if (bySlugError) {
-          console.error("ensure-cookie restaurants by slug error:", bySlugError.message);
+          apiLogger.error("ensure-cookie restaurants by slug error", { error: bySlugError.message });
           return makeRes({ error: bySlugError.message }, 500);
         }
 
@@ -177,7 +178,7 @@ export async function GET(req: Request) {
           .maybeSingle();
 
         if (adminError) {
-          console.error("ensure-cookie restaurant_admins error:", adminError.message);
+          apiLogger.error("ensure-cookie restaurant_admins error", { error: adminError.message });
           return makeRes({ error: adminError.message }, 500);
         }
 
@@ -198,7 +199,7 @@ export async function GET(req: Request) {
         .maybeSingle();
 
       if (error) {
-        console.error("ensure-cookie restaurants by slug error:", error.message);
+        apiLogger.error("ensure-cookie restaurants by slug error", { error: error.message });
         return makeRes({ error: error.message }, 500);
       }
       if (!data) return makeRes({ error: "RESTAURANT_NOT_FOUND" }, 404);
@@ -216,7 +217,7 @@ export async function GET(req: Request) {
         .maybeSingle();
 
       if (error) {
-        console.error("ensure-cookie restaurants by id error:", error.message);
+        apiLogger.error("ensure-cookie restaurants by id error", { error: error.message });
         return makeRes({ error: error.message }, 500);
       }
 
@@ -282,7 +283,7 @@ export async function GET(req: Request) {
 
     return res;
   } catch (e: any) {
-    console.error("ensure-cookie fatal error:", e);
+    apiLogger.error("ensure-cookie fatal error", { error: e?.message || e });
     return makeRes({ error: e?.message || "UNEXPECTED_ENSURE_COOKIE_ERROR" }, 500);
   }
 }

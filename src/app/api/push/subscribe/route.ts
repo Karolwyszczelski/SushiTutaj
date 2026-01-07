@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { pushLogger } from "@/lib/logger";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
@@ -153,7 +154,7 @@ const { error } = await supabaseAdmin
 
 
 if (error) {
-  console.error("[push.subscribe] upsert error:", error.message);
+  pushLogger.error("upsert error", { error: error.message });
   // DEV: pokaż dokładniej, PROD: nie wypluwaj szczegółów
   const dev = process.env.NODE_ENV !== "production";
   return NextResponse.json(
@@ -166,7 +167,7 @@ return NextResponse.json({ ok: true }, { status: 200 });
 
 
   } catch (e: any) {
-    console.error("[push.subscribe] unexpected:", e?.message || e);
+    pushLogger.error("unexpected error", { error: e?.message || e });
     return NextResponse.json({ error: "INTERNAL_ERROR" }, { status: 500 });
   }
 }

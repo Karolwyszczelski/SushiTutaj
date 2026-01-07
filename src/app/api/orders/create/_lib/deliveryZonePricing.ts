@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { orderLogger } from "@/lib/logger";
 import { supabaseAdmin } from "./clients";
 import { getDistanceKmFromGoogle } from "./distance";
 import { num } from "./normalize";
@@ -38,7 +39,7 @@ export async function enforceDeliveryZonePricing(
     .order("min_distance_km");
 
   if (zErr || !zones || zones.length === 0) {
-    console.error("[orders.create] delivery_zones error:", zErr);
+    orderLogger.error("delivery_zones error", { error: zErr });
 
     await pushAdminNotification(
       restaurant_id,
