@@ -453,6 +453,7 @@ export default function SushiOfMonthForm() {
               </div>
               <div className="mt-2 overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
                 {previewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={previewUrl}
                     alt="Podgląd"

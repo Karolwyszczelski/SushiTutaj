@@ -147,7 +147,7 @@ export default function ClientOrderTrackPage() {
     const t = Date.parse(data.eta);
     if (Number.isNaN(t)) return null;
     return Math.max(0, t - Date.now());
-  }, [data?.eta, tick]);
+  }, [data?.eta, tick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!data?.eta) return;

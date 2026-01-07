@@ -155,7 +155,7 @@ const isSetMonth =
         s.from.toLowerCase() === (prod.name || "").toLowerCase()
     );
     return (found?.to as string) || prod.name;
-  }, [isSet, isSpec, prod.swaps, prod.name]);
+  }, [isSet, isSpec, prod.swaps, prod.name, prod]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setRows = useMemo(
     () => (isSet ? parseSetComposition(prodInfo?.description) : []),
@@ -391,7 +391,7 @@ useEffect(() => {
   if (!isSetMonth) return;
   // jeśli kiedyś była dopłata za zamiany – czyścimy ją dla Zestawu miesiąca
   syncAddonCount(SWAP_FEE_NAME, 0);
-}, [isSetMonth, prod.addons, prod.name]);
+}, [isSetMonth, prod.addons, prod.name, syncAddonCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
 

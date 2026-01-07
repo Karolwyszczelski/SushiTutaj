@@ -33,15 +33,10 @@ export default function Footer() {
   const params = useParams<{ city?: string }>();
   const pathname = usePathname();
   const city = params?.city ?? null;
-
-    const hideFooter = pathname?.startsWith("/admin");
-  if (hideFooter) return null;
-
   const [r, setR] = useState<R | null>(null);
 
-  // Admin panel: nie pokazujemy footera wcale (ALE dopiero po hookach)
-
-if (hideFooter) return null;
+  const hideFooter = pathname?.startsWith("/admin");
+  if (hideFooter) return null;
 
   useEffect(() => {
     let ignore = false;

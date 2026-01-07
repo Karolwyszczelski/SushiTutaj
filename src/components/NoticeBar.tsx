@@ -65,7 +65,7 @@ export default function NoticeBar({ config }: { config: NoticeBarConfig | null }
     const dotClass = preOpen ? "bg-amber-400" : "bg-rose-400";
 
     return { show: true, summary, body, dotClass };
-  }, [config, tick]);
+  }, [config, tick]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // zapamiętuj zwinięcie/rozwinięcie
   useEffect(() => {
