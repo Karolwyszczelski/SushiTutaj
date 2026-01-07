@@ -1140,11 +1140,15 @@ const hasAutoLoyaltyDiscount =
   typeof loyaltyStickers === "number" &&
   loyaltyStickers >= 8;
 
+  // Automatycznie włącz darmową rolkę gdy user ma 4-7 naklejek i nie wykorzystał jeszcze
   useEffect(() => {
-  if (loyaltyRollClaimed === true && loyaltyChoice === "use_4") {
-    setLoyaltyChoice("keep");
-  }
-}, [loyaltyRollClaimed, loyaltyChoice]);
+    if (loyaltyRollClaimed === true && loyaltyChoice === "use_4") {
+      setLoyaltyChoice("keep");
+    } else if (canUseLoyalty4 && loyaltyChoice === "keep") {
+      // Automatycznie ustaw use_4 gdy spełnione warunki
+      setLoyaltyChoice("use_4");
+    }
+  }, [loyaltyRollClaimed, loyaltyChoice, canUseLoyalty4]);
 
 
 const totalWithDelivery = Math.max(0, subtotal + deliveryCost - discount);
@@ -2373,44 +2377,14 @@ return (
                                       </div>
 
                                       {canUseLoyalty4 && (
-                                        <div className="space-y-1">
-                                          <div className="font-semibold text-sm">
-                                            Czy chcesz wymienić 4 naklejki na
-                                            darmową rolkę?
+                                        <div className="rounded-lg bg-emerald-100 border border-emerald-300 p-2 text-emerald-800">
+                                          <div className="font-semibold text-sm flex items-center gap-2">
+                                            <span>🎁</span>
+                                            <span>Darmowa rolka zostanie dodana do zamówienia!</span>
                                           </div>
-                                          <label className="flex items-center gap-2">
-                                            <input
-                                              type="radio"
-                                              name="loyalty_choice_mobile"
-                                              value="use_4"
-                                              checked={
-                                                loyaltyChoice === "use_4"
-                                              }
-                                              onChange={() =>
-                                                setLoyaltyChoice("use_4")
-                                              }
-                                            />
-                                            <span>
-                                              Tak, wykorzystaj 4 naklejki w tym
-                                              zamówieniu.
-                                            </span>
-                                          </label>
-                                          <label className="flex items-center gap-2">
-                                            <input
-                                              type="radio"
-                                              name="loyalty_choice_mobile"
-                                              value="keep"
-                                              checked={
-                                                loyaltyChoice === "keep"
-                                              }
-                                              onChange={() =>
-                                                setLoyaltyChoice("keep")
-                                              }
-                                            />
-                                            <span>
-                                              Nie teraz, zbieram dalej.
-                                            </span>
-                                          </label>
+                                          <p className="text-[11px] mt-1 text-emerald-700">
+                                            Wykorzystasz 4 naklejki z programu lojalnościowego.
+                                          </p>
                                         </div>
                                       )}
 
@@ -2737,8 +2711,8 @@ return (
 
             {/* PASEK BOCZNY PODSUMOWANIA (DESKTOP) */}
             {!orderSent && checkoutStep !== 4 && (
-  <aside className="hidden lg:flex">
-                <div className="sticky top-4 w-[340px] mx-auto border border-black/10 bg-white p-5 shadow-xl text-black space-y-4 text-left">
+  <aside className="hidden lg:block flex-shrink-0 self-start sticky top-4">
+                <div className="w-[340px] mx-auto border border-black/10 bg-white p-5 shadow-xl text-black space-y-4 text-left rounded-xl">
                   <h4 className="text-xl font-bold text-center">
                     Podsumowanie
                   </h4>
@@ -2804,38 +2778,14 @@ return (
                             </div>
 
                             {canUseLoyalty4 && (
-                              <div className="space-y-1">
-                                <div className="font-semibold text-sm text-center">
-                                  Czy chcesz wymienić 4 naklejki na darmową
-                                  rolkę?
+                              <div className="rounded-lg bg-emerald-100 border border-emerald-300 p-2 text-emerald-800">
+                                <div className="font-semibold text-sm flex items-center justify-center gap-2">
+                                  <span>🎁</span>
+                                  <span>Darmowa rolka zostanie dodana!</span>
                                 </div>
-                                <label className="flex items-center gap-2">
-                                  <input
-                                    type="radio"
-                                    name="loyalty_choice_desktop"
-                                    value="use_4"
-                                    checked={loyaltyChoice === "use_4"}
-                                    onChange={() =>
-                                      setLoyaltyChoice("use_4")
-                                    }
-                                  />
-                                  <span>
-                                    Tak, wykorzystaj 4 naklejki w tym
-                                    zamówieniu.
-                                  </span>
-                                </label>
-                                <label className="flex items-center gap-2">
-                                  <input
-                                    type="radio"
-                                    name="loyalty_choice_desktop"
-                                    value="keep"
-                                    checked={loyaltyChoice === "keep"}
-                                    onChange={() =>
-                                      setLoyaltyChoice("keep")
-                                    }
-                                  />
-                                  <span>Nie teraz, zbieram dalej.</span>
-                                </label>
+                                <p className="text-[11px] mt-1 text-emerald-700 text-center">
+                                  Wykorzystasz 4 naklejki z programu lojalnościowego.
+                                </p>
                               </div>
                             )}
 
