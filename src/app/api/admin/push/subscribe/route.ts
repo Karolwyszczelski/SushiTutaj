@@ -64,7 +64,7 @@ export async function POST(req: Request) {
       ctx = await getAdminContext();
     } catch (e: any) {
       pushLogger.error("getAdminContext failed", { error: e?.message || e });
-      return makeRes({ error: "Unauthorized" }, 401);
+      return makeRes({ error: "Unauthorized", details: e?.message || "Brak sesji użytkownika" }, 401);
     }
 
     // 2) Walidacja subskrypcji (obsługa obu formatów: { subscription: {...} } lub bezpośrednio {...})
@@ -105,8 +105,8 @@ export async function POST(req: Request) {
       );
 
     if (upsertError) {
-      pushLogger.error("upsert error", { error: upsertError.message });
-      return makeRes({ error: "DB_ERROR" }, 500);
+      pushLogger.error("upsert error", { error: upsertError.message, code: upsertError.code });
+      return makeRes({ error: "DB_ERROR", details: upsertError.message }, 500);
     }
 
     return makeRes(

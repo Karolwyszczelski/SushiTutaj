@@ -1972,7 +1972,9 @@ const slugToSend = desiredSlug;
       const txt = await res.text().catch(() => "");
       console.error("[push] subscribe FAIL", res.status, txt);
       setPushStatus("error");
-      setPushError("Nie udało się zapisać subskrypcji w bazie.");
+      const parsed = JSON.parse(txt || "{}");
+      const errMsg = parsed?.error || `HTTP ${res.status}`;
+      setPushError(`Nie udało się zapisać subskrypcji: ${errMsg}`);
       return;
     }
 
