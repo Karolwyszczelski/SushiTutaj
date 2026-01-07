@@ -83,30 +83,32 @@ export async function POST(req: Request) {
     const restaurantId = ctx.restaurantId;
     const restaurantSlug = await getRestaurantSlugById(restaurantId);
 
-    // 4) Upsert (service role), endpoint unikalny globalnie
-    const { error: upsertError } = await supabaseAdmin
+    // 4) Delete existing + insert (zamiast upsert - nie wymaga UNIQUE constraint)
+    // Najpierw usuwamy istniejący rekord z tym samym endpoint
+    await supabaseAdmin
       .from("admin_push_subscriptions")
-      .upsert(
-        {
-          restaurant_id: restaurantId,
-          restaurant_slug: restaurantSlug,
-          endpoint,
-          subscription: {
-            endpoint,
-            expirationTime: body?.expirationTime ?? null,
-            keys: { p256dh, auth },
-          },
-          p256dh,
-          auth,
-          // opcjonalnie: user_id do debug/porządku (jeśli masz kolumnę)
-          // user_id: ctx.user.id,
-        } as any,
-        { onConflict: "endpoint" }
-      );
+      .delete()
+      .eq("endpoint", endpoint);
 
-    if (upsertError) {
-      pushLogger.error("upsert error", { error: upsertError.message, code: upsertError.code });
-      return makeRes({ error: "DB_ERROR", details: upsertError.message }, 500);
+    // Teraz wstawiamy nowy rekord
+    const { error: insertError } = await supabaseAdmin
+      .from("admin_push_subscriptions")
+      .insert({
+        restaurant_id: restaurantId,
+        restaurant_slug: restaurantSlug,
+        endpoint,
+        subscription: {
+          endpoint,
+          expirationTime: body?.expirationTime ?? null,
+          keys: { p256dh, auth },
+        },
+        p256dh,
+        auth,
+      } as any);
+
+    if (insertError) {
+      pushLogger.error("insert error", { error: insertError.message, code: insertError.code });
+      return makeRes({ error: "DB_ERROR", details: insertError.message }, 500);
     }
 
     return makeRes(
