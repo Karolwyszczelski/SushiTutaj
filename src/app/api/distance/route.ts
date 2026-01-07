@@ -89,8 +89,8 @@ async function verifyTurnstile(req: Request) {
   // dev: pozwól działać bez Turnstile
   if (process.env.NODE_ENV !== "production") return true;
 
-  // prod: fail-closed
-  if (!TURNSTILE_SECRET) return false;
+  // prod: jeśli brak TURNSTILE_SECRET, polegamy tylko na rate limit
+  if (!TURNSTILE_SECRET) return true;
 
   const token = getTurnstileToken(req);
   if (!token) return false;

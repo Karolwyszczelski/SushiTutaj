@@ -28,7 +28,7 @@ export default function EditReservationButton({
 
   // tables assignment
   const [tables, setTables] = useState<
-    { id: string; table_number: number; seats: number }[]
+    { id: string; label: string; seats: number }[]
   >([]);
   const [selectedTable, setSelectedTable] = useState<string>("");
 
@@ -40,8 +40,8 @@ export default function EditReservationButton({
     if (!open) return;
     (async () => {
       const { data } = await (supabase.from as any)("restaurant_tables")
-        .select("id, table_number, seats")
-        .order("table_number", { ascending: true });
+        .select("id, label, seats")
+        .order("label", { ascending: true });
       if (data) {
         setTables(data as any);
         // optionally prefill selectedTable from existing assignment
@@ -164,7 +164,7 @@ export default function EditReservationButton({
                 <option value="">— brak przypisania —</option>
                 {tables.map((t) => (
                   <option key={t.id} value={t.id}>
-                    Stolik {t.table_number} ({t.seats} os.)
+                    Stolik {t.label} ({t.seats} os.)
                   </option>
                 ))}
               </select>

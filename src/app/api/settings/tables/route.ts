@@ -34,7 +34,7 @@ async function requireAdminRestaurant() {
 
 const tableSchema = z.object({
   id: z.string().uuid().optional(),
-  table_number: z.string().trim().min(1).optional(),
+  label: z.string().trim().min(1).optional(),
   number_of_seats: z.coerce.number().int().positive().optional(),
   x: z.coerce.number().optional(),
   y: z.coerce.number().optional(),
@@ -93,8 +93,8 @@ export async function POST(request: Request) {
   // Normalizacja (domyślne wartości jak w Twoim kodzie)
   const normalized = input.map((t, idx) => ({
     id: t.id,
-    table_number: (t.table_number?.trim() || `Stolik ${idx + 1}`) as string,
-    number_of_seats: (t.number_of_seats && t.number_of_seats > 0 ? t.number_of_seats : 4) as number,
+    label: (t.label?.trim() || `Stolik ${idx + 1}`) as string,
+    seats: (t.number_of_seats && t.number_of_seats > 0 ? t.number_of_seats : 4) as number,
     x: typeof t.x === "number" ? t.x : 0,
     y: typeof t.y === "number" ? t.y : 0,
   }));

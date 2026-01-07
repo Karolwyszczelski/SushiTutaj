@@ -1853,6 +1853,10 @@ export type Database = {
             }
             Returns: undefined
           }
+      cleanup_dead_push_subscription: {
+        Args: { endpoint_to_remove: string }
+        Returns: undefined
+      }
       gen_order_public_id: { Args: never; Returns: string }
       gen_order_tracking_token: { Args: never; Returns: string }
       get_loyalty_balance: {

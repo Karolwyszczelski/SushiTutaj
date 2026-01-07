@@ -5,10 +5,8 @@ import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
 type ApplyScope =
   | "all"
-  | "include_categories"
-  | "exclude_categories"
-  | "include_products"
-  | "exclude_products";
+  | "include_only"
+  | "exclude";
 
 type DiscountType = "percent" | "amount";
 
@@ -201,22 +199,22 @@ export default function DiscountCodesForm() {
     const minOrderNum = numOrNull(editing.minOrder);
 
     const includeCategoriesArr =
-      editing.applyScope === "include_categories"
+      editing.applyScope === "include_only"
         ? parseList(editing.includeCategories) ?? []
         : [];
 
     const excludeCategoriesArr =
-      editing.applyScope === "exclude_categories"
+      editing.applyScope === "exclude"
         ? parseList(editing.excludeCategories) ?? []
         : [];
 
     const includeProductsArr =
-      editing.applyScope === "include_products"
+      editing.applyScope === "include_only"
         ? parseList(editing.includeProducts) ?? []
         : [];
 
     const excludeProductsArr =
-      editing.applyScope === "exclude_products"
+      editing.applyScope === "exclude"
         ? parseList(editing.excludeProducts) ?? []
         : [];
 
@@ -374,14 +372,10 @@ export default function DiscountCodesForm() {
                   </td>
                   <td className="px-3 py-2">
                     {row.apply_scope === "all" && "wszystkie produkty"}
-                    {row.apply_scope === "include_categories" &&
-                      "tylko kategorie (include)"}
-                    {row.apply_scope === "exclude_categories" &&
-                      "wszystko oprócz kategorii (exclude)"}
-                    {row.apply_scope === "include_products" &&
-                      "tylko produkty (include)"}
-                    {row.apply_scope === "exclude_products" &&
-                      "wszystko oprócz produktów (exclude)"}
+                    {row.apply_scope === "include_only" &&
+                      "tylko wybrane (include)"}
+                    {row.apply_scope === "exclude" &&
+                      "wszystko oprócz (exclude)"}
                   </td>
                   <td className="px-3 py-2">
                     {row.restaurant_id === null
@@ -541,69 +535,71 @@ export default function DiscountCodesForm() {
                 }
               >
                 <option value="all">Wszystkie produkty</option>
-                <option value="include_categories">
-                  Tylko wybrane kategorie
+                <option value="include_only">
+                  Tylko wybrane kategorie/produkty
                 </option>
-                <option value="exclude_categories">
-                  Wszystko oprócz kategorii
-                </option>
-                <option value="include_products">
-                  Tylko wybrane produkty
-                </option>
-                <option value="exclude_products">
-                  Wszystko oprócz produktów
+                <option value="exclude">
+                  Wszystko oprócz wybranych
                 </option>
               </select>
             </label>
 
-            {(editing.applyScope === "include_categories" ||
-              editing.applyScope === "exclude_categories") && (
-              <label className="flex flex-col gap-1 md:col-span-2">
-                <span>
-                  Kategorie (slug/nazwa, po przecinku lub w nowych liniach)
-                </span>
-                <textarea
-                  className="rounded-md border px-2 py-1 min-h-[60px]"
-                  value={
-                    editing.applyScope === "include_categories"
-                      ? editing.includeCategories
-                      : editing.excludeCategories
-                  }
-                  onChange={(e) =>
-                    handleChange(
-                      editing.applyScope === "include_categories"
-                        ? "includeCategories"
-                        : "excludeCategories",
-                      e.target.value
-                    )
-                  }
-                />
-              </label>
+            {editing.applyScope === "include_only" && (
+              <>
+                <label className="flex flex-col gap-1 md:col-span-2">
+                  <span>
+                    Kategorie do uwzględnienia (slug/nazwa, po przecinku lub w nowych liniach)
+                  </span>
+                  <textarea
+                    className="rounded-md border px-2 py-1 min-h-[60px]"
+                    value={editing.includeCategories}
+                    onChange={(e) =>
+                      handleChange("includeCategories", e.target.value)
+                    }
+                  />
+                </label>
+                <label className="flex flex-col gap-1 md:col-span-2">
+                  <span>
+                    Produkty do uwzględnienia (slug/nazwa, po przecinku lub w nowych liniach)
+                  </span>
+                  <textarea
+                    className="rounded-md border px-2 py-1 min-h-[60px]"
+                    value={editing.includeProducts}
+                    onChange={(e) =>
+                      handleChange("includeProducts", e.target.value)
+                    }
+                  />
+                </label>
+              </>
             )}
 
-            {(editing.applyScope === "include_products" ||
-              editing.applyScope === "exclude_products") && (
-              <label className="flex flex-col gap-1 md:col-span-2">
-                <span>
-                  Produkty (slug/nazwa, po przecinku lub w nowych liniach)
-                </span>
-                <textarea
-                  className="rounded-md border px-2 py-1 min-h-[60px]"
-                  value={
-                    editing.applyScope === "include_products"
-                      ? editing.includeProducts
-                      : editing.excludeProducts
-                  }
-                  onChange={(e) =>
-                    handleChange(
-                      editing.applyScope === "include_products"
-                        ? "includeProducts"
-                        : "excludeProducts",
-                      e.target.value
-                    )
-                  }
-                />
-              </label>
+            {editing.applyScope === "exclude" && (
+              <>
+                <label className="flex flex-col gap-1 md:col-span-2">
+                  <span>
+                    Kategorie do wykluczenia (slug/nazwa, po przecinku lub w nowych liniach)
+                  </span>
+                  <textarea
+                    className="rounded-md border px-2 py-1 min-h-[60px]"
+                    value={editing.excludeCategories}
+                    onChange={(e) =>
+                      handleChange("excludeCategories", e.target.value)
+                    }
+                  />
+                </label>
+                <label className="flex flex-col gap-1 md:col-span-2">
+                  <span>
+                    Produkty do wykluczenia (slug/nazwa, po przecinku lub w nowych liniach)
+                  </span>
+                  <textarea
+                    className="rounded-md border px-2 py-1 min-h-[60px]"
+                    value={editing.excludeProducts}
+                    onChange={(e) =>
+                      handleChange("excludeProducts", e.target.value)
+                    }
+                  />
+                </label>
+              </>
             )}
           </div>
 

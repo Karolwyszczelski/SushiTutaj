@@ -16,7 +16,7 @@ const supabaseAdmin = createClient<Database>(
 
 const Patch = z
   .object({
-    table_number: z.string().min(1).optional(),
+    label: z.string().min(1).optional(),
     name: z.string().nullable().optional(),
     x: z.number().optional(),
     y: z.number().optional(),

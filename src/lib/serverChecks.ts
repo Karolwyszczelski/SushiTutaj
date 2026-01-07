@@ -27,7 +27,7 @@ export async function isOrderingOpenNow(restaurantId: string, now: Date) {
 export async function isAddressBlocked(restaurantId: string, address: string) {
   const supabase = server()
   const norm = address.trim().toLowerCase()
-  const { data: rows } = await supabase.from('address_blocks').select('pattern,type,is_active').eq('restaurant_id', restaurantId).eq('is_active', true)
+  const { data: rows } = await supabase.from('blocked_addresses').select('pattern,type,active').eq('restaurant_id', restaurantId).eq('active', true)
   return (rows ?? []).some((r: any) => {
     const p = String(r.pattern || '').toLowerCase()
     if (r.type === 'exact') return norm === p
