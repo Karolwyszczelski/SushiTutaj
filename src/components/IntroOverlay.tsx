@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 
 type Props = {
@@ -37,6 +37,28 @@ export default function IntroOverlay({
 
   const timers = useRef<number[]>([]);
 
+    // Jeśli jesteśmy w flow resetu hasła / recovery – NIE pokazuj intro (bo zasłania modal)
+  const bypassIntro = useMemo(() => {
+    if (typeof window === "undefined") return false;
+
+    const sp = new URLSearchParams(window.location.search);
+    const auth = (sp.get("auth") || "").toLowerCase();
+    const type = (sp.get("type") || "").toLowerCase();
+    const code = sp.get("code");
+    const tokenHash = sp.get("token_hash");
+    const hash = window.location.hash || "";
+
+    return (
+      auth === "password-reset" ||
+      type === "recovery" ||
+      !!code ||
+      !!tokenHash ||
+      hash.includes("access_token=") ||
+      hash.includes("refresh_token=")
+    );
+  }, []);
+
+
   const clearTimers = () => {
     timers.current.forEach((t) => window.clearTimeout(t));
     timers.current = [];
@@ -68,6 +90,12 @@ export default function IntroOverlay({
   };
 
   useEffect(() => {
+    // bypass intro dla resetu hasła / recovery
+    if (bypassIntro) {
+      unlockScroll();
+      setOpen(false);
+      return;
+    }
     // Po mount: jeśli już było pokazane w tej sesji -> zamknij od razu
     if (storageKey) {
       try {
@@ -99,7 +127,8 @@ export default function IntroOverlay({
       unlockScroll();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageKey, minMs, fadeMs]);
+  }, [storageKey, minMs, fadeMs, bypassIntro]);
+
 
   const onSkip = () => {
     if (!allowSkip) return;

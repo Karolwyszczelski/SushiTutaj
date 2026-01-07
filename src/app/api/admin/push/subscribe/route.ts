@@ -1,16 +1,16 @@
+// src/app/api/admin/push/subscribe/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@/types/supabase";
+import { getAdminContext } from "@/lib/adminContext";
 
 const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
+  { auth: { persistSession: false, detectSessionInUrl: false } }
 );
 
 type PushSubscriptionJSON = {
@@ -26,86 +26,83 @@ function makeRes(body: any, status = 200) {
   });
 }
 
+function sanitizeEndpoint(v: any) {
+  const s = String(v ?? "").trim();
+  // minimalna walidacja, żeby nie pakować śmieci do DB
+  if (!s || s.length > 2048) return null;
+  if (!/^https:\/\/.+/i.test(s)) return null; // webpush endpointy są https
+  return s;
+}
+
+function sanitizeKey(v: any) {
+  const s = String(v ?? "").trim();
+  if (!s || s.length > 512) return null;
+  // base64url zwykle, ale nie wymuszamy idealnie — tylko odcinamy oczywiste śmieci
+  if (/[\s<>"]/g.test(s)) return null;
+  return s;
+}
+
+async function getRestaurantSlugById(restaurantId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("restaurants")
+    .select("slug")
+    .eq("id", restaurantId)
+    .maybeSingle<{ slug: string | null }>();
+
+  if (error) throw new Error(error.message);
+  const slug = (data?.slug ?? "").toLowerCase().trim();
+  if (!slug) throw new Error("Nie znaleziono slugu restauracji dla kontekstu admina.");
+  return slug;
+}
+
 export async function POST(req: Request) {
   try {
-    const body = (await req.json().catch(() => null)) as PushSubscriptionJSON | null;
-
-    if (!body?.endpoint || !body?.keys?.p256dh || !body?.keys?.auth) {
-      return makeRes({ error: "INVALID_SUBSCRIPTION" }, 400);
-    }
-
-    // 1) wymuś zalogowanie (żeby nikt z zewnątrz nie spamował tabeli)
-    const supabase = createRouteHandlerClient<Database>({ cookies });
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    const userId = session?.user?.id ?? null;
-    if (!userId) {
+    // 1) Auth + membership-check + restaurant scope
+    let ctx: Awaited<ReturnType<typeof getAdminContext>>;
+    try {
+      ctx = await getAdminContext();
+    } catch {
       return makeRes({ error: "Unauthorized" }, 401);
     }
 
-    // 2) spróbuj wziąć restaurant_id z cookie
-    const ck = await cookies();
-    let restaurantId = ck.get("restaurant_id")?.value ?? null;
-    let restaurantSlug = ck.get("restaurant_slug")?.value ?? null;
+    // 2) Walidacja subskrypcji
+    const body = (await req.json().catch(() => null)) as PushSubscriptionJSON | null;
 
-    // 3) Jeśli cookie brak: nie zgadujemy przy wielu lokalach (bo to przepina endpoint do złej restauracji).
-//    Fallback tylko gdy admin ma dokładnie 1 lokal.
-if (!restaurantId) {
-  const { data: rows, error } = await supabase
-    .from("restaurant_admins")
-    .select("restaurant_id")
-    .eq("user_id", userId);
+    const endpoint = sanitizeEndpoint(body?.endpoint);
+    const p256dh = sanitizeKey(body?.keys?.p256dh);
+    const auth = sanitizeKey(body?.keys?.auth);
 
-  if (error) return makeRes({ error: error.message }, 500);
-
-  const unique = Array.from(
-    new Set((rows as any[] | null | undefined)?.map((r) => r.restaurant_id).filter(Boolean))
-  ) as string[];
-
-  if (unique.length === 1) {
-    restaurantId = unique[0]!;
-  } else {
-    return makeRes({ error: "NO_RESTAURANT_COOKIE" }, 409);
-  }
-}
-
-
-    if (!restaurantId) {
-      return makeRes({ error: "NO_RESTAURANT" }, 400);
+    if (!endpoint || !p256dh || !auth) {
+      return makeRes({ error: "INVALID_SUBSCRIPTION" }, 400);
     }
 
-    // 4) jeśli slug brak — dociągnij po id
-    if (!restaurantSlug) {
-      const { data: r, error } = await supabase
-        .from("restaurants")
-        .select("slug")
-        .eq("id", restaurantId)
-        .limit(1)
-        .maybeSingle<{ slug: string | null }>();
+    // 3) Ustalamy slug z DB po ctx.restaurantId (nie z cookie/body)
+    const restaurantId = ctx.restaurantId;
+    const restaurantSlug = await getRestaurantSlugById(restaurantId);
 
-      if (error) return makeRes({ error: error.message }, 500);
-      restaurantSlug = r?.slug?.toLowerCase() ?? null;
-    }
-
-    // 5) zapis: NAJWAŻNIEJSZE -> wypełnij `subscription` (bo wysyłka tego używa)
+    // 4) Upsert (service role), endpoint unikalny globalnie
     const { error: upsertError } = await supabaseAdmin
       .from("admin_push_subscriptions")
       .upsert(
         {
           restaurant_id: restaurantId,
           restaurant_slug: restaurantSlug,
-          endpoint: body.endpoint,
-          subscription: body, // <— krytyczne
-          p256dh: body.keys.p256dh,
-          auth: body.keys.auth,
+          endpoint,
+          subscription: {
+            endpoint,
+            expirationTime: body?.expirationTime ?? null,
+            keys: { p256dh, auth },
+          },
+          p256dh,
+          auth,
+          // opcjonalnie: user_id do debug/porządku (jeśli masz kolumnę)
+          // user_id: ctx.user.id,
         } as any,
         { onConflict: "endpoint" }
       );
 
     if (upsertError) {
-      console.error("[push.subscribe] upsert error:", upsertError.message);
+      console.error("[admin.push.subscribe] upsert error:", upsertError.message);
       return makeRes({ error: "DB_ERROR" }, 500);
     }
 
@@ -118,7 +115,7 @@ if (!restaurantId) {
       200
     );
   } catch (e: any) {
-    console.error("[push.subscribe] unexpected", e?.message || e);
+    console.error("[admin.push.subscribe] unexpected", e?.message || e);
     return makeRes({ error: "INTERNAL_ERROR" }, 500);
   }
 }

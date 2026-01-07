@@ -77,32 +77,67 @@ export default function ClientOrderTrackPage() {
   const [data, setData] = useState<S | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+    const token = useMemo(() => {
+    // wspieramy oba warianty: ?t=... oraz ?token=...
+    return (sp.get("t") || sp.get("token") || "").trim();
+  }, [sp]);
+
   useEffect(() => {
-    const t = sp.get("t") || "";
-    const url = `/api/orders/status/${id}?t=${encodeURIComponent(t)}`;
+    const orderKey = String(id || "").trim();
+    if (!orderKey) return;
+
+    if (!token) {
+      setData(null);
+      setErr("Brak tokena w linku śledzenia.");
+      return;
+    }
+
+    const url = `/api/orders/status/${encodeURIComponent(orderKey)}?t=${encodeURIComponent(
+      token
+    )}`;
+
     let stop = false;
 
     const load = async () => {
       try {
-        const r = await fetch(url, { cache: "no-store" });
+        setErr(null);
+
+        const r = await fetch(url, {
+          cache: "no-store",
+          headers: {
+            // dodatkowo w headerze (status route też to czyta)
+            "x-order-token": token,
+          },
+        });
+
         const j = await r.json();
+
         if (!r.ok) {
-          setErr(j?.error || "Błąd");
+          if (!stop) {
+            setData(null);
+            setErr(j?.error || "Błąd");
+          }
           return;
         }
+
         if (!stop) setData(j as S);
       } catch {
-        if (!stop) setErr("Błąd sieci");
+        if (!stop) {
+          setData(null);
+          setErr("Błąd sieci");
+        }
       }
     };
 
     load();
     const iv = setInterval(load, 15000);
+
     return () => {
       stop = true;
       clearInterval(iv);
     };
-  }, [id, sp]);
+  }, [id, token]);
+
 
   const [tick, setTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);

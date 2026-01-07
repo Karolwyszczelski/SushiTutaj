@@ -138,30 +138,34 @@ type Promo =
 
 export type LoyaltyChoice = "keep" | "use_4" | "use_8";
 
-  /* --- KONFIG PROGRAMU LOJALNOŚCIOWEGO --- */
-// Minimalna baza do naliczenia 1 naklejki – produkty + opakowanie, bez dostawy
-const LOYALTY_MIN_ORDER_BASE = 50; // zł
+/* --- KONFIG PROGRAMU LOJALNOŚCIOWEGO (SPÓJNE Z BACKENDEM) --- */
+/**
+ * Naliczanie naklejek: liczymy od kwoty "base" (produkty + opakowanie, BEZ dostawy)
+ * - od 50 zł  -> 1 naklejka
+ * - od 200 zł -> 2 naklejki
+ * - od 300 zł -> 3 naklejki
+ */
+const LOYALTY_MIN_ORDER_BASE = 50; // najniższy próg
+const LOYALTY_EARN_TIER_2 = 200;
+const LOYALTY_EARN_TIER_3 = 300;
+const LOYALTY_MAX_EARN_PER_ORDER = 3;
 
-// Statusy zamówień, które liczą się do naklejek
+// Statusy zamówień, które liczą się do naklejek (jak dotychczas w UI)
 const LOYALTY_ELIGIBLE_STATUSES = ["accepted", "completed"] as const;
 
+// Nagrody
 const LOYALTY_PERCENT = 30;
-const LOYALTY_REWARD_ROLL_COUNT = 4;
-const LOYALTY_REWARD_PERCENT_COUNT = 8;
+const LOYALTY_REWARD_ROLL_COUNT = 4;     // darmowa rolka
+const LOYALTY_REWARD_PERCENT_COUNT = 8;  // -30% (spala 8 naklejek)
 
-// 50 zł = 1 naklejka, 100 zł = 2 itd., max 8
+/** Ile naklejek *powinno* wpaść za dane zamówienie (wg reguł backendu). */
 function computeEarnedStickersFromBase(baseWithoutDelivery: number): number {
   const base = Number(baseWithoutDelivery || 0);
-  if (base < LOYALTY_MIN_ORDER_BASE) return 0;
-  return Math.min(LOYALTY_REWARD_PERCENT_COUNT, Math.floor(base / LOYALTY_MIN_ORDER_BASE));
+  if (!Number.isFinite(base) || base < LOYALTY_MIN_ORDER_BASE) return 0;
+  if (base >= LOYALTY_EARN_TIER_3) return 3;
+  if (base >= LOYALTY_EARN_TIER_2) return 2;
+  return 1;
 }
-
-// Zaokrąglanie opłaty za dostawę do "ładnych" kwot (np. 5.00 / 5.50 / 6.00)
-const roundUpToStep = (value: number, step = 0.5) => {
-  if (!Number.isFinite(value) || !Number.isFinite(step) || step <= 0) return 0;
-  const result = Math.ceil(value / step) * step;
-  return Math.round(result * 100) / 100; // bezpieczeństwo na floatach
-};
 
 
 /* Sushi sosy i dodatki */
@@ -363,6 +367,17 @@ function normalizePlain(input: string): string {
     .replace(/Ł/g, "l")
     .toLowerCase();
 }
+
+function isSetMonthName(name?: string | null): boolean {
+  const n0 = normalizePlain(String(name || ""));
+  const n = n0.replace(/[\s\-_]+/g, " ").trim(); // unifikacja separatorów
+  return n.includes("zestaw miesiaca") || n.includes("zestaw miesiac");
+}
+
+function isSetMonthProduct(product?: ProductDb | null): boolean {
+  return isSetMonthName(product?.name);
+}
+
 
 /* ================= SAUCE PRICING (FREE ALLOWANCES) ================= */
 
@@ -579,6 +594,35 @@ function getSauceRuleForItem(params: {
       hint: `W cenie: ${freeSoy}× Sos sojowy gratis.`,
     };
   }
+
+    // START: single rolls => 1 sauce free (COUNT)
+  const isSingleRoll =
+    !isSetLike &&
+    (
+      sub.includes("rolk") ||
+      sub.includes("california") ||
+      sub.includes("uramaki") ||
+      sub.includes("futomaki") ||
+      sub.includes("hosomaki") ||
+      sub.includes("maki") ||
+      namePlain.includes("california") ||
+      namePlain.includes("roll") ||
+      namePlain.includes("uramaki") ||
+      namePlain.includes("futomaki") ||
+      namePlain.includes("hosomaki") ||
+      namePlain.includes("maki")
+    );
+
+  if (isSingleRoll) {
+    return {
+      kind: "count",
+      eligible: saucesForProduct,
+      freeCount: 1,
+      hint: "W cenie: 1 sos gratis.",
+    };
+  }
+  // END: single rolls => 1 sauce free (COUNT)
+
 
 
   // Reszta: brak darmowych sosów (ale jeśli ktoś doda – liczymy normalnie)
@@ -806,7 +850,12 @@ function computeAddonPrice(addon: string, product?: ProductDb | null): number {
     return p ? (p.priceCents || 0) / 100 : 0;
   }
   if (ALL_SAUCES.includes(addon)) return 2;
-  if (addon === SWAP_FEE_NAME) return 5;
+  if (addon === SWAP_FEE_NAME) {
+    // Zestaw miesiąca: nawet jeśli dopłata "przetrwa" w addonach, nie naliczamy jej
+    if (isSetMonthProduct(product || null)) return 0;
+    return 5;
+  }
+
 
   // Wersja pieczona całego zestawu – cena zależy od konkretnego zestawu
   if (addon === RAW_SET_BAKE_ALL || addon === RAW_SET_BAKE_ALL_LEGACY) {
@@ -989,6 +1038,20 @@ function isOpenForSchedule(
 // HH:mm z minut
 const minutesToHHMM = (mins: number) =>
   `${pad(Math.floor(mins / 60))}:${pad(mins % 60)}`;
+
+// START: roundUpToStep
+// Zaokrągla w górę do kroku (np. 0.5 zł)
+function roundUpToStep(value: number, step = 0.5): number {
+  const v = Number(value);
+  const s = Number(step);
+  if (!Number.isFinite(v) || !Number.isFinite(s) || s <= 0) return 0;
+
+  const out = Math.ceil(v / s) * s;
+  // ochrona na floaty (np. 5.5000000001)
+  return Math.round(out * 100) / 100;
+}
+// END: roundUpToStep
+
 
 
 function todayRangeFor(slug: string, d = toZonedTime(new Date(), tz)): Range | null {
@@ -1259,7 +1322,11 @@ function buildSetSwapsPayload(
   item: any,
   product?: ProductDb | undefined
 ): SetSwapPayload[] {
+    
+
   if (!product) return [];
+  // Zestaw miesiąca: nie wysyłamy żadnych zamian/struktur swapów
+  if (isSetMonthProduct(product || null)) return [];
   const subcat = (product.subcategory || "").toLowerCase();
   if (subcat !== "zestawy") return [];
 
@@ -1383,6 +1450,9 @@ export {
   THANKS_QR_URL,
   TURNSTILE_SITE_KEY,
   accentBtn,
+  LOYALTY_EARN_TIER_2,
+  LOYALTY_EARN_TIER_3,
+  LOYALTY_MAX_EARN_PER_ORDER,
   buildClientDeliveryTime,
   buildDbModAddon,
   buildDbVarAddon,
@@ -1417,6 +1487,7 @@ export {
   isSushiSpecjalProduct,
   isVisible,
   minutesToHHMM,
+  roundUpToStep,
   normalize,
   normalizeCheckoutConfig,
   normalizePlain,
@@ -1430,7 +1501,6 @@ export {
   parseSetUpgradeInfo,
   pluralizeSos,
   resolveScheduleForSlug,
-  roundUpToStep,
   safeFetch,
   sauceUnitPrice,
   summarizeSauceList,
@@ -1439,4 +1509,6 @@ export {
   todayRangeForSchedule,
   tz,
   withCategoryPrefix,
+  isSetMonthName,
+  isSetMonthProduct,
 };

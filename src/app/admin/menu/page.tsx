@@ -8,6 +8,8 @@ import {
   ToggleRight,
   ChevronDown,
   Power,
+  Truck,
+  ShoppingBag,
   Upload,
   Loader2,
   ImageIcon,
@@ -16,8 +18,9 @@ import {
   Utensils,
   Settings,
   List,
-  Plus, // Dodano ikonę Plus
+  Plus,
 } from "lucide-react";
+
 import debounce from "lodash.debounce";
 import Image from "next/image";
 import AddonOptionsForm from "@/components/admin/settings/AddonOptionsForm";
@@ -523,8 +526,15 @@ export default function AdminMenuPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
   // Stan restauracji
-  const [orderingOpen, setOrderingOpen] = useState<boolean | null>(null);
+    // Stan restauracji
+  const [orderingOpen, setOrderingOpen] = useState<boolean | null>(null); // global
+  const [orderingDeliveryOpen, setOrderingDeliveryOpen] = useState<boolean | null>(null);
+  const [orderingTakeawayOpen, setOrderingTakeawayOpen] = useState<boolean | null>(null);
+
   const [toggleOrderingBusy, setToggleOrderingBusy] = useState(false);
+  const [toggleDeliveryBusy, setToggleDeliveryBusy] = useState(false);
+  const [toggleTakeawayBusy, setToggleTakeawayBusy] = useState(false);
+
 
   /* 1) Pobierz lokal */
   useEffect(() => {
@@ -569,17 +579,22 @@ export default function AdminMenuPage() {
           .order("subcategory", { ascending: true, nullsFirst: true })
           .order("position", { ascending: true, nullsFirst: true })
           .order("name", { ascending: true }),
-        supabase
+                supabase
           .from("restaurants")
-          .select("active")
+          .select("active, ordering_delivery_active, ordering_takeaway_active")
           .eq("id", restaurantId)
           .maybeSingle(),
+
       ]);
 
       if (err) throw err;
       setProducts((data as Product[]) ?? []);
-      if (!ri.error && ri.data)
-        setOrderingOpen(Boolean((ri.data as any).active));
+            if (!ri.error && ri.data) {
+        const row = ri.data as any;
+        setOrderingOpen(Boolean(row.active));
+        setOrderingDeliveryOpen(Boolean(row.ordering_delivery_active));
+        setOrderingTakeawayOpen(Boolean(row.ordering_takeaway_active));
+      }
       setError(null);
     } catch (e: any) {
       setError(e.message || "Błąd ładowania danych");
@@ -616,11 +631,24 @@ export default function AdminMenuPage() {
           table: "restaurants",
           filter: `id=eq.${restaurantId}`,
         },
-        (p: any) => {
-          const row = (p?.new || p?.record) as { active?: boolean } | undefined;
-          if (row && typeof row.active === "boolean")
-            setOrderingOpen(row.active);
+                (p: any) => {
+          const row = (p?.new || p?.record) as
+            | {
+                active?: boolean;
+                ordering_delivery_active?: boolean;
+                ordering_takeaway_active?: boolean;
+              }
+            | undefined;
+
+          if (!row) return;
+
+          if (typeof row.active === "boolean") setOrderingOpen(row.active);
+          if (typeof row.ordering_delivery_active === "boolean")
+            setOrderingDeliveryOpen(row.ordering_delivery_active);
+          if (typeof row.ordering_takeaway_active === "boolean")
+            setOrderingTakeawayOpen(row.ordering_takeaway_active);
         }
+
       )
       .subscribe();
 
@@ -667,24 +695,72 @@ export default function AdminMenuPage() {
     }
   };
 
-  const flipOrdering = async () => {
+    const flipOrderingGlobal = async () => {
     if (orderingOpen == null || !restaurantId) return;
     setToggleOrderingBusy(true);
+
+    const prev = orderingOpen;
+    const next = !prev;
+    setOrderingOpen(next);
+
     try {
-      const next = !orderingOpen;
-      setOrderingOpen(next);
       const { error } = await supabase
         .from("restaurants")
         .update({ active: next })
         .eq("id", restaurantId);
       if (error) throw error;
     } catch (e: any) {
-      setOrderingOpen(!orderingOpen);
+      setOrderingOpen(prev);
       alert("Nie udało się zmienić statusu zamawiania: " + (e.message || e));
     } finally {
       setToggleOrderingBusy(false);
     }
   };
+
+  const flipOrderingDelivery = async () => {
+    if (orderingDeliveryOpen == null || !restaurantId) return;
+    setToggleDeliveryBusy(true);
+
+    const prev = orderingDeliveryOpen;
+    const next = !prev;
+    setOrderingDeliveryOpen(next);
+
+    try {
+      const { error } = await supabase
+        .from("restaurants")
+        .update({ ordering_delivery_active: next })
+        .eq("id", restaurantId);
+      if (error) throw error;
+    } catch (e: any) {
+      setOrderingDeliveryOpen(prev);
+      alert("Nie udało się zmienić statusu dostaw: " + (e.message || e));
+    } finally {
+      setToggleDeliveryBusy(false);
+    }
+  };
+
+  const flipOrderingTakeaway = async () => {
+    if (orderingTakeawayOpen == null || !restaurantId) return;
+    setToggleTakeawayBusy(true);
+
+    const prev = orderingTakeawayOpen;
+    const next = !prev;
+    setOrderingTakeawayOpen(next);
+
+    try {
+      const { error } = await supabase
+        .from("restaurants")
+        .update({ ordering_takeaway_active: next })
+        .eq("id", restaurantId);
+      if (error) throw error;
+    } catch (e: any) {
+      setOrderingTakeawayOpen(prev);
+      alert("Nie udało się zmienić statusu wynosu: " + (e.message || e));
+    } finally {
+      setToggleTakeawayBusy(false);
+    }
+  };
+
 
   const handleOpenAddModal = () => {
     setEditingProduct(null); // Tryb tworzenia
@@ -798,20 +874,56 @@ export default function AdminMenuPage() {
             Dodaj produkt
           </button>
 
-          {/* Toggle Zamawiania */}
-          <button
-              onClick={flipOrdering}
+                    {/* Przełączniki zamówień: global / dostawa / wynos */}
+          <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+            <button
+              onClick={flipOrderingGlobal}
               disabled={orderingOpen == null || toggleOrderingBusy || !restaurantId}
               className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold shadow-sm transition-all ${
-                orderingOpen 
-                  ? "bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50" 
+                orderingOpen
+                  ? "bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50"
                   : "bg-white text-slate-500 border-slate-300 hover:bg-slate-50"
               }`}
-              title="Włącz/wyłącz przyjmowanie zamówień w całym lokalu"
+              title="Włącz/wyłącz przyjmowanie zamówień globalnie (blokuje wszystko)"
             >
               <Power className={`h-4 w-4 ${orderingOpen ? "text-emerald-600" : "text-slate-400"}`} />
-              {orderingOpen ? "Zamawianie: WŁĄCZONE" : "Zamawianie: WYŁĄCZONE"}
-          </button>
+              {orderingOpen ? "Zamówienia: WŁ." : "Zamówienia: WYŁ."}
+            </button>
+
+            <div className="grid grid-cols-2 gap-3 w-full sm:w-auto">
+              <button
+                onClick={flipOrderingDelivery}
+                disabled={orderingDeliveryOpen == null || toggleDeliveryBusy || !restaurantId}
+                className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold shadow-sm transition-all ${
+                  orderingOpen && orderingDeliveryOpen
+                    ? "bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                    : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                }`}
+                title="Włącz/wyłącz dostawy dla lokalu (działa tylko gdy Zamówienia: WŁ.)"
+              >
+                <Truck className={`h-4 w-4 ${orderingOpen && orderingDeliveryOpen ? "text-emerald-600" : "text-slate-400"}`} />
+                {orderingOpen
+                  ? orderingDeliveryOpen ? "Dostawa: WŁ." : "Dostawa: WYŁ."
+                  : "Dostawa: —"}
+              </button>
+
+              <button
+                onClick={flipOrderingTakeaway}
+                disabled={orderingTakeawayOpen == null || toggleTakeawayBusy || !restaurantId}
+                className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-bold shadow-sm transition-all ${
+                  orderingOpen && orderingTakeawayOpen
+                    ? "bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                    : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"
+                }`}
+                title="Włącz/wyłącz wynos dla lokalu (działa tylko gdy Zamówienia: WŁ.)"
+              >
+                <ShoppingBag className={`h-4 w-4 ${orderingOpen && orderingTakeawayOpen ? "text-emerald-600" : "text-slate-400"}`} />
+                {orderingOpen
+                  ? orderingTakeawayOpen ? "Wynos: WŁ." : "Wynos: WYŁ."
+                  : "Wynos: —"}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

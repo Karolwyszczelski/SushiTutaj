@@ -2,9 +2,9 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getAdminContext } from "@/lib/adminContext";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,44 +12,86 @@ const supabaseAdmin = createClient(
   { auth: { persistSession: false } }
 );
 
-// pobiera restaurant_id z cookie ustawianego przez /api/restaurants/ensure-cookie
-async function getRestaurantId(): Promise<string | null> {
-  const jar = await cookies(); // <-- kluczowa zmiana
+function json(body: any, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: { "Cache-Control": "no-store" },
+  });
+}
 
-  const rid = jar.get("restaurant_id")?.value || null;
-  if (rid) return rid;
+function clampStr(v: unknown, max: number): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const s = v.trim();
+  if (!s) return undefined;
+  return s.length > max ? s.slice(0, max) : s;
+}
 
-  const slug = jar.get("restaurant_slug")?.value || null;
-  if (!slug) return null;
+function clampInt(v: unknown, min: number, max: number, fallback: number) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  const x = Math.round(n);
+  return Math.min(max, Math.max(min, x));
+}
 
-  const { data } = await supabaseAdmin
-    .from("restaurants")
-    .select("id")
-    .eq("slug", slug)
-    .maybeSingle();
+function normalizeLayoutName(v: unknown) {
+  const raw = clampStr(v, 40);
+  if (!raw) return "default";
+  // bezpieczny zestaw znaków na klucz (żeby nie robić syfu w unikatowym onConflict)
+  const safe = raw.toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/-+/g, "-");
+  return safe || "default";
+}
 
-  return data?.id ?? null;
+function sanitizePlan(planIn: unknown) {
+  const arr = Array.isArray(planIn) ? planIn : [];
+  // hard-limit żeby ktoś nie wysłał 50k elementów
+  const limited = arr.slice(0, 400);
+
+  return limited.map((t: any) => {
+    const id = clampStr(t?.id, 80) ?? (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
+    const label = clampStr(t?.label ?? t?.name, 40) ?? "Stół";
+
+    const x = clampInt(t?.x, 0, 10000, 0);
+    const y = clampInt(t?.y, 0, 10000, 0);
+    const w = clampInt(t?.w, 44, 2000, 90);
+    const h = clampInt(t?.h, 44, 2000, 90);
+
+    const rotationRaw = Number(t?.rotation ?? t?.rot ?? 0);
+    const rotation = Number.isFinite(rotationRaw) ? ((Math.round(rotationRaw) % 360) + 360) % 360 : 0;
+
+    const capacity = clampInt(t?.capacity ?? t?.seats ?? 2, 1, 50, 2);
+    const active = Boolean(t?.active ?? true);
+
+    return { id: String(id), label, x, y, w, h, rotation, capacity, active };
+  });
+}
+
+async function requireRestaurantId() {
+  try {
+    const ctx = await getAdminContext();
+    return ctx.restaurantId;
+  } catch {
+    return null;
+  }
 }
 
 export async function GET() {
-  try {
-    const restaurant_id = await getRestaurantId();
-    if (!restaurant_id) {
-      return NextResponse.json(
-        { error: "Brak restauracji w cookie" },
-        { status: 400 }
-      );
-    }
+  const restaurant_id = await requireRestaurantId();
+  if (!restaurant_id) return json({ error: "UNAUTHORIZED" }, 401);
 
-    // bierzemy „default”, jeśli brak – utwórz pusty szkic
-    const { data } = await supabaseAdmin
+  try {
+    const { data, error } = await supabaseAdmin
       .from("table_layouts")
       .select("*")
       .eq("restaurant_id", restaurant_id)
       .eq("name", "default")
       .maybeSingle();
 
-    if (data) return NextResponse.json({ layout: data });
+    if (error) {
+      console.error("[table-layout.GET] select error:", error.message);
+      return json({ error: "Błąd pobierania układu" }, 500);
+    }
+
+    if (data) return json({ layout: data }, 200);
 
     const empty = {
       restaurant_id,
@@ -64,46 +106,45 @@ export async function GET() {
       .select("*")
       .single();
 
-    if (ins.error) throw ins.error;
-    return NextResponse.json({ layout: ins.data });
+    if (ins.error) {
+      // jeśli konflikt unikalności, rekord już istnieje -> dociągnij i zwróć
+      const msg = String(ins.error.message || "");
+      if (msg.includes("duplicate key") || msg.includes("23505")) {
+        const retry = await supabaseAdmin
+          .from("table_layouts")
+          .select("*")
+          .eq("restaurant_id", restaurant_id)
+          .eq("name", "default")
+          .maybeSingle();
+
+        if (!retry.error && retry.data) return json({ layout: retry.data }, 200);
+      }
+
+      console.error("[table-layout.GET] insert error:", ins.error.message);
+      return json({ error: "Błąd tworzenia układu" }, 500);
+    }
+
+    return json({ layout: ins.data }, 200);
+
   } catch (e: any) {
-    return NextResponse.json(
-      { error: e?.message || "Server error" },
-      { status: 500 }
-    );
+    console.error("[table-layout.GET] unexpected:", e?.message || e);
+    return json({ error: e?.message || "Server error" }, 500);
   }
 }
 
 export async function POST(req: Request) {
+  const restaurant_id = await requireRestaurantId();
+  if (!restaurant_id) return json({ error: "UNAUTHORIZED" }, 401);
+
   try {
-    const restaurant_id = await getRestaurantId();
-    if (!restaurant_id) {
-      return NextResponse.json(
-        { error: "Brak restauracji w cookie" },
-        { status: 400 }
-      );
+    const body = (await req.json().catch(() => null)) as any;
+    if (!body || typeof body !== "object") {
+      return json({ error: "INVALID_BODY" }, 400);
     }
 
-    const body = await req.json().catch(() => ({}));
-    const planIn = Array.isArray(body?.plan) ? body.plan : [];
+    const name = normalizeLayoutName(body?.name);
     const active = Boolean(body?.active ?? true);
-    const name =
-      typeof body?.name === "string" && body.name.trim()
-        ? body.name.trim()
-        : "default";
-
-    // sanity – tylko potrzebne pola
-    const plan = planIn.map((t: any) => ({
-      id: String(t.id || crypto.randomUUID()),
-      label: String(t.label ?? t.name ?? "Stół"),
-      x: Math.max(0, Math.round(Number(t.x) || 0)),
-      y: Math.max(0, Math.round(Number(t.y) || 0)),
-      w: Math.max(44, Math.round(Number(t.w) || 90)),
-      h: Math.max(44, Math.round(Number(t.h) || 90)),
-      rotation: Math.round(Number(t.rotation ?? t.rot ?? 0)) % 360,
-      capacity: Math.max(1, Math.round(Number(t.capacity ?? t.seats ?? 2))),
-      active: Boolean(t.active ?? true),
-    }));
+    const plan = sanitizePlan(body?.plan);
 
     const up = await supabaseAdmin
       .from("table_layouts")
@@ -114,12 +155,14 @@ export async function POST(req: Request) {
       .select("*")
       .single();
 
-    if (up.error) throw up.error;
-    return NextResponse.json({ ok: true, layout: up.data });
+    if (up.error) {
+      console.error("[table-layout.POST] upsert error:", up.error.message);
+      return json({ error: "Błąd zapisu układu" }, 500);
+    }
+
+    return json({ ok: true, layout: up.data }, 200);
   } catch (e: any) {
-    return NextResponse.json(
-      { error: e?.message || "Server error" },
-      { status: 500 }
-    );
+    console.error("[table-layout.POST] unexpected:", e?.message || e);
+    return json({ error: e?.message || "Server error" }, 500);
   }
 }

@@ -129,6 +129,15 @@ export const ProductItem: React.FC<{
   const isSet = subcat === "zestawy";
   const isSpec = subcat === "specjały";
 
+  // Zestaw miesiąca: blokujemy zamiany w zestawie
+const isSetMonth =
+  isSet &&
+  (() => {
+    const n = normalizePlain(String(prodInfo?.name || prod.name || ""));
+    return n.includes("zestaw miesiaca") || n.includes("zestaw miesiac");
+  })();
+
+
   const productSubcat =
     inferredCat ||
     prodInfo?.subcategory ||
@@ -210,6 +219,7 @@ export const ProductItem: React.FC<{
     /surowy/i.test(row.from);
 
   const getSetSwapCurrent = (rowFrom: string): string => {
+    if (isSetMonth) return rowFrom;
     const swaps = Array.isArray(prod.swaps) ? prod.swaps : [];
     const found = swaps.find(
       (s: any) =>
@@ -335,6 +345,8 @@ const syncAddonCount = (label: string, desiredCount: number) => {
   };
 
   const doSetSwap = (rowFrom: string, to: string) => {
+  if (isSetMonth) return; // Zestaw miesiąca: brak zamian
+
   const current = getSetSwapCurrent(rowFrom);
   if (!to || to === current) return;
 
@@ -374,6 +386,13 @@ const syncAddonCount = (label: string, desiredCount: number) => {
   // 4) ustaw liczbę addonów "Zamiana w zestawie" = liczba aktywnych zamian
   syncAddonCount(SWAP_FEE_NAME, activeSwapCount);
 };
+
+useEffect(() => {
+  if (!isSetMonth) return;
+  // jeśli kiedyś była dopłata za zamiany – czyścimy ją dla Zestawu miesiąca
+  syncAddonCount(SWAP_FEE_NAME, 0);
+}, [isSetMonth, prod.addons, prod.name]);
+
 
 
 
@@ -470,8 +489,8 @@ const drinkSubcatPlain = useMemo(
 
 const isDrinkBySubcat = drinkSubcatPlain.includes("napoj"); // łapie "napoje", "napój", itd.
 
-const isDrink =
-  isDrinkBySubcat
+const isDrink = isDrinkBySubcat;
+
 
 const showSauces = !isDrink && !isDessert;
 
@@ -763,26 +782,42 @@ const showSauces = !isDrink && !isDessert;
   const extraKey = (ex: string) => `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — ${ex}`;
   const rowCatLc = (row.cat || "").toLowerCase();
 
- const canUseExtraForRow = (ex: string): boolean => {
-    const rowText = (textForLogic || "").toLowerCase();
+  const isExtraAllowedForRowText = (ex: string, rowText: string): boolean => {
+    const rowTextLc = (rowText || "").toLowerCase();
+    const rowTextPlain = normalizePlain(rowText || "");
+
+    // 0) BLOKADA "DODAJESZ TO CO JUŻ JEST W ROLCE"
+    // Tempura / tempurze / tempur... => blokuj Tempurę
+    if (ex === "Tempura" && rowTextLc.includes("tempur")) return false;
+
+    // "płatek sojowy" / "w płatku sojowym" => blokuj Płatek sojowy
+if (
+  ex === "Płatek sojowy" &&
+  (rowTextPlain.includes("platek sojow") || rowTextPlain.includes("platku sojow"))
+) return false;
+
+// "tamago" => blokuj Tamago (żeby nie dało się dodać drugi raz)
+if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
 
     // === Hosomaki / Hoso ===
     if (rowCatLc.includes("hosomaki") || rowCatLc.includes("hoso")) {
+      // Hosomaki: tylko Tempura, ale nie jeśli już tempur...
       return ex === "Tempura";
     }
 
     // === Futomaki / Futo ===
     if (rowCatLc.includes("futomaki") || rowCatLc.includes("futo")) {
       if (ex === "Ryba pieczona") {
-        // Jeśli rolka jest już pieczona/w tempurze (np. wybrałeś "Futomak Grill") -> ukryj opcję
-        if (isAlreadyBakedOrTempura(rowText)) return false;
-        
-        // POPRAWKA: Pokazuj opcję, jeśli jest surowy LUB ma w nazwie rybę
+        // Jeśli rolka jest już pieczona/w tempurze -> ukryj opcję
+        if (isAlreadyBakedOrTempura(rowTextLc)) return false;
+
+        // surowy LUB ma rybę w nazwie
         return (
-          /surowy|surowe|surowa/i.test(rowText) ||
-          /łosoś|losos|tuńczyk|tunczyk/i.test(rowText)
+          /surowy|surowe|surowa/i.test(rowTextLc) ||
+          /łosoś|losos|tuńczyk|tunczyk/i.test(rowTextLc)
         );
       }
+
       if (ex === "Tamago") return true;
       return ex === "Tempura" || ex === "Płatek sojowy";
     }
@@ -791,16 +826,22 @@ const showSauces = !isDrink && !isDessert;
     if (rowCatLc.includes("nigiri")) {
       if (ex !== "Ryba pieczona") return false;
       const hasFish =
-        rowText.includes("łosoś") ||
-        rowText.includes("losos") ||
-        rowText.includes("tuńczyk") ||
-        rowText.includes("tunczyk");
-      // Nigiri tylko dla rybnych i jeśli nie są już pieczone
-      return hasFish && !isAlreadyBakedOrTempura(rowText);
+        rowTextLc.includes("łosoś") ||
+        rowTextLc.includes("losos") ||
+        rowTextLc.includes("tuńczyk") ||
+        rowTextLc.includes("tunczyk");
+
+      return hasFish && !isAlreadyBakedOrTempura(rowTextLc);
     }
 
     return false;
   };
+
+  const canUseExtraForRow = (ex: string): boolean => {
+    // kluczowe: analizujemy WYBRANĄ rolkę (textForLogic)
+    return isExtraAllowedForRowText(ex, String(textForLogic || ""));
+  };
+
 
   // labelki do selecta: pokazuj krótko (np. "Dorsz"), ale value zostaje pełne
   const stripKnownPrefix = (label: string) =>
@@ -827,37 +868,56 @@ const showSauces = !isDrink && !isDessert;
 )}
 
       {/* 2) Zamiana */}
-      <div className="space-y-1">
-        <div className="text-[11px] font-semibold text-black/70">Zamień na</div>
-        <select
-          className="border border-black/15 rounded-xl px-3 py-2 bg-white w-full"
-          value={current}
-          onChange={(e) => {
-  const next = e.target.value;
+{isSetMonth ? (
+  <div className="rounded-xl bg-gray-50 border border-black/10 p-2 text-[11px] text-black/70">
+    Zamiany niedostępne dla „Zestawu miesiąca”.
+  </div>
+) : (
+  <div className="space-y-1">
+    <div className="text-[11px] font-semibold text-black/70">Zamień na</div>
+    <select
+      className="border border-black/15 rounded-xl px-3 py-2 bg-white w-full"
+      value={current}
+      onChange={(e) => {
+        const next = e.target.value;
 
-  // jeśli była dopłata za pieczenie, a nowa WYBRANA rolka jest już pieczona / w tempurze → zdejmij dopłatę
-  const nextPref = withCategoryPrefix(next, row.cat);
-  const nextProd = byName.get(next) || byName.get(nextPref) || null;
-  const nextText = `${nextProd?.name || nextPref} ${nextProd?.description || ""}`;
+        // jeśli była dopłata za pieczenie, a nowa WYBRANA rolka jest już pieczona / w tempurze → zdejmij dopłatę
+        const nextPref = withCategoryPrefix(next, row.cat);
+        const nextProd = byName.get(next) || byName.get(nextPref) || null;
+        const nextText = `${nextProd?.name || nextPref} ${nextProd?.description || ""}`;
 
-  if ((prod.addons ?? []).includes(rollAddonLabel) && isAlreadyBakedOrTempura(nextText)) {
-    removeAddon(prod.name, rollAddonLabel);
-  }
+        if ((prod.addons ?? []).includes(rollAddonLabel) && isAlreadyBakedOrTempura(nextText)) {
+          removeAddon(prod.name, rollAddonLabel);
+        }
 
-  doSetSwap(row.from, next);
-}}
-          aria-label={`Zamiana: ${row.qty}x ${row.cat} ${row.from}`}
-        >
-          {selectOptions.map((n) => {
-            const short = optionLabelShort(n);
-            return (
-              <option key={n} value={n}>
-                {n === row.from ? `Skład zestawu — ${short}` : short}
-              </option>
-            );
-          })}
-        </select>
-      </div>
+                // Jeśli do tej rolki były dodane dodatki (Tempura / Płatek / itd.),
+        // a po zamianie nowa rolka JUŻ to ma lub nie powinna tego mieć -> zdejmij addon, żeby nie naliczać podwójnie
+        for (const ex of EXTRAS) {
+          const k = extraKey(ex);
+          const onExtra = (prod.addons ?? []).includes(k);
+          if (!onExtra) continue;
+
+          // używamy tej samej logiki co przy renderze przycisków
+          const allowedAfter = isExtraAllowedForRowText(ex, nextText);
+          if (!allowedAfter) removeAddon(prod.name, k);
+        }
+
+
+        doSetSwap(row.from, next);
+      }}
+      aria-label={`Zamiana: ${row.qty}x ${row.cat} ${row.from}`}
+    >
+      {selectOptions.map((n) => {
+        const short = optionLabelShort(n);
+        return (
+          <option key={n} value={n}>
+            {n === row.from ? `Skład zestawu — ${short}` : short}
+          </option>
+        );
+      })}
+    </select>
+  </div>
+)}
 
       {/* 3) Pieczenie tej rolki (jeśli dotyczy) */}
       {rawRow && (
@@ -898,22 +958,26 @@ const showSauces = !isDrink && !isDessert;
               <button
                 key={ex}
                 type="button"
+                  disabled={!allowed && !on}
                 onClick={() => {
-                  if (!allowed) return;
+  // jeśli jest już włączone, pozwól ZAWSZE zdjąć
+  if (on) {
+    removeAddon(prod.name, key);
+    return;
+  }
 
-                  if (on) {
-                    removeAddon(prod.name, key);
-                    return;
-                  }
+  // jeśli nie jest włączone, a jest niedozwolone — nie dodawaj
+  if (!allowed) return;
 
-                  // radio-like w obrębie tej rolki
-                  EXTRAS.forEach((ex2) => {
-                    const k2 = extraKey(ex2);
-                    if ((prod.addons ?? []).includes(k2)) removeAddon(prod.name, k2);
-                  });
+  // radio-like w obrębie tej rolki
+  EXTRAS.forEach((ex2) => {
+    const k2 = extraKey(ex2);
+    if ((prod.addons ?? []).includes(k2)) removeAddon(prod.name, k2);
+  });
 
-                  addAddon(prod.name, key);
-                }}
+  addAddon(prod.name, key);
+}}
+
                 className={clsx(
                   "px-2 py-1 rounded text-[11px] border",
                   !allowed
@@ -970,13 +1034,16 @@ const showSauces = !isDrink && !isDessert;
               </div>
             )}
 
-            <p className="text-[11px] text-black/60">
-  Zamiany tylko w obrębie tej samej kategorii (Futomaki ↔ Futomaki,
-  Hosomaki ↔ Hosomaki, California ↔ California itd.). California
-  może być zamieniana tylko na inne rolki California z tej samej
-  „klasy” (obłożone ↔ obłożone, klasyczne ↔ klasyczne). Bez
-  specjałów. Dodajemy pozycję „{SWAP_FEE_NAME}”.
-</p>
+            {!isSetMonth && (
+  <p className="text-[11px] text-black/60">
+    Zamiany tylko w obrębie tej samej kategorii (Futomaki ↔ Futomaki,
+    Hosomaki ↔ Hosomaki, California ↔ California itd.). California
+    może być zamieniana tylko na inne rolki California z tej samej
+    „klasy” (obłożone ↔ obłożone, klasyczne ↔ klasyczne). Bez
+    specjałów. Dodajemy pozycję „{SWAP_FEE_NAME}”.
+  </p>
+)}
+
 
             {isSet && setBakePrice != null && (
               <div className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-2 space-y-1">
@@ -1103,13 +1170,14 @@ const showSauces = !isDrink && !isDessert;
                     key={ex}
                     onClick={() => allowed && toggleAddon(ex)}
                     className={clsx(
-                      "px-2 py-1 rounded text-xs border",
-                      !allowed
-                        ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
-                        : on
-                        ? "bg-black text-white border-black"
-                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
-                    )}
+  "px-2 py-1 rounded text-[11px] border",
+  on
+    ? "bg-black text-white border-black"
+    : !allowed
+    ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
+    : "bg-white text-black hover:bg-gray-50 border-gray-200"
+)}
+
                   >
                     {on ? `✓ ${ex}` : `+ ${ex}`}
                   </button>

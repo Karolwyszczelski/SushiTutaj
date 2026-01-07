@@ -34,27 +34,41 @@ export default function Footer() {
   const pathname = usePathname();
   const city = params?.city ?? null;
 
-    // Admin panel: nie pokazujemy footera wcale
-  if (pathname?.startsWith("/admin")) return null;
+    const hideFooter = pathname?.startsWith("/admin");
+  if (hideFooter) return null;
 
   const [r, setR] = useState<R | null>(null);
 
+  // Admin panel: nie pokazujemy footera wcale (ALE dopiero po hookach)
+
+if (hideFooter) return null;
+
   useEffect(() => {
     let ignore = false;
+
     async function load() {
+      if (hideFooter) {
+        setR(null);
+        return;
+      }
+
       if (!city) {
         setR(null);
         return;
       }
+
       const res = await fetch(`/api/restaurants/${city}`, { cache: "no-store" });
       const json = await res.json();
       if (!ignore && !json?.error) setR(json);
     }
+
     load();
+
     return () => {
       ignore = true;
     };
-  }, [city]);
+  }, [city, hideFooter]);
+
 
   const phone = r?.phone ?? "+48 000 000 000";
   const email = r?.email ?? "kontakt@sushitutaj.pl";

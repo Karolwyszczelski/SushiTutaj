@@ -14,7 +14,7 @@ import {
 import clsx from "clsx";
 import { useSession } from "@supabase/auth-helpers-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import useCartStore from "@/store/cartStore";
 
 /** Akcenty: korzystamy z var(--accent-red*). */
@@ -55,7 +55,21 @@ export default function AccountModal({
   const user = session?.user || null;
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("auth");
+
+  const pathname = usePathname() ?? "/";
+
+  // jak Header.tsx: /{city}#menu (fallback: /#menu)
+  const menuHref = useMemo(() => {
+    const seg0 = pathname.split("/").filter(Boolean)[0]?.toLowerCase() || "";
+    const allowed = ["ciechanow", "przasnysz", "szczytno"];
+    return allowed.includes(seg0) ? `/${seg0}#menu` : "/#menu";
+  }, [pathname]);
+
+  // auth mode (login/register)
   const [authMode, setAuthMode] = useState<AuthMode>("login");
+
+
+  
 
   // auth state
   const [email, setEmail] = useState("");
@@ -115,7 +129,8 @@ export default function AccountModal({
     }
 
     // jeśli koszyk pusty — wyślij do menu
-    setTimeout(() => router.push("/menu"), 0);
+        setTimeout(() => router.push(menuHref as any), 0);
+
   };
 
 
@@ -224,9 +239,19 @@ export default function AccountModal({
 
     const origin = typeof window !== "undefined" ? window.location.origin : "";
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: origin ? `${origin}/auth/reset-password` : undefined,
-    });
+    // ważne: dopnij miasto, żeby wrócić na /[city] po kliknięciu w maila
+const allowed = ["ciechanow", "przasnysz", "szczytno"];
+const seg0 = pathname.split("/").filter(Boolean)[0]?.toLowerCase() || "";
+const cityParam = allowed.includes(seg0) ? seg0 : "";
+
+const resetPath = `/auth/reset-password${
+  cityParam ? `?city=${encodeURIComponent(cityParam)}` : ""
+}`;
+
+const { error } = await supabase.auth.resetPasswordForEmail(email, {
+  redirectTo: origin ? `${origin}${resetPath}` : undefined,
+});
+
 
     if (error) setErr(error.message);
     else {
@@ -795,7 +820,8 @@ useEffect(() => {
                       type="button"
                       onClick={() => {
                         onClose();
-                        setTimeout(() => router.push("/menu"), 0);
+                        setTimeout(() => router.push(menuHref as any), 0);
+
                       }}
                       className="rounded-xl px-4 py-2 font-semibold border border-black/10 hover:bg-black/5"
                     >

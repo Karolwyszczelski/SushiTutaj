@@ -1,13 +1,18 @@
 // src/app/verify/Client.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+// START: imports
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import type { Route } from "next";
+// END: imports
 
 export default function VerifyClient() {
-  const supabase = createClientComponentClient(); // PKCE domyślnie
+  // START: memoized supabase
+  const supabase = useMemo(() => createClientComponentClient(), []);
+  // END: memoized supabase
+
   const router = useRouter();
   const [msg, setMsg] = useState("Weryfikuję link…");
 
@@ -18,24 +23,18 @@ export default function VerifyClient() {
         const sp = url.searchParams;
         const hp = new URLSearchParams(url.hash.replace(/^#/, ""));
 
-        // next param z URL – tylko ścieżki zaczynające się od "/" są akceptowane
         const rawNext = sp.get("next");
         const next: Route =
-          rawNext && rawNext.startsWith("/")
-            ? (rawNext as Route)
-            : "/?verified=1";
+          rawNext && rawNext.startsWith("/") ? (rawNext as Route) : "/?verified=1";
 
-        // Komunikaty błędu z URL
         const err = sp.get("error") || sp.get("error_code");
         const errDesc = sp.get("error_description");
         if (err || errDesc) throw new Error(errDesc || err!);
 
-        // 1) PKCE (?code=...)
         const code = sp.get("code");
         if (code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) {
-            // jeśli link otwarto w innej przeglądarce i brakuje code_verifier – potraktuj jako potwierdzone
             const msg = (error as any)?.message || "";
             if (msg.toLowerCase().includes("code verifier")) {
               router.replace(next);
@@ -49,14 +48,10 @@ export default function VerifyClient() {
           return;
         }
 
-        // 2) Implicit hash (#access_token/#refresh_token)
         const access_token = hp.get("access_token");
         const refresh_token = hp.get("refresh_token");
         if (access_token && refresh_token) {
-          const { error } = await supabase.auth.setSession({
-            access_token,
-            refresh_token,
-          });
+          const { error } = await supabase.auth.setSession({ access_token, refresh_token });
           if (error) throw error;
           window.history.replaceState({}, document.title, url.origin + url.pathname);
           setMsg("Adres e-mail potwierdzony. Loguję…");
@@ -64,7 +59,6 @@ export default function VerifyClient() {
           return;
         }
 
-        // 3) Starsze linki OTP
         const token_hash = sp.get("token_hash");
         const type = sp.get("type") as
           | "signup"

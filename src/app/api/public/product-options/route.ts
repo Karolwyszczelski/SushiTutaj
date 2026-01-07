@@ -1,12 +1,15 @@
+// src/app/api/public/product-options/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/supabase";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const supabaseAdmin = createClient(
+// PUBLIC: używamy ANON + RLS (żadnego Service Role w publicznych endpointach)
+const supabasePublic = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   {
     auth: { persistSession: false, detectSessionInUrl: false },
   }
@@ -64,61 +67,88 @@ const notNull = <T,>(v: T | null | undefined): v is T => v != null;
 const byPos = (a: { position: number | null }, b: { position: number | null }) =>
   (a.position ?? 9999) - (b.position ?? 9999);
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const slug = (searchParams.get("restaurant") || "").toLowerCase().trim();
-  if (!slug) return NextResponse.json({ error: "Missing restaurant" }, { status: 400 });
+function makeRes(body: any, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: {
+      "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+    },
+  });
+}
 
-  // 1) restaurant_id po slugu
-  const restRes = await supabaseAdmin
+async function selectRestaurantIdBySlug(slug: string) {
+  // Nie zakładamy is_active w tabeli restaurants (żeby nie wywalić query),
+  // ale jeśli RLS ogranicza dostęp, to i tak nie zobaczymy prywatnych rekordów.
+  const { data, error } = await supabasePublic
     .from("restaurants")
     .select("id")
     .eq("slug", slug)
-    .maybeSingle();
+    .maybeSingle<{ id: string }>();
 
-  if (restRes.error || !restRes.data?.id) {
-    return NextResponse.json({ error: "Restaurant not found" }, { status: 404 });
-  }
-  const restaurantId = restRes.data.id as string;
+  if (error) return { id: null as string | null, error };
+  return { id: data?.id ? String(data.id) : null, error: null as any };
+}
 
-  // 2) produkty dla restauracji
-  const prodRes = await supabaseAdmin
+async function selectProductIds(restaurantId: string) {
+  const { data, error } = await supabasePublic
     .from("products")
     .select("id")
-    .eq("restaurant_id", restaurantId);
+    .eq("restaurant_id", restaurantId)
+    .eq("is_active", true);
 
-  if (prodRes.error) return NextResponse.json({ error: prodRes.error.message }, { status: 500 });
+  if (error) return { ids: [] as string[], error };
+  return { ids: (data || []).map((p: any) => String(p.id)), error: null as any };
+}
 
-  const productIds = (prodRes.data || []).map((p: any) => String(p.id));
-  if (productIds.length === 0) return NextResponse.json({ items: [] });
+
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const slug = (searchParams.get("restaurant") || "").toLowerCase().trim();
+  if (!slug) return makeRes({ error: "Missing restaurant" }, 400);
+
+  // 1) restaurant_id po slugu (PUBLIC + RLS)
+  const restRes = await selectRestaurantIdBySlug(slug);
+
+  // jeśli RLS blokuje, to traktujemy jak 404 (nie zdradzamy szczegółów)
+  if (restRes.error || !restRes.id) {
+    return makeRes({ error: "Restaurant not found" }, 404);
+  }
+  const restaurantId = restRes.id;
+
+  // 2) produkty dla restauracji (PUBLIC + RLS)
+  const prodRes = await selectProductIds(restaurantId);
+  if (prodRes.error) return makeRes({ error: prodRes.error.message }, 500);
+
+  const productIds = prodRes.ids;
+  if (productIds.length === 0) return makeRes({ items: [] }, 200);
 
   // 3) warianty
-  const variantsRes = await supabaseAdmin
+  const variantsRes = await supabasePublic
     .from("product_variants")
     .select("id,product_id,name,price_delta_cents,price_cents,position,is_active")
     .in("product_id", productIds)
     .eq("is_active", true)
     .order("position", { ascending: true });
 
-  if (variantsRes.error) return NextResponse.json({ error: variantsRes.error.message }, { status: 500 });
+  if (variantsRes.error) return makeRes({ error: variantsRes.error.message }, 500);
 
   const variants = (variantsRes.data || []) as VariantRow[];
   const variantIds = variants.map((v) => v.id);
 
   // 4) mapowanie grup do produktów
-  const pmgRes = await supabaseAdmin
+  const pmgRes = await supabasePublic
     .from("product_modifier_groups")
     .select("product_id,group_id,min_select,max_select,is_required,position,is_active")
     .in("product_id", productIds)
     .eq("is_active", true)
     .order("position", { ascending: true });
 
-  if (pmgRes.error) return NextResponse.json({ error: pmgRes.error.message }, { status: 500 });
+  if (pmgRes.error) return makeRes({ error: pmgRes.error.message }, 500);
   const pmg = (pmgRes.data || []) as ProductGroupMapRow[];
 
   // 5) mapowanie grup do wariantów
   const vmgRes = variantIds.length
-    ? await supabaseAdmin
+    ? await supabasePublic
         .from("variant_modifier_groups")
         .select("variant_id,group_id,position,is_active")
         .in("variant_id", variantIds)
@@ -126,7 +156,7 @@ export async function GET(req: Request) {
         .order("position", { ascending: true })
     : { data: [], error: null as any };
 
-  if (vmgRes.error) return NextResponse.json({ error: vmgRes.error.message }, { status: 500 });
+  if (vmgRes.error) return makeRes({ error: vmgRes.error.message }, 500);
   const vmg = (vmgRes.data || []) as VariantGroupMapRow[];
 
   const groupIds = Array.from(
@@ -140,31 +170,31 @@ export async function GET(req: Request) {
       groups: [],
       variant_groups: {},
     }));
-    return NextResponse.json({ items });
+    return makeRes({ items }, 200);
   }
 
-  // 6) grupy
-  const groupsRes = await supabaseAdmin
+  // 6) grupy (PUBLIC + RLS)
+  const groupsRes = await supabasePublic
     .from("modifier_groups")
     .select("id,restaurant_id,name,min_select,max_select,is_required,position,is_active")
     .in("id", groupIds)
     .eq("restaurant_id", restaurantId)
     .eq("is_active", true);
 
-  if (groupsRes.error) return NextResponse.json({ error: groupsRes.error.message }, { status: 500 });
+  if (groupsRes.error) return makeRes({ error: groupsRes.error.message }, 500);
 
   const groups = (groupsRes.data || []) as GroupRow[];
   const groupById = new Map(groups.map((g) => [g.id, g]));
 
-  // 7) modyfikatory
-  const modsRes = await supabaseAdmin
+  // 7) modyfikatory (PUBLIC + RLS)
+  const modsRes = await supabasePublic
     .from("modifiers")
     .select("id,group_id,name,price_delta_cents,position,is_active")
     .in("group_id", groupIds)
     .eq("is_active", true)
     .order("position", { ascending: true });
 
-  if (modsRes.error) return NextResponse.json({ error: modsRes.error.message }, { status: 500 });
+  if (modsRes.error) return makeRes({ error: modsRes.error.message }, 500);
 
   const modifiers = (modsRes.data || []) as ModifierRow[];
 
@@ -254,5 +284,5 @@ export async function GET(req: Request) {
     };
   });
 
-  return NextResponse.json({ items });
+  return makeRes({ items }, 200);
 }

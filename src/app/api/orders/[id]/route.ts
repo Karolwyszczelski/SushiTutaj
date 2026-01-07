@@ -355,7 +355,7 @@ const statusJustCompleted =
 
     return null;
   };
-
+  
   /* ====== SMS (SMSAPI przez sendSms) ====== */
 
   const onlyTimeUpdate =

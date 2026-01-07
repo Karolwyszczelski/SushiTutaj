@@ -54,7 +54,7 @@ const STYLE = {
     "font-small text-small text-white [background:linear-gradient(180deg,#b31217_20%,#7a0b0b_100%)] " +
     "shadow-[0_10px_22px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)] " +
     "ring-1 ring-black/30 hover:[filter:brightness(1.06)] active:[filter:brightness(0.96)] " +
-    "transition disabled:opacity-50 disabled:cursor-not-allowed",
+    "transition disabled:opacity-50 disabled:cursor-not-allowed relative z-[60]",
   badge:
     "text-white flex items-center justify-center text-center font-extrabold shadow-lg ring-2 ring-white/20 " +
     "bg-[var(--accent,#de1d13)] ",
@@ -273,8 +273,9 @@ export default function ZestawMiesiaca() {
   };
 
   return (
-    <section
-      className="relative z-20 w-full text-white overflow-visible py-8 md:py-20 md:max-h-[300px]"
+      <section
+  className="relative isolate z-[200] w-full text-white overflow-visible py-8 md:py-20 md:max-h-[300px]"
+
       style={
         {
           backgroundColor: "#0b0b0b",
@@ -422,6 +423,7 @@ export default function ZestawMiesiaca() {
         <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-8 md:gap-12">
           {/* lewo — treść */}
           <div
+          className="relative z-[50]"
             style={{
               transform: "translate(var(--text-x), var(--text-y))",
             }}

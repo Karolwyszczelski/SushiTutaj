@@ -4,8 +4,6 @@ import Link from "next/link";
 import RotatingPlate from "@/components/RotatingPlate";
 import { listActiveRestaurants } from "@/lib/tenant";
 import SeasonalSnow from "@/components/SeasonalSnow";
-import AuthToast from "@/components/AuthToast";
-import ResetPasswordToast from "@/components/ResetPasswordToast";
 import IntroOverlay from "@/components/IntroOverlay";
 
 export const dynamic = "force-dynamic";
@@ -77,9 +75,6 @@ export default async function Page() {
 
   return (
     <>
-      {/* popup po udanej rejestracji / aktywacji konta */}
-      <AuthToast />
-      <ResetPasswordToast />
 
       {/* intro overlay (klientowe), trzyma MIN czas + fade-out */}
       <IntroOverlay

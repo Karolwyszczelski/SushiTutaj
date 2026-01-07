@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -320,16 +320,19 @@ export type Database = {
       }
       loyalty_accounts: {
         Row: {
+          roll_reward_claimed: boolean
           stickers: number
           updated_at: string
           user_id: string
         }
         Insert: {
+          roll_reward_claimed?: boolean
           stickers?: number
           updated_at?: string
           user_id: string
         }
         Update: {
+          roll_reward_claimed?: boolean
           stickers?: number
           updated_at?: string
           user_id?: string
@@ -374,6 +377,98 @@ export type Database = {
           },
         ]
       }
+      modifier_groups: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          is_required: boolean
+          max_select: number
+          metadata: Json
+          min_select: number
+          name: string
+          position: number
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_required?: boolean
+          max_select?: number
+          metadata?: Json
+          min_select?: number
+          name: string
+          position?: number
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_required?: boolean
+          max_select?: number
+          metadata?: Json
+          min_select?: number
+          name?: string
+          position?: number
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      modifiers: {
+        Row: {
+          created_at: string
+          description: string | null
+          group_id: string
+          id: string
+          is_active: boolean
+          metadata: Json
+          name: string
+          position: number
+          price_delta_cents: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          group_id: string
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          name: string
+          position?: number
+          price_delta_cents?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          group_id?: string
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          name?: string
+          position?: number
+          price_delta_cents?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "modifiers_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "modifier_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notice_bars: {
         Row: {
           close_time: string | null
@@ -412,6 +507,88 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      option_groups: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_required: boolean | null
+          max_select: number | null
+          min_select: number | null
+          name: string
+          position: number | null
+          restaurant_id: string | null
+          type: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_required?: boolean | null
+          max_select?: number | null
+          min_select?: number | null
+          name: string
+          position?: number | null
+          restaurant_id?: string | null
+          type?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_required?: boolean | null
+          max_select?: number | null
+          min_select?: number | null
+          name?: string
+          position?: number | null
+          restaurant_id?: string | null
+          type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "option_groups_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      options: {
+        Row: {
+          group_id: string
+          id: string
+          is_active: boolean
+          is_default: boolean | null
+          name: string
+          position: number | null
+          price_modifier: number | null
+        }
+        Insert: {
+          group_id: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean | null
+          name: string
+          position?: number | null
+          price_modifier?: number | null
+        }
+        Update: {
+          group_id?: string
+          id?: string
+          is_active?: boolean
+          is_default?: boolean | null
+          name?: string
+          position?: number | null
+          price_modifier?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "options_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "option_groups"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       order_items: {
         Row: {
@@ -498,11 +675,13 @@ export type Database = {
           name: string | null
           note: string | null
           notice_payment: string | null
+          packaging_cost: number | null
           payment_method: string
           payment_status: string
           phone: string
           postal_code: string | null
           promo_code: string | null
+          public_id: string
           reservation_date: string | null
           reservation_id: string | null
           reservation_time: string | null
@@ -513,6 +692,7 @@ export type Database = {
           status: string
           street: string | null
           total_price: number | null
+          tracking_token: string
           user: string | null
         }
         Insert: {
@@ -551,11 +731,13 @@ export type Database = {
           name?: string | null
           note?: string | null
           notice_payment?: string | null
+          packaging_cost?: number | null
           payment_method?: string
           payment_status?: string
           phone: string
           postal_code?: string | null
           promo_code?: string | null
+          public_id: string
           reservation_date?: string | null
           reservation_id?: string | null
           reservation_time?: string | null
@@ -566,6 +748,7 @@ export type Database = {
           status?: string
           street?: string | null
           total_price?: number | null
+          tracking_token: string
           user?: string | null
         }
         Update: {
@@ -604,11 +787,13 @@ export type Database = {
           name?: string | null
           note?: string | null
           notice_payment?: string | null
+          packaging_cost?: number | null
           payment_method?: string
           payment_status?: string
           phone?: string
           postal_code?: string | null
           promo_code?: string | null
+          public_id?: string
           reservation_date?: string | null
           reservation_id?: string | null
           reservation_time?: string | null
@@ -619,6 +804,7 @@ export type Database = {
           status?: string
           street?: string | null
           total_price?: number | null
+          tracking_token?: string
           user?: string | null
         }
         Relationships: [
@@ -641,6 +827,135 @@ export type Database = {
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_modifier_groups: {
+        Row: {
+          created_at: string
+          group_id: string
+          is_active: boolean
+          is_required: boolean | null
+          max_select: number | null
+          min_select: number | null
+          position: number
+          product_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          is_active?: boolean
+          is_required?: boolean | null
+          max_select?: number | null
+          min_select?: number | null
+          position?: number
+          product_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          is_active?: boolean
+          is_required?: boolean | null
+          max_select?: number | null
+          min_select?: number | null
+          position?: number
+          product_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_modifier_groups_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "modifier_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_modifier_groups_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_option_configs: {
+        Row: {
+          config: Json
+          created_at: string
+          id: string
+          product_id: string
+          restaurant_id: string
+          updated_at: string
+        }
+        Insert: {
+          config?: Json
+          created_at?: string
+          id?: string
+          product_id: string
+          restaurant_id: string
+          updated_at?: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          id?: string
+          product_id?: string
+          restaurant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_option_configs_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_option_configs_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_option_groups: {
+        Row: {
+          id: string
+          option_group_id: string
+          product_id: string
+          sort_order: number | null
+        }
+        Insert: {
+          id?: string
+          option_group_id: string
+          product_id: string
+          sort_order?: number | null
+        }
+        Update: {
+          id?: string
+          option_group_id?: string
+          product_id?: string
+          sort_order?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_option_groups_option_group_id_fkey"
+            columns: ["option_group_id"]
+            isOneToOne: false
+            referencedRelation: "option_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_option_groups_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
         ]
@@ -681,10 +996,61 @@ export type Database = {
           },
         ]
       }
+      product_variants: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          metadata: Json
+          name: string
+          position: number
+          price_cents: number | null
+          price_delta_cents: number | null
+          product_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          name: string
+          position?: number
+          price_cents?: number | null
+          price_delta_cents?: number | null
+          product_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          metadata?: Json
+          name?: string
+          position?: number
+          price_cents?: number | null
+          price_delta_cents?: number | null
+          product_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_variants_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           available: boolean | null
           description: string | null
+          has_variants: boolean
           id: string
           image_url: string | null
           is_active: boolean
@@ -698,6 +1064,7 @@ export type Database = {
         Insert: {
           available?: boolean | null
           description?: string | null
+          has_variants?: boolean
           id?: string
           image_url?: string | null
           is_active?: boolean
@@ -711,6 +1078,7 @@ export type Database = {
         Update: {
           available?: boolean | null
           description?: string | null
+          has_variants?: boolean
           id?: string
           image_url?: string | null
           is_active?: boolean
@@ -958,6 +1326,35 @@ export type Database = {
           },
         ]
       }
+      restaurant_checkout_config: {
+        Row: {
+          config: Json
+          restaurant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          config?: Json
+          restaurant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          config?: Json
+          restaurant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_checkout_config_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restaurant_info: {
         Row: {
           id: number
@@ -981,6 +1378,59 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      restaurant_popups: {
+        Row: {
+          btn_label: string
+          btn_type: string
+          btn_url: string
+          content: string
+          created_at: string
+          id: string
+          image_url: string | null
+          is_active: boolean
+          position: number
+          restaurant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          btn_label?: string
+          btn_type?: string
+          btn_url?: string
+          content?: string
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          position?: number
+          restaurant_id: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          btn_label?: string
+          btn_type?: string
+          btn_url?: string
+          content?: string
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          is_active?: boolean
+          position?: number
+          restaurant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_popups_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       restaurant_tables: {
         Row: {
@@ -1052,6 +1502,7 @@ export type Database = {
         Row: {
           active: boolean
           address: string | null
+          checkout_config: Json
           city: string
           created_at: string
           email: string | null
@@ -1066,7 +1517,16 @@ export type Database = {
           max_delivery_km: number | null
           name: string
           opening_hours: Json | null
+          ordering_delivery_active: boolean
+          ordering_takeaway_active: boolean
           phone: string | null
+          popup_active: boolean | null
+          popup_btn_label: string | null
+          popup_btn_type: string | null
+          popup_btn_url: string | null
+          popup_content: string | null
+          popup_image_url: string | null
+          popup_title: string | null
           slug: string
           tiktok_url: string | null
           timezone: string
@@ -1074,6 +1534,7 @@ export type Database = {
         Insert: {
           active?: boolean
           address?: string | null
+          checkout_config?: Json
           city: string
           created_at?: string
           email?: string | null
@@ -1088,7 +1549,16 @@ export type Database = {
           max_delivery_km?: number | null
           name: string
           opening_hours?: Json | null
+          ordering_delivery_active?: boolean
+          ordering_takeaway_active?: boolean
           phone?: string | null
+          popup_active?: boolean | null
+          popup_btn_label?: string | null
+          popup_btn_type?: string | null
+          popup_btn_url?: string | null
+          popup_content?: string | null
+          popup_image_url?: string | null
+          popup_title?: string | null
           slug: string
           tiktok_url?: string | null
           timezone?: string
@@ -1096,6 +1566,7 @@ export type Database = {
         Update: {
           active?: boolean
           address?: string | null
+          checkout_config?: Json
           city?: string
           created_at?: string
           email?: string | null
@@ -1110,7 +1581,16 @@ export type Database = {
           max_delivery_km?: number | null
           name?: string
           opening_hours?: Json | null
+          ordering_delivery_active?: boolean
+          ordering_takeaway_active?: boolean
           phone?: string | null
+          popup_active?: boolean | null
+          popup_btn_label?: string | null
+          popup_btn_type?: string | null
+          popup_btn_url?: string | null
+          popup_content?: string | null
+          popup_image_url?: string | null
+          popup_title?: string | null
           slug?: string
           tiktok_url?: string | null
           timezone?: string
@@ -1268,6 +1748,48 @@ export type Database = {
         }
         Relationships: []
       }
+      variant_modifier_groups: {
+        Row: {
+          created_at: string
+          group_id: string
+          is_active: boolean
+          position: number
+          updated_at: string
+          variant_id: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          is_active?: boolean
+          position?: number
+          updated_at?: string
+          variant_id: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          is_active?: boolean
+          position?: number
+          updated_at?: string
+          variant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variant_modifier_groups_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "modifier_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variant_modifier_groups_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       loyalty_balances_by_restaurant: {
@@ -1331,6 +1853,8 @@ export type Database = {
             }
             Returns: undefined
           }
+      gen_order_public_id: { Args: never; Returns: string }
+      gen_order_tracking_token: { Args: never; Returns: string }
       get_loyalty_balance: {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: number
@@ -1362,6 +1886,7 @@ export type Database = {
           before: number
         }[]
       }
+      loyalty_compute_earned: { Args: { p_base: number }; Returns: number }
       loyalty_earned: {
         Args: { min_order: number; total: number }
         Returns: number
@@ -1386,10 +1911,10 @@ export type Database = {
         Returns: undefined
       }
       loyalty_spend: {
-        Args: { p_amount: number; p_user_id: string }
+        Args: { p_count: number; p_user_id: string }
         Returns: {
-          balance_after: number
-          balance_before: number
+          after: number
+          before: number
         }[]
       }
       loyalty_truthy: { Args: { v: string }; Returns: boolean }
@@ -1397,9 +1922,9 @@ export type Database = {
         | {
             Args: { p_order_id: string }
             Returns: {
-              earned: number
-              stickers_after: number
-              stickers_before: number
+              after: number
+              awarded: number
+              before: number
             }[]
           }
         | {

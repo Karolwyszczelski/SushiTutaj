@@ -3,75 +3,67 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
-import { cookies } from "next/headers";
-import type { Database } from "@/types/supabase";
+import { getAdminContext } from "@/lib/adminContext";
+import { sendPushForRestaurant } from "@/lib/push";
 
-let webpushConfigured = false;
+type PushSendBody = {
+  title?: string;
+  body?: string;
+  url?: string;
+  type?: string;
+};
 
-async function getWebPush() {
-  // @ts-ignore – brak oficjalnych typów dla "web-push", ignorujemy błąd TS świadomie
-  const webpushModule = await import("web-push");
-  const webpush = (webpushModule as any).default ?? webpushModule;
+function clampStr(v: unknown, max: number): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const s = v.trim();
+  if (!s) return undefined;
+  return s.length > max ? s.slice(0, max) : s;
+}
 
-  if (!webpushConfigured) {
-    webpush.setVapidDetails(
-      "mailto:admin@sushitutaj.pl",
-      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
-      process.env.VAPID_PRIVATE_KEY!
-    );
-    webpushConfigured = true;
-  }
-  return webpush as {
-    setVapidDetails: (
-      subject: string,
-      publicKey: string,
-      privateKey: string
-    ) => void;
-    sendNotification: (
-      subscription: { endpoint: string; keys: any },
-      payload: string
-    ) => Promise<unknown>;
-  };
+function normalizeInternalUrl(v: unknown, fallback = "/admin/current-orders") {
+  const s = clampStr(v, 300);
+  if (!s) return fallback;
+
+  if (!s.startsWith("/")) return fallback;
+  if (s.startsWith("//")) return fallback;
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(s)) return fallback;
+  if (s.includes("\n") || s.includes("\r")) return fallback;
+
+  return s;
+}
+
+function json(body: any, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: { "Cache-Control": "no-store" },
+  });
 }
 
 export async function POST(req: Request) {
-  const payload = (await req.json().catch(() => ({}))) as {
-    title?: string;
-    body?: string;
-    url?: string;
+  // 1) Autoryzacja + scope restauracji
+  let restaurantId: string;
+  try {
+    const ctx = await getAdminContext();
+    restaurantId = ctx.restaurantId;
+  } catch {
+    return json({ error: "UNAUTHORIZED" }, 401);
+  }
+
+  // 2) Payload
+  const raw = (await req.json().catch(() => null)) as PushSendBody | null;
+  if (!raw || typeof raw !== "object") {
+    return json({ error: "INVALID_BODY" }, 400);
+  }
+
+  const payload = {
+    type: clampStr(raw.type, 40) ?? "manual",
+    title: clampStr(raw.title, 120) ?? "Nowe zamówienie",
+    body: clampStr(raw.body, 240) ?? "Kliknij, aby zobaczyć szczegóły.",
+    url: normalizeInternalUrl(raw.url, "/admin/current-orders"),
   };
 
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+  // 3) Wysyłka tylko do subskrypcji tej restauracji
+  await sendPushForRestaurant(restaurantId, payload);
 
-  const { data: subs } = await supabase
-    .from("push_subscriptions")
-    .select("endpoint, keys")
-    .limit(500);
-
-  const notif = JSON.stringify({
-    title: payload.title || "Nowe zamówienie",
-    body: payload.body || "Kliknij, aby zobaczyć szczegóły.",
-    url: payload.url || "/admin/current-orders",
-  });
-
-  const webpush = await getWebPush();
-
-  const subscriptions = (subs ?? []) as {
-    endpoint: string;
-    keys: any;
-  }[];
-
-  await Promise.allSettled(
-    subscriptions.map((s) =>
-      webpush.sendNotification(
-        { endpoint: s.endpoint, keys: s.keys },
-        notif
-      )
-    )
-  );
-
-  // (opcjonalnie) czyszczenie nieaktywnych subskrypcji (410/404) – jak w komentarzu
-
-  return NextResponse.json({ sent: subscriptions.length });
+  return json({ ok: true }, 200);
 }

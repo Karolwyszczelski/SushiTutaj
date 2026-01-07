@@ -1,8 +1,10 @@
+// src/app/api/admin/notifications/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getAdminContext } from "@/lib/adminContext";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -10,31 +12,24 @@ const supabaseAdmin = createClient(
   { auth: { persistSession: false } }
 );
 
-export async function GET(req: NextRequest) {
+function json(body: any, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: { "Cache-Control": "no-store" },
+  });
+}
+
+export async function GET() {
+  // 1) Auth + scope restauracji (membership-check)
+  let restaurantId: string;
   try {
-    const restaurantIdFromCookie =
-      req.cookies.get("restaurant_id")?.value ?? null;
+    const ctx = await getAdminContext();
+    restaurantId = ctx.restaurantId;
+  } catch {
+    return json({ notifications: [], error: "UNAUTHORIZED" }, 401);
+  }
 
-    const restaurantSlugFromCookie =
-      req.cookies.get("restaurant_slug")?.value ?? null;
-
-    let restaurantId = restaurantIdFromCookie;
-
-    // fallback: jeśli brak restaurant_id, ale jest slug → dociągnij id
-    if (!restaurantId && restaurantSlugFromCookie) {
-      const { data: r, error: rErr } = await supabaseAdmin
-        .from("restaurants")
-        .select("id")
-        .eq("slug", restaurantSlugFromCookie)
-        .maybeSingle();
-
-      if (!rErr && r?.id) restaurantId = r.id;
-    }
-
-    if (!restaurantId) {
-      return NextResponse.json({ notifications: [] }, { status: 200 });
-    }
-
+  try {
     const { data, error } = await supabaseAdmin
       .from("admin_notifications")
       .select("id, type, title, message, created_at, read")
@@ -44,18 +39,15 @@ export async function GET(req: NextRequest) {
 
     if (error) {
       console.error("[admin.notifications] error:", error.message);
-      return NextResponse.json(
+      return json(
         { notifications: [], error: "Błąd pobierania powiadomień." },
-        { status: 500 }
+        500
       );
     }
 
-    return NextResponse.json({ notifications: data ?? [] }, { status: 200 });
+    return json({ notifications: data ?? [] }, 200);
   } catch (e: any) {
     console.error("[admin.notifications] unexpected:", e?.message || e);
-    return NextResponse.json(
-      { notifications: [], error: "INTERNAL_ERROR" },
-      { status: 500 }
-    );
+    return json({ notifications: [], error: "INTERNAL_ERROR" }, 500);
   }
 }

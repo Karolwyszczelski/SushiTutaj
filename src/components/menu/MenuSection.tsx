@@ -58,17 +58,6 @@ const MENU_BR = {
   scale: 1,
   rot: "0deg",
 };
-const MENU_TR = {
-  src: "/assets/hero-left.svg",
-  w: "520px",
-  h: "520px",
-  x: "-100px",
-  y: "-150px",
-  z: -1,
-  opacity: "0.9",
-  scale: 1.1,
-  rot: "0deg",
-};
 
 const norm = (s: string) =>
   s
@@ -110,6 +99,7 @@ const normalizeDisplay = (s: string) =>
     .toLowerCase()
     .replace(/\s+/g, " ");
 
+
 const buildDisplayName = (p: Product): string => {
   const base = p.name || "";
   const sub = (p.subcategory || "").toLowerCase();
@@ -134,6 +124,37 @@ const extractSetNumber = (name: string | null | undefined): number | null => {
   const num = parseInt(match[1], 10);
   return Number.isFinite(num) ? num : null;
 };
+
+// START: lunch time helpers (Warsaw)
+const LUNCH_CUTOFF_MINUTES = 16 * 60; // 16:00
+
+const getWarsawMinutesNow = () => {
+  try {
+    const parts = new Intl.DateTimeFormat("pl-PL", {
+      timeZone: "Europe/Warsaw",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date());
+
+    const hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+    const mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+
+    return hh * 60 + mm;
+  } catch {
+    // fallback: czas lokalny przeglądarki
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  }
+};
+
+const isLunchProduct = (p: Product) => {
+  const cat = norm(String(p.subcategory ?? ""));
+  const name = norm(String(p.name ?? ""));
+  return /lunch|lunche/.test(cat) || name.startsWith("lunch ");
+};
+// END: lunch time helpers
+
 
 /** Fallbacki: image_url → /assets/menuphoto/{slug}.webp → .jpg → .png → placeholder */
 function ProductImg({ p, sizes = "50vw" }: { p: Product; sizes?: string }) {
@@ -189,6 +210,22 @@ export default function MenuSection() {
   const { addItem } = useCartStore() as any;
   const isMobile = useIsMobile();
 
+  // START: lunchClosed state (Warsaw time)
+const [lunchClosed, setLunchClosed] = useState(false);
+
+useEffect(() => {
+  const tick = () => {
+    const mins = getWarsawMinutesNow();
+    setLunchClosed(mins >= LUNCH_CUTOFF_MINUTES);
+  };
+
+  tick();
+  const id = window.setInterval(tick, 30_000);
+  return () => window.clearInterval(id);
+}, []);
+// END: lunchClosed state
+
+
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -200,6 +237,7 @@ export default function MenuSection() {
     {}
   );
   const [visibleLimit, setVisibleLimit] = useState<number>(8);
+
 
   const catsRailRef = useRef<HTMLDivElement | null>(null);
   const [catsCanLeft, setCatsCanLeft] = useState(false);
@@ -465,22 +503,25 @@ export default function MenuSection() {
   }, [isMobile, activeCat, q, visible.length]);
 
   const handleAdd = (p: Product) => {
-    if (p.available === false) return;
-    const displayName = buildDisplayName(p);
-    addItem({
-      id: p.id,
-      product_id: p.id,
-      baseName: p.name,
-      name: displayName,
-      price: priceNumber(p),
-      quantity: 1,
-    });
-    setJustAdded((prev) => (prev.includes(p.id) ? prev : [...prev, p.id]));
-    setTimeout(
-      () => setJustAdded((prev) => prev.filter((id) => id !== p.id)),
-      900
-    );
-  };
+  const lunchBlocked = lunchClosed && isLunchProduct(p);
+  if (p.available === false || lunchBlocked) return;
+
+  const displayName = buildDisplayName(p);
+  addItem({
+    id: p.id,
+    product_id: p.id,
+    baseName: p.name,
+    name: displayName,
+    price: priceNumber(p),
+    quantity: 1,
+  });
+  setJustAdded((prev) => (prev.includes(p.id) ? prev : [...prev, p.id]));
+  setTimeout(
+    () => setJustAdded((prev) => prev.filter((id) => id !== p.id)),
+    900
+  );
+};
+
 
   const arrowBtnSm =
     `h-10 w-10 rounded-full text-white ${ACCENT} ring-1 ring-black/30 ` +
@@ -517,6 +558,7 @@ export default function MenuSection() {
 
   const CardMobile = ({ p }: { p: Product }) => {
     const isAdded = justAdded.includes(p.id);
+    const lunchBlocked = lunchClosed && isLunchProduct(p);
     const expanded = !!expandedDesc[p.id];
     const displayName = buildDisplayName(p);
     const hasLong = !!p.description && p.description.length > 120;
@@ -534,6 +576,11 @@ export default function MenuSection() {
       >
         <div className="relative aspect-square bg-black">
           <ProductImg p={p} sizes="50vw" />
+          {lunchBlocked && (
+  <div className="absolute top-2 left-2 px-2 py-0.5 text-[10px] font-medium bg-white/10 text-white">
+    Lunch do 16:00
+  </div>
+)}
           {p.available === false && (
             <div className="absolute top-2 right-2 px-2 py-0.5 text-[10px] font-medium bg-[var(--accent,#de1d13)] text-white">
               Niedostępne
@@ -579,7 +626,7 @@ export default function MenuSection() {
                 e.stopPropagation();
                 handleAdd(p);
               }}
-              disabled={p.available === false}
+              disabled={p.available === false || lunchBlocked}
               aria-label={`Dodaj ${displayName}`}
               className={`h-9 w-9 shrink-0 rounded-full text-white ${ACCENT}
                 ring-1 ring-black/30 shadow-[0_10px_22px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)]
@@ -600,6 +647,7 @@ export default function MenuSection() {
 
   const CardDesktop = ({ p }: { p: Product }) => {
     const isAdded = justAdded.includes(p.id);
+      const lunchBlocked = lunchClosed && isLunchProduct(p);
     const expanded = !!expandedDesc[p.id];
     const displayName = buildDisplayName(p);
     const hasLong = !!p.description && p.description.length > 160;
@@ -613,11 +661,17 @@ export default function MenuSection() {
       <article
         key={p.id}
         tabIndex={0}
-        onClick={() => handleAdd(p)}
+        onClick={() => !lunchBlocked && handleAdd(p)}
         className="group relative bg-transparent transition hover:bg:white/5 hover:bg-white/5 focus:bg-white/5 outline-none cursor-pointer"
       >
         <div className="relative aspect-square bg-black">
           <ProductImg p={p} sizes="33vw" />
+            {lunchBlocked && (
+    <div className="absolute top-3 left-3 px-3 py-1 text-xs font-medium bg-white/10 text-white">
+      Lunch do 16:00
+    </div>
+  )}
+
           {p.available === false && (
             <div className="absolute top-3 right-3 px-3 py-1 text-xs font-medium bg-[var(--accent,#de1d13)] text-white">
               Niedostępne
@@ -663,7 +717,7 @@ export default function MenuSection() {
                 e.stopPropagation();
                 handleAdd(p);
               }}
-              disabled={p.available === false}
+              disabled={p.available === false || lunchBlocked}
               aria-label={`Dodaj ${displayName}`}
               className={`h-10 w-10 shrink-0 rounded-full text-white ${ACCENT}
                 ring-1 ring-black/30 shadow-[0_10px_22px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)]
@@ -706,14 +760,6 @@ export default function MenuSection() {
           ["--menu-br-opacity" as any]: MENU_BR.opacity,
           ["--menu-br-scale" as any]: MENU_BR.scale,
           ["--menu-br-rot" as any]: MENU_BR.rot,
-          ["--menu-tr-w" as any]: MENU_TR.w,
-          ["--menu-tr-h" as any]: MENU_TR.h,
-          ["--menu-tr-x" as any]: MENU_TR.x,
-          ["--menu-tr-y" as any]: MENU_TR.y,
-          ["--menu-tr-z" as any]: MENU_TR.z,
-          ["--menu-tr-opacity" as any]: MENU_TR.opacity,
-          ["--menu-tr-scale" as any]: MENU_TR.scale,
-          ["--menu-tr-rot" as any]: MENU_TR.rot,
         } as CSSProperties
       }
     >
@@ -737,29 +783,6 @@ export default function MenuSection() {
           alt=""
           fill
           sizes="260px"
-          className="object-contain select-none pointer-events-none"
-          priority
-        />
-      </div>
-      <div
-        aria-hidden
-        className="hidden md:block absolute"
-        style={{
-          right: "calc(50px + var(--menu-tr-x))",
-          top: "var(--menu-tr-y)",
-          width: "var(--menu-tr-w)",
-          height: "var(--menu-tr-h)",
-          zIndex: "var(--menu-tr-z)" as any,
-          opacity: "var(--menu-tr-opacity)" as any,
-          transform: "scale(var(--menu-tr-scale)) rotate(var(--menu-tr-rot))",
-          transformOrigin: "top right",
-        }}
-      >
-        <Image
-          src={MENU_TR.src}
-          alt=""
-          fill
-          sizes="220px"
           className="object-contain select-none pointer-events-none"
           priority
         />

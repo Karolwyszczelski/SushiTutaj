@@ -1,191 +1,207 @@
 "use client";
 
-import React, { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import clsx from "clsx";
+import { X, KeyRound } from "lucide-react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-import type { Database } from "@/types/supabase";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+
+const gradBtn =
+  "bg-gradient-to-r from-[var(--accent-red-dark,#7a0d0d)] via-[var(--accent-red,#a61b1b)] to-[var(--accent-red-dark-2,#b11212)] text-white";
+
+const inputCls =
+  "w-full rounded-xl bg-white border border-black/10 px-3 py-2 text-sm " +
+  "focus:outline-none focus:ring-2 focus:ring-[var(--accent-red,#a61b1b)] focus:border-transparent";
+
+const ALLOWED_CITIES = new Set(["ciechanow", "przasnysz", "szczytno"]);
 
 export default function ResetPasswordToast() {
-  const supabase = useMemo(
-    () => createClientComponentClient<Database>(),
-    []
-  );
+  const supabase = createClientComponentClient();
+  const router = useRouter();
+  const pathname = usePathname() ?? "/";
+  const sp = useSearchParams();
 
   const [open, setOpen] = useState(false);
-  const [password, setPassword] = useState("");
-  const [password2, setPassword2] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
-  // Najpierw: pozwól Supabase przechwycić sesję z linku recovery.
-  // Dopiero potem: czyść URL (w tym hash).
+  const [pass1, setPass1] = useState("");
+  const [pass2, setPass2] = useState("");
+
+  const city = useMemo(() => {
+    const c = (sp.get("city") || "").trim().toLowerCase();
+    return ALLOWED_CITIES.has(c) ? c : "";
+  }, [sp]);
+
+  const hasRecoveryMarkers = useMemo(() => {
+    const type = (sp.get("type") || "").toLowerCase();
+    const auth = (sp.get("auth") || "").toLowerCase();
+    const code = sp.get("code");
+    const tokenHash = sp.get("token_hash");
+    const hash = typeof window !== "undefined" ? window.location.hash : "";
+
+    return (
+      auth === "password-reset" ||
+      type === "recovery" ||
+      !!code ||
+      !!tokenHash ||
+      hash.includes("access_token=") ||
+      hash.includes("refresh_token=")
+    );
+  }, [sp]);
+
+  // 1) Jeśli w URL jest recovery — otwórz modal
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (hasRecoveryMarkers) setOpen(true);
+  }, [hasRecoveryMarkers]);
+
+  // 2) Jeśli Supabase używa PKCE i przychodzi `code`, wymień go na sesję
+  useEffect(() => {
+    const code = sp.get("code");
+    const type = (sp.get("type") || "").toLowerCase();
+    if (!code || type !== "recovery") return;
 
     let cancelled = false;
 
     (async () => {
-      const url = new URL(window.location.href);
-      const params = url.searchParams;
-
-      const shouldOpen =
-        params.get("auth") === "password-reset" || url.hash.includes("type=recovery");
-
-      if (shouldOpen && !cancelled) setOpen(true);
-
-      // 1) Złap sesję z URL (obsługa obu wariantów: ?code=... lub #access_token=...)
-      const code = params.get("code");
-      if (code) {
+      try {
+        // to jest kluczowe – bez tego nie będziesz miał sesji do updateUser(password)
         const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (error) console.error("[exchangeCodeForSession]", error);
-      } else {
-        // To wymusza inicjalizację klienta i obsługę tokenów z hasha, jeśli są
-        const { error } = await supabase.auth.getSession();
-        if (error) console.error("[getSession]", error);
+        if (cancelled) return;
+        if (error) {
+          // nadal pokaż modal, ale wyświetl błąd
+          setErr(error.message || "Nie udało się zweryfikować linku resetu hasła.");
+        }
+      } catch (e: any) {
+        if (!cancelled) setErr(e?.message || "Błąd weryfikacji linku resetu hasła.");
       }
-
-      // 2) Dopiero teraz czyść URL (usuń query + hash z tokenami)
-      params.delete("auth");
-      params.delete("code");
-      params.delete("token_hash");
-      params.delete("type");
-
-      const cleanUrl =
-        url.pathname + (params.toString() ? `?${params.toString()}` : "");
-      window.history.replaceState({}, "", cleanUrl);
     })();
 
     return () => {
       cancelled = true;
     };
+  }, [sp, supabase]);
+
+  // 3) Fallback: jeśli event PASSWORD_RECOVERY wpadnie – też otwieramy
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") setOpen(true);
+    });
+    return () => data.subscription.unsubscribe();
   }, [supabase]);
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
+  const close = () => {
+    setOpen(false);
+    setErr(null);
+    setMsg(null);
+    setPass1("");
+    setPass2("");
 
-    if (password.length < 8) {
-      setErrorMsg("Hasło musi mieć co najmniej 8 znaków.");
-      return;
-    }
-    if (password !== password2) {
-      setErrorMsg("Hasła nie są takie same.");
-      return;
-    }
-
-    setLoading(true);
-
-    // Guard: bez sesji recovery updateUser nie zadziała
-    const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
-    const session = sessionData?.session;
-
-    if (sessionErr || !session) {
-      setLoading(false);
-      setErrorMsg(
-        "Brak aktywnej sesji resetu hasła. Otwórz link z maila ponownie (link mógł wygasnąć)."
-      );
-      return;
-    }
-
-    const { error } = await supabase.auth.updateUser({ password });
-
-    setLoading(false);
-
-    if (error) {
-      console.error("[updateUser]", error);
-      setErrorMsg(
-        "Nie udało się ustawić nowego hasła. Link mógł wygasnąć – poproś o nowy reset hasła."
-      );
-      return;
-    }
-
-    setSuccess(true);
-
-    // Opcjonalnie (często polecane po recover): wyloguj po zmianie hasła
-    // await supabase.auth.signOut();
+    // czyścimy URL z recovery parametrów, żeby intro/flow nie odpalało ponownie
+    const dest = city ? `/${city}` : pathname;
+    router.replace(dest as any);
   };
 
-  const handleClose = () => {
-    setOpen(false);
-    setPassword("");
-    setPassword2("");
-    setErrorMsg(null);
-    setSuccess(false);
+  const submit = async () => {
+    setErr(null);
+    setMsg(null);
+
+    if (!pass1 || pass1.length < 6) {
+      setErr("Hasło musi mieć min. 6 znaków.");
+      return;
+    }
+    if (pass1 !== pass2) {
+      setErr("Hasła muszą być identyczne.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: pass1 });
+      if (error) throw error;
+
+      setMsg("Hasło zostało zmienione. Możesz się zalogować.");
+      // po krótkiej chwili sprzątamy URL i zamykamy
+      setTimeout(() => close(), 600);
+    } catch (e: any) {
+      setErr(e?.message || "Nie udało się zmienić hasła.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 px-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-6">
-        <h1 className="text-2xl font-semibold mb-2 text-center">Ustaw nowe hasło</h1>
-        <p className="text-sm text-gray-600 mb-4 text-center">
-          Link z maila został zweryfikowany. Wpisz nowe hasło do swojego konta.
-        </p>
+    <div className="fixed inset-0 z-[100000] bg-black/60 grid place-items-center px-4" role="dialog" aria-modal="true">
+      <div className="relative w-full max-w-md bg-white text-black shadow-2xl rounded-2xl overflow-hidden">
+        <button
+          onClick={close}
+          aria-label="Zamknij"
+          className="absolute top-3 right-3 p-2 rounded-full hover:bg-black/5"
+        >
+          <X className="w-5 h-5" />
+        </button>
 
-        {errorMsg && (
-          <div className="mb-4 rounded-lg bg-red-50 text-red-700 text-sm px-3 py-2">
-            {errorMsg}
+        <div className="p-6">
+          <div className="flex items-center gap-2 mb-2">
+            <KeyRound className="w-5 h-5" />
+            <h3 className="text-lg font-semibold">Ustaw nowe hasło</h3>
           </div>
-        )}
 
-        {success ? (
-          <div className="space-y-4">
-            <div className="rounded-lg bg-green-50 text-green-700 text-sm px-3 py-3 text-center">
-              Hasło zostało zmienione. Możesz się teraz zalogować.
+          <p className="text-xs text-black/60 mb-4">
+            Wpisz nowe hasło do konta. Po zapisaniu przekierujemy Cię z powrotem.
+          </p>
+
+          {(err || msg) && (
+            <div
+              className={clsx(
+                "mb-3 rounded-xl px-3 py-2 text-sm",
+                err
+                  ? "bg-red-50 text-red-700 border border-red-200"
+                  : "bg-green-50 text-green-700 border border-green-200"
+              )}
+            >
+              {err || msg}
             </div>
+          )}
+
+          <div className="space-y-3">
+            <label className="text-xs text-black/70">
+              Nowe hasło
+              <input
+                className={clsx(inputCls, "mt-1")}
+                type="password"
+                value={pass1}
+                onChange={(e) => setPass1(e.target.value)}
+                placeholder="Min. 6 znaków"
+                autoComplete="new-password"
+              />
+            </label>
+
+            <label className="text-xs text-black/70">
+              Powtórz hasło
+              <input
+                className={clsx(inputCls, "mt-1")}
+                type="password"
+                value={pass2}
+                onChange={(e) => setPass2(e.target.value)}
+                placeholder="Powtórz hasło"
+                autoComplete="new-password"
+              />
+            </label>
+
             <button
               type="button"
-              onClick={handleClose}
-              className="w-full inline-flex items-center justify-center rounded-full border border-gray-300 text-gray-700 text-sm font-medium py-2.5"
+              onClick={submit}
+              disabled={busy}
+              className={clsx("w-full rounded-xl px-4 py-2 font-semibold disabled:opacity-60", gradBtn)}
             >
-              Zamknij
+              {busy ? "Zapisywanie…" : "Zapisz nowe hasło"}
             </button>
           </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Nowe hasło</label>
-              <input
-                type="password"
-                autoComplete="new-password"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-red-500"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={loading}
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-1">Powtórz hasło</label>
-              <input
-                type="password"
-                autoComplete="new-password"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-red-500"
-                value={password2}
-                onChange={(e) => setPassword2(e.target.value)}
-                disabled={loading}
-              />
-            </div>
-
-            <div className="flex gap-2 pt-1">
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex-1 inline-flex items-center justify-center rounded-full bg-red-600 text-white text-sm font-semibold py-2.5 disabled:opacity-60"
-              >
-                {loading ? "Zapisywanie..." : "Zapisz nowe hasło"}
-              </button>
-              <button
-                type="button"
-                onClick={handleClose}
-                className="flex-1 inline-flex items-center justify-center rounded-full border border-gray-300 text-gray-700 text-sm font-medium py-2.5"
-              >
-                Anuluj
-              </button>
-            </div>
-          </form>
-        )}
+        </div>
       </div>
     </div>
   );

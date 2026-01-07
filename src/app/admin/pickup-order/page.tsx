@@ -158,6 +158,44 @@ const normalizeHHMM = (v: string): string | null => {
   return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
 };
 
+const normalizeTimeLoose = (v: string): string | null => {
+  const t = (v || "").trim();
+  if (!t) return null;
+
+  // akceptuj "H:MM", "HH:MM", "H.M", "HH.M", oraz np. "9:3"
+  const m = t.match(/^(\d{1,2})[.:](\d{1,2})$/);
+  if (m) {
+    const h = parseInt(m[1], 10);
+    const min = parseInt(m[2], 10);
+    if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+    return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+  }
+
+  // wyciągnij same cyfry: "930" -> 09:30, "1930" -> 19:30, "9" -> 09:00
+  const digits = t.replace(/\D/g, "");
+  if (!digits) return null;
+
+  let h = 0;
+  let min = 0;
+
+  if (digits.length === 1 || digits.length === 2) {
+    h = parseInt(digits, 10);
+    min = 0;
+  } else if (digits.length === 3) {
+    h = parseInt(digits.slice(0, 1), 10);
+    min = parseInt(digits.slice(1), 10);
+  } else if (digits.length === 4) {
+    h = parseInt(digits.slice(0, 2), 10);
+    min = parseInt(digits.slice(2), 10);
+  } else {
+    return null;
+  }
+
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+};
+
+
 /**
  * Buduje ISO (UTC) dla podanej godziny HH:MM w strefie TZ.
  * Jeśli wybrana godzina jest już „w przeszłości” dzisiaj — ustawia na jutro.
@@ -1500,34 +1538,82 @@ const TimeQuickSet: React.FC<{
     return mode === "accept" ? requested : currentLocal || requested;
   }, [mode, requested, currentLocal]);
 
+  const dirtyRef = useRef(false);
   const [val, setVal] = useState<string>(initial || "");
+  const [localErr, setLocalErr] = useState<string | null>(null);
 
+  // reset przy zmianie zamówienia lub trybu
   useEffect(() => {
+    dirtyRef.current = false;
+    setVal(initial || "");
+    setLocalErr(null);
+  }, [order.id, mode]); // order.id jest kluczem stabilnym
+
+  // jeśli dane się zmieniły (np. realtime) – aktualizuj tylko, gdy user nie zaczął edycji
+  useEffect(() => {
+    if (dirtyRef.current) return;
     setVal(initial || "");
   }, [initial]);
 
+  const norm = useMemo(() => normalizeTimeLoose(val), [val]);
+  const display = norm || val || "--:--";
+
   const label =
     mode === "accept"
-      ? `Akceptuj (${val || "--:--"})`
-      : `Ustaw (${val || "--:--"})`;
+      ? `Akceptuj (${display})`
+      : `Ustaw (${display})`;
+
+  const applyDisabled = !!disabled || !norm;
 
   return (
-    <div className="inline-flex items-center gap-2">
-      <input
-        type="time"
-        step={60}
-        value={val}
-        onChange={(e) => setVal(e.target.value)}
-        disabled={disabled}
-        className="h-10 w-[120px] rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm"
-      />
+    <div className="inline-flex flex-wrap items-start gap-2">
+      <div className="flex flex-col">
+        <input
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          placeholder="HH:MM"
+          value={val}
+          onChange={(e) => {
+            dirtyRef.current = true;
+            setLocalErr(null);
+            setVal(e.target.value);
+          }}
+          onBlur={() => {
+            const raw = (val || "").trim();
+            if (!raw) {
+              setLocalErr(null);
+              return;
+            }
+            const n = normalizeTimeLoose(raw);
+            if (n) {
+              setVal(n);
+              setLocalErr(null);
+            } else {
+              setLocalErr("Wpisz godzinę w formacie HH:MM (np. 19:30).");
+            }
+          }}
+          disabled={disabled}
+          className={clsx(
+            "h-10 w-[120px] rounded-md border bg-white px-3 text-sm text-slate-900 shadow-sm",
+            localErr ? "border-rose-400" : "border-slate-300"
+          )}
+        />
+        {localErr && (
+          <span className="mt-1 text-[11px] text-rose-600">{localErr}</span>
+        )}
+      </div>
 
       {requested && (
         <button
           type="button"
           disabled={disabled}
-          onClick={() => setVal(requested)}
-          className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
+          onClick={() => {
+            dirtyRef.current = true;
+            setLocalErr(null);
+            setVal(requested);
+          }}
+          className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50 disabled:opacity-50"
           title="Ustaw na czas wybrany przez klienta"
         >
           Czas klienta
@@ -1536,8 +1622,15 @@ const TimeQuickSet: React.FC<{
 
       <button
         type="button"
-        disabled={disabled || !val}
-        onClick={() => onApply(val)}
+        disabled={applyDisabled}
+        onClick={() => {
+          const n = normalizeTimeLoose(val);
+          if (!n) {
+            setLocalErr("Wpisz godzinę w formacie HH:MM (np. 19:30).");
+            return;
+          }
+          onApply(n);
+        }}
         className="h-10 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow hover:bg-emerald-600 disabled:opacity-50"
         title={
           mode === "accept"

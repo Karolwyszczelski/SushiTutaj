@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getAdminContext } from "@/lib/adminContext";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -11,34 +12,42 @@ const supabaseAdmin = createClient(
   { auth: { persistSession: false } }
 );
 
+function json(body: any, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: { "Cache-Control": "no-store" },
+  });
+}
+
 export async function POST() {
+  // 1) Auth + scope lokalu
+  let restaurantId: string;
   try {
-    // jeśli chcesz globalnie dla wszystkich lokali:
+    const ctx = await getAdminContext();
+    restaurantId = ctx.restaurantId;
+  } catch {
+    return json({ ok: false, error: "UNAUTHORIZED" }, 401);
+  }
+
+  try {
+    // 2) Update TYLKO dla danego lokalu
     const { error } = await supabaseAdmin
       .from("admin_notifications")
       .update({ read: true })
+      .eq("restaurant_id", restaurantId)
       .eq("read", false);
 
-    // jeśli w przyszłości będziesz miał rozdział per restauracja,
-    // możesz tu dodać .eq("restaurant_id", <ID lokalu>)
-
     if (error) {
-      console.error("[notifications.read-all] update error:", error);
-      return NextResponse.json(
-        { ok: false, error: "Błąd zapisu powiadomień" },
-        { status: 500 }
-      );
+      console.error("[notifications.read-all] update error:", error.message);
+      return json({ ok: false, error: "Błąd zapisu powiadomień" }, 500);
     }
 
-    return NextResponse.json({ ok: true });
+    return json({ ok: true }, 200);
   } catch (e: any) {
     console.error(
       "[notifications.read-all] unexpected error:",
       e?.message || e
     );
-    return NextResponse.json(
-      { ok: false, error: "Nieoczekiwany błąd" },
-      { status: 500 }
-    );
+    return json({ ok: false, error: "Nieoczekiwany błąd" }, 500);
   }
 }

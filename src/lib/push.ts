@@ -3,8 +3,8 @@ import "server-only";
 import webpush from "web-push";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || "";
@@ -20,7 +20,9 @@ const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false },
 });
 
-if (VAPID_PUBLIC && VAPID_PRIVATE) {
+const HAS_VAPID = Boolean(VAPID_PUBLIC && VAPID_PRIVATE);
+
+if (HAS_VAPID) {
   webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
 } else {
   console.warn("[push] Brak kluczy VAPID – web push będzie pomijany");
@@ -36,60 +38,57 @@ export type PushPayload = {
 type AdminPushSubscriptionRow = {
   id: string;
   endpoint: string | null;
-  subscription: any; // TEXT(JSON) albo JSONB
+  subscription: unknown; // TEXT(JSON) albo JSONB
 };
 
-const short = (s?: string | null, n = 80) =>
-  !s ? "" : s.length > n ? s.slice(0, n) + "…" : s;
+function clampStr(v: unknown, max: number): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const s = v.trim();
+  if (!s) return undefined;
+  return s.length > max ? s.slice(0, max) : s;
+}
+
+function maskEndpoint(endpoint?: string | null) {
+  if (!endpoint) return "";
+  const s = String(endpoint);
+  return s.length > 24 ? `…${s.slice(-24)}` : s;
+}
 
 export async function sendPushForRestaurant(
   restaurantId: string,
   payload: PushPayload
 ): Promise<void> {
-  if (!VAPID_PUBLIC || !VAPID_PRIVATE) return;
+  if (!HAS_VAPID) return;
 
   const { data, error } = await supabaseAdmin
     .from("admin_push_subscriptions")
     .select("id, endpoint, subscription")
-    .eq("restaurant_id", restaurantId);
+    .eq("restaurant_id", restaurantId)
+    .limit(500);
 
   if (error) {
     console.error("[push] błąd pobierania subskrypcji:", error.message);
     return;
   }
 
-    const subs = (data as AdminPushSubscriptionRow[]) || [];
-
-  if (!subs.length) {
-    console.warn("[push] skip (0 subs) restaurant_id ->", restaurantId, {
-      type: payload.type,
-      title: payload.title,
-    });
-    return;
-  }
-
-  console.log("[push] start ->", restaurantId, {
-    subs: subs.length,
-    type: payload.type,
-    title: payload.title,
-  });
+  const subs = (data as AdminPushSubscriptionRow[]) || [];
+  if (!subs.length) return;
 
   const basePayload = {
-    type: payload.type ?? "order",
-    title: payload.title ?? "Nowe zamówienie",
+    type: clampStr(payload.type, 40) ?? "order",
+    title: clampStr(payload.title, 120) ?? "Nowe zamówienie",
     body:
-      payload.body ??
-      payload.title ??
+      clampStr(payload.body, 240) ??
+      clampStr(payload.title, 120) ??
       "Pojawiło się nowe zdarzenie w systemie.",
-    url: payload.url ?? "/admin/pickup-order",
+    url: clampStr(payload.url, 300) ?? "/admin/pickup-order",
   };
 
   const payloadJson = JSON.stringify(basePayload);
 
-  // zbierz martwe ID i usuń je hurtem po wysyłce
   const deadIds: string[] = [];
 
-  await Promise.all(
+  const results = await Promise.allSettled(
     subs.map(async (row) => {
       try {
         let sub: any = row.subscription;
@@ -98,50 +97,46 @@ export async function sendPushForRestaurant(
           try {
             sub = JSON.parse(sub);
           } catch {
-            console.warn("[push] niepoprawny JSON subscription, id:", row.id);
             deadIds.push(row.id);
             return;
           }
         }
 
-        if (!sub?.endpoint) {
+        if (!sub || typeof sub !== "object" || !sub.endpoint) {
           deadIds.push(row.id);
           return;
         }
 
-                const res: any = await webpush.sendNotification(sub, payloadJson, {
+        await webpush.sendNotification(sub, payloadJson, {
           TTL: 60 * 60 * 6, // 6h
           urgency: "high",
         });
-
-        console.log(
-          "[push] sent ->",
-          short(sub.endpoint),
-          "status:",
-          res?.statusCode ?? res?.status ?? "?"
-        );
-
       } catch (err: any) {
         const status = Number(
           err?.statusCode ?? err?.status ?? err?.status_code ?? NaN
         );
 
-        // 404/410 = unsubscribed/expired (typowe dla FCM: https://fcm.googleapis.com/...) :contentReference[oaicite:1]{index=1}
+        // 404/410 = unsubscribed/expired (typowe)
         if (status === 404 || status === 410) {
-          console.warn("[push] dead subscription ->", short(row.endpoint), status);
           deadIds.push(row.id);
           return;
         }
 
         console.error(
           "[push] send error ->",
-          short(row.endpoint),
-          status,
+          maskEndpoint(row.endpoint),
+          Number.isFinite(status) ? status : "?",
           err?.message || err
         );
       }
     })
   );
+
+  // opcjonalny minimalny log zbiorczy (bez endpointów)
+  const rejected = results.filter((r) => r.status === "rejected").length;
+  if (rejected) {
+    console.warn("[push] allSettled rejected count:", rejected);
+  }
 
   if (deadIds.length) {
     const unique = Array.from(new Set(deadIds));
@@ -152,8 +147,6 @@ export async function sendPushForRestaurant(
 
     if (delErr) {
       console.error("[push] cleanup delete error:", delErr.message);
-    } else {
-      console.log("[push] cleanup deleted:", unique.length);
     }
   }
 }

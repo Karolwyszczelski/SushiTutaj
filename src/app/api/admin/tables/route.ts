@@ -1,62 +1,99 @@
+// src/app/api/admin/tables/route.ts
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { z } from "zod";
-import { getSessionAndRole } from "@/lib/serverAuth";
+import type { Database } from "@/types/supabase";
+import { requireRestaurantAccess, AdminAuthError } from "@/lib/requireAdmin";
 
-const supabaseAdmin = createClient(
+const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
+  { auth: { persistSession: false, detectSessionInUrl: false } }
 );
 
-// To samo, czego oczekuje TableLayoutForm (mapka)
-const TableRow = z.object({
-  id: z.string().uuid().optional(),
-  table_number: z.string().min(1),
-  name: z.string().nullable().optional(),
-  x: z.number(),
-  y: z.number(),
-  number_of_seats: z.number().int().min(1),
-});
+function res(body: any, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: { "Cache-Control": "no-store" },
+  });
+}
+
+const toNumOrNull = (v: any) => {
+  if (v == null || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
 
 export async function GET() {
-  const { session, role } = await getSessionAndRole();
-  if (!session || (role !== "admin" && role !== "employee"))
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const ctx = await requireRestaurantAccess(["owner", "admin"]);
 
-  const { data, error } = await supabaseAdmin
-    .from("restaurant_tables")
-    .select("*")
-    .order("table_number", { ascending: true });
+    const { data, error } = await supabaseAdmin
+      .from("restaurant_tables")
+      .select(
+        "id,restaurant_id,name,label,x,y,w,h,rotation,seats,capacity,active,created_at,updated_at"
+      )
+      .eq("restaurant_id", ctx.restaurantId)
+      .order("name", { ascending: true });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ tables: data ?? [] });
+    if (error) return res({ error: error.message }, 500);
+    return res({ items: data ?? [] }, 200);
+  } catch (e: any) {
+    if (e instanceof AdminAuthError) {
+      return res({ error: e.code, message: e.message }, e.status);
+    }
+    return res({ error: "INTERNAL_ERROR" }, 500);
+  }
 }
 
 export async function POST(req: Request) {
-  const { session, role } = await getSessionAndRole();
-  if (!session || (role !== "admin" && role !== "employee"))
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const ctx = await requireRestaurantAccess(["owner", "admin"]);
+    const body = (await req.json().catch(() => null)) as any;
+    if (!body) return res({ error: "BAD_REQUEST" }, 400);
 
-  const json = await req.json();
-  const parsed = TableRow.safeParse({
-    ...json,
-    x: Number(json?.x),
-    y: Number(json?.y),
-    number_of_seats: Number(json?.number_of_seats ?? json?.seats),
-  });
-  if (!parsed.success)
-    return NextResponse.json({ error: "Validation", details: parsed.error.format() }, { status: 400 });
+    // kompatybilność: przyjmujemy też stare nazwy pól
+    const name = String(body.name ?? "").trim();
+    if (!name) return res({ error: "INVALID_NAME" }, 400);
 
-  const { data, error } = await supabaseAdmin
-    .from("restaurant_tables")
-    .insert(parsed.data)
-    .select()
-    .single();
+    const payload = {
+      restaurant_id: ctx.restaurantId,
+      name,
+      label: body.label != null ? String(body.label) : null,
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ table: data });
+      // nowe pola (x/y/w/h/rotation/active/capacity) + fallback na stare (position_x/position_y/is_active)
+      x: toNumOrNull(body.x ?? body.position_x) ?? 0,
+      y: toNumOrNull(body.y ?? body.position_y) ?? 0,
+      w: toNumOrNull(body.w) ?? 80,
+      h: toNumOrNull(body.h) ?? 80,
+      rotation: toNumOrNull(body.rotation) ?? 0,
+
+      seats: toNumOrNull(body.seats) ?? 2,
+      capacity: toNumOrNull(body.capacity) ?? null,
+      active:
+        typeof body.active === "boolean"
+          ? body.active
+          : typeof body.is_active === "boolean"
+          ? body.is_active
+          : true,
+    };
+
+    const { data, error } = await supabaseAdmin
+      .from("restaurant_tables")
+      .insert(payload as any)
+      .select(
+        "id,restaurant_id,name,label,x,y,w,h,rotation,seats,capacity,active,created_at,updated_at"
+      )
+      .maybeSingle();
+
+    if (error) return res({ error: error.message }, 500);
+    return res({ ok: true, row: data }, 200);
+  } catch (e: any) {
+    if (e instanceof AdminAuthError) {
+      return res({ error: e.code, message: e.message }, e.status);
+    }
+    return res({ error: "INTERNAL_ERROR" }, 500);
+  }
 }

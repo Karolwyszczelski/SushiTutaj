@@ -5,16 +5,43 @@ export const revalidate = 0;
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 import type { Database } from "@/types/supabase";
-import { getSessionAndRole } from "@/lib/serverAuth";
 
 type Row = Database["public"]["Tables"]["orders"]["Row"];
 
 const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!, // omija RLS
-  { auth: { persistSession: false } }
+  { auth: { persistSession: false, detectSessionInUrl: false } }
 );
+
+class HttpError extends Error {
+  status: number;
+  code?: string;
+  constructor(status: number, message: string, code?: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+function normalizeUuid(v?: string | null) {
+  if (!v) return null;
+  const x = String(v).replace(/[<>\s'"]/g, "").trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    x
+  )
+    ? x
+    : null;
+}
+
+function json(body: any, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: { "Cache-Control": "no-store" },
+  });
+}
 
 // YYYY-MM-DD w strefie PL
 const dayKeyPL = (d: Date) =>
@@ -27,11 +54,8 @@ const dayKeyPL = (d: Date) =>
 
 const startOfTodayPLISO = () => {
   const now = new Date();
-  const pl = new Date(
-    now.toLocaleString("en-US", { timeZone: "Europe/Warsaw" })
-  );
+  const pl = new Date(now.toLocaleString("en-US", { timeZone: "Europe/Warsaw" }));
   pl.setHours(0, 0, 0, 0);
-  // ISO w UTC bez przesunięcia logiki dnia PL
   return new Date(pl.getTime() - pl.getTimezoneOffset() * 60_000).toISOString();
 };
 
@@ -78,74 +102,128 @@ function extractProductNames(items: any): string[] {
   }
 }
 
-async function resolveRestaurantId({
-  role,
-  userId,
-  slugParam,
-  cookieRid,
-}: {
-  role: "admin" | "employee";
+async function membershipRole(userId: string, restaurantId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("restaurant_admins")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("restaurant_id", restaurantId)
+    .limit(1)
+    .maybeSingle<{ role: string | null }>();
+
+  if (error) throw new Error(error.message);
+  return (data?.role ?? null) as string | null;
+}
+
+function isAllowedRole(role: string | null) {
+  // dopasuj jeśli chcesz zawęzić
+  return role === "owner" || role === "admin" || role === "manager" || role === "employee";
+}
+
+async function restaurantIdBySlug(slug: string) {
+  const { data, error } = await supabaseAdmin
+    .from("restaurants")
+    .select("id")
+    .eq("slug", slug)
+    .maybeSingle<{ id: string }>();
+
+  if (error) throw new Error(error.message);
+  return data?.id ? String(data.id) : null;
+}
+
+async function firstAssignedRestaurant(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("restaurant_admins")
+    .select("restaurant_id, role, added_at")
+    .eq("user_id", userId)
+    .order("added_at", { ascending: true })
+    .limit(1)
+    .maybeSingle<{ restaurant_id: string; role: string | null }>();
+
+  if (error) throw new Error(error.message);
+  if (!data?.restaurant_id) return null;
+  return { restaurantId: String(data.restaurant_id), role: (data.role ?? null) as string | null };
+}
+
+/**
+ * Bezpieczny wybór restauracji:
+ * - slug (jeśli podany) -> ID -> membership-check
+ * - cookie restaurant_id -> membership-check
+ * - fallback: pierwszy przypisany lokal
+ *
+ * Nigdy nie zwracamy ID bez weryfikacji membership.
+ */
+async function resolveRestaurantContext(opts: {
   userId: string;
   slugParam?: string | null;
   cookieRid?: string | null;
 }) {
-  // 1) admin może podać slug w QS
-  if (role === "admin" && slugParam) {
-    const { data, error } = await supabaseAdmin
-      .from("restaurants")
-      .select("id")
-      .eq("slug", slugParam)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (data?.id) return data.id as string;
-    throw new Error("Nie znaleziono restauracji dla podanego sluga.");
+  const forcedSlug = !!opts.slugParam;
+
+  // 1) slug -> id
+  if (opts.slugParam) {
+    const rid = await restaurantIdBySlug(opts.slugParam);
+    if (!rid) throw new HttpError(404, "Nie znaleziono restauracji dla podanego sluga.", "NOT_FOUND");
+
+    const role = await membershipRole(opts.userId, rid);
+    if (!role || !isAllowedRole(role)) {
+      throw new HttpError(403, "Brak uprawnień do tego lokalu.", "FORBIDDEN");
+    }
+    return { restaurantId: rid, role };
   }
-  // 2) jeśli mamy cookie z serwera, użyj
-  if (cookieRid) return cookieRid;
 
-  // 3) fallback: pierwsza przypisana restauracja
-  const { data, error } = await supabaseAdmin
-    .from("restaurant_admins")
-    .select("restaurant_id")
-    .eq("user_id", userId)
-    .limit(1)
-    .maybeSingle();
+  // 2) cookie rid (zweryfikowane)
+  if (opts.cookieRid) {
+    const role = await membershipRole(opts.userId, opts.cookieRid);
+    if (role && isAllowedRole(role)) {
+      return { restaurantId: opts.cookieRid, role };
+    }
+    // jeśli cookie było “lewe/stare” — nie wywalamy, tylko fallback
+    if (forcedSlug) {
+      throw new HttpError(403, "Brak uprawnień do tego lokalu.", "FORBIDDEN");
+    }
+  }
 
-  if (error) throw new Error(error.message);
-  if (data?.restaurant_id) return data.restaurant_id as string;
+  // 3) fallback: pierwszy przypisany
+  const first = await firstAssignedRestaurant(opts.userId);
+  if (!first?.restaurantId) throw new HttpError(403, "Brak przypisanej restauracji.", "NO_RESTAURANT");
 
-  throw new Error("Brak przypisanej restauracji.");
+  const role = first.role ?? null;
+  if (!isAllowedRole(role)) {
+    throw new HttpError(403, "Brak uprawnień do statystyk.", "FORBIDDEN");
+  }
+
+  return { restaurantId: first.restaurantId, role };
 }
 
 export async function GET(request: NextRequest) {
-  const { session, role } = await getSessionAndRole(request);
-  if (!session)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (role !== "admin" && role !== "employee")
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  // auth
+  const supabase = createRouteHandlerClient<Database>({ cookies });
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) return json({ error: "Unauthorized" }, 401);
 
   try {
     const cookieStore = await cookies();
     const { searchParams } = request.nextUrl;
 
-    const days = Math.max(
-      1,
-      parseInt(searchParams.get("days") || "30", 10)
-    );
-    const slugParam = searchParams.get("restaurant")?.toLowerCase() || null;
-    const cookieRid = cookieStore.get("restaurant_id")?.value ?? null;
+    const daysRaw = parseInt(searchParams.get("days") || "30", 10);
+    const days = Math.max(1, Math.min(365, Number.isFinite(daysRaw) ? daysRaw : 30));
 
-    const now = new Date();
-    const sinceISO = new Date(now.getTime() - days * 864e5).toISOString();
+    const slugParam = searchParams.get("restaurant")?.toLowerCase().trim() || null;
+    const cookieRid = normalizeUuid(cookieStore.get("restaurant_id")?.value ?? null);
 
-    const restaurantId = await resolveRestaurantId({
-      role: role as "admin" | "employee",
+    const { restaurantId } = await resolveRestaurantContext({
       userId: session.user.id,
       slugParam,
       cookieRid,
     });
 
-    // Pola kompatybilne: client_delivery_time i "deliveryTime" (obie obsłużone)
+    const now = new Date();
+    const sinceISO = new Date(now.getTime() - days * 864e5).toISOString();
+
     const selectCols =
       'id, created_at, status, total_price, payment_status, items, client_delivery_time, "deliveryTime"';
 
@@ -189,10 +267,7 @@ export async function GET(request: NextRequest) {
         null;
 
       if (String(o.status).toLowerCase() === "completed" && planned) {
-        const minutes = Math.max(
-          0,
-          Math.round((+new Date(planned) - +created) / 60000)
-        );
+        const minutes = Math.max(0, Math.round((+new Date(planned) - +created) / 60000));
         const a = avgAcc[day] ?? { sum: 0, cnt: 0 };
         a.sum += minutes;
         a.cnt += 1;
@@ -206,10 +281,7 @@ export async function GET(request: NextRequest) {
       const st = String(o.status || "").toLowerCase();
       const ps = String(o.payment_status || "").toLowerCase();
       const paidish =
-        ps === "paid" ||
-        ps === "succeeded" ||
-        ps === "success" ||
-        st === "completed";
+        ps === "paid" || ps === "succeeded" || ps === "success" || st === "completed";
       const price = Number(o.total_price) || 0;
 
       if (day === todayKey) {
@@ -233,7 +305,6 @@ export async function GET(request: NextRequest) {
     let todayReservations = 0;
     const startPL = startOfTodayPLISO();
     try {
-      // próba 1: created_at
       const q1 = await supabaseAdmin
         .from("reservations")
         .select("id", { head: true, count: "exact" })
@@ -242,7 +313,6 @@ export async function GET(request: NextRequest) {
       if (!q1.error) {
         todayReservations = q1.count ?? 0;
       } else {
-        // próba 2: inserted_at
         const q2 = await supabaseAdmin
           .from("reservations")
           .select("id", { head: true, count: "exact" })
@@ -254,14 +324,9 @@ export async function GET(request: NextRequest) {
       // ignoruj
     }
 
-    const monthAvgs = Object.entries(avgFulfillmentTime).filter(([d]) =>
-      d.startsWith(ym)
-    );
+    const monthAvgs = Object.entries(avgFulfillmentTime).filter(([d]) => d.startsWith(ym));
     const monthAvgFulfillment = monthAvgs.length
-      ? Math.round(
-          monthAvgs.reduce((s, [, v]) => s + (v || 0), 0) /
-            monthAvgs.length
-        )
+      ? Math.round(monthAvgs.reduce((s, [, v]) => s + (v || 0), 0) / monthAvgs.length)
       : undefined;
 
     const kpis = {
@@ -287,10 +352,10 @@ export async function GET(request: NextRequest) {
       }
     );
   } catch (err: any) {
+    if (err instanceof HttpError) {
+      return json({ error: err.message, code: err.code }, err.status);
+    }
     console.error("GET /api/orders/stats error:", err?.message || err);
-    return NextResponse.json(
-      { error: err?.message || "Server error" },
-      { status: 500, headers: { "Cache-Control": "no-store" } }
-    );
+    return json({ error: err?.message || "Server error" }, 500);
   }
 }

@@ -1,11 +1,14 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import { Manrope, Kaisei_Tokumin } from "next/font/google";
 import ClientWrapper from "@/components/ClientWrapper";
 import ClientProvider from "@/components/ClientProvider";
 import Footer from "@/components/Footer";
 import CookieBanner from "@/components/legal/CookieBanner";
 import AuthCookieSync from "@/components/AuthCookieSync";
+import AuthToast from "@/components/AuthToast";
+import ResetPasswordToast from "@/components/ResetPasswordToast";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_URL || "https://www.sushitutaj.pl";
 
@@ -81,6 +84,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ClientProvider>
           <ClientWrapper>
             <AuthCookieSync />
+            <AuthToast />
+            <Suspense fallback={null}>
+              <ResetPasswordToast />
+            </Suspense>
             {children}
           </ClientWrapper>
         </ClientProvider>

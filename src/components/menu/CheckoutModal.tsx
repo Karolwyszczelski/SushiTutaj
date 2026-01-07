@@ -64,6 +64,27 @@ import type {
   Zone,
 } from "./checkoutModal/shared";
 
+function normalizeHttpsUrl(input: string): string {
+  const s = String(input || "").trim();
+  if (!s) return "";
+
+  // Akceptujemy tylko http/https
+  if (/^https?:\/\//i.test(s)) return s;
+
+  // schemat-protocol (//...)
+  if (s.startsWith("//")) return `https:${s}`;
+
+  // inne schematy (np. javascript:, data:) blokujemy
+  if (/^[a-z]+:/i.test(s)) return "";
+
+  // ścieżki względne blokujemy (żeby nie routowało w Next)
+  if (s.startsWith("/")) return "";
+
+  // domyślnie dopinamy https
+  return `https://${s}`;
+}
+
+
 
 export default function CheckoutModal() {
   const isClient = useIsClient();
@@ -145,7 +166,15 @@ const [scheduledTime, setScheduledTime] = useState<string>("");
   const [zones, setZones] = useState<Zone[]>([]);
   const [restLoc, setRestLoc] = useState<{ lat: number; lng: number } | null>(null);
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
+  // START: ordering flags per mode
+const [restaurantActive, setRestaurantActive] = useState<boolean | null>(null);
+const [restaurantDeliveryActive, setRestaurantDeliveryActive] = useState<boolean | null>(null);
+const [restaurantTakeawayActive, setRestaurantTakeawayActive] = useState<boolean | null>(null);
+// END: ordering flags per mode
+
   const [deliveryInfo, setDeliveryInfo] = useState<{ cost: number; eta: string } | null>(null);
+  const [distanceKm, setDistanceKm] = useState<number | null>(null);
+
 
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [promo, setPromo] = useState<Promo>(null);
@@ -210,6 +239,40 @@ const handleSelectOption = useCallback(
   [resetDeliveryState]
 );
 
+const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+// START: auto-unselect if mode becomes disabled while user is in modal
+useEffect(() => {
+  if (!selectedOption) return;
+
+  // global off => kasujemy wybór
+  if (restaurantActive === false) {
+    setSelectedOption(null);
+    resetDeliveryState();
+    setErrorMessage("Zamówienia w tym lokalu są chwilowo wyłączone.");
+    return;
+  }
+
+  if (selectedOption === "delivery" && restaurantDeliveryActive === false) {
+    setSelectedOption(null);
+    resetDeliveryState();
+    setErrorMessage("Dostawa została wyłączona dla tego lokalu.");
+  }
+
+  if (selectedOption === "takeaway" && restaurantTakeawayActive === false) {
+    setSelectedOption(null);
+    setErrorMessage("Wynos został wyłączony dla tego lokalu.");
+  }
+}, [
+  selectedOption,
+  restaurantActive,
+  restaurantDeliveryActive,
+  restaurantTakeawayActive,
+  resetDeliveryState,
+]);
+// END: auto-unselect if mode becomes disabled while user is in modal
+
+
 
   const sessionEmail = session?.user?.email || "";
   const effectiveEmail = (contactEmail || sessionEmail).trim();
@@ -218,6 +281,11 @@ const handleSelectOption = useCallback(
 
   const { slug: restaurantSlug, label: restaurantCityLabel } = getRestaurantCityFromPath();
   const thanksQrUrl = CITY_REVIEW_QR_URLS[restaurantSlug] || THANKS_QR_URL;
+  const googleReviewUrl = useMemo(
+  () => normalizeHttpsUrl(thanksQrUrl),
+  [thanksQrUrl]
+);
+
   const restaurantPhone = getRestaurantPhone(restaurantSlug);
 
   const [checkoutConfig, setCheckoutConfig] = useState<CheckoutConfig | null>(null);
@@ -384,21 +452,53 @@ const [loyaltyLoading, setLoyaltyLoading] = useState(false);
       }
 
       // 1) restauracja po slugu
-      const restRes = await supabase
+            let restRes = await supabase
         .from("restaurants")
-        .select("id, lat, lng")
+        .select("id, lat, lng, active, ordering_delivery_active, ordering_takeaway_active")
         .eq("slug", restaurantSlug)
         .maybeSingle();
+
+      // kompatybilność: jeśli kolumny jeszcze nie wdrożone, nie wysypuj modala
+      const msg = String(restRes.error?.message || "");
+      if (
+        restRes.error &&
+        (msg.includes("ordering_delivery_active") || msg.includes("ordering_takeaway_active"))
+      ) {
+        restRes = await supabase
+          .from("restaurants")
+          .select("id, lat, lng, active")
+          .eq("slug", restaurantSlug)
+          .maybeSingle();
+      }
 
       if (cancelled || restRes.error || !restRes.data) return;
       const rest: any = restRes.data;
 
-      if (!cancelled) {
-        if (rest.lat && rest.lng) {
-          setRestLoc({ lat: rest.lat, lng: rest.lng });
-        }
-        setRestaurantId(rest.id as string);
-      }
+      // START: istniejący blok ustawiania restauracji
+if (!cancelled) {
+  if (rest.lat && rest.lng) {
+    setRestLoc({ lat: rest.lat, lng: rest.lng });
+  }
+  setRestaurantId(rest.id as string);
+
+  // START/END: WKLEJ TO TUTAJ (wewnątrz if (!cancelled))
+  setRestaurantActive(typeof rest.active === "boolean" ? !!rest.active : true);
+
+  setRestaurantDeliveryActive(
+    typeof rest.ordering_delivery_active === "boolean"
+      ? !!rest.ordering_delivery_active
+      : true
+  );
+
+  setRestaurantTakeawayActive(
+    typeof rest.ordering_takeaway_active === "boolean"
+      ? !!rest.ordering_takeaway_active
+      : true
+  );
+  // END: START/END
+}
+// END
+
 
       // 2) dane zależne od restauracji: produkty + strefy dostawy
       const [prodRes, dzRes] = await Promise.all([
@@ -611,7 +711,6 @@ useEffect(() => {
   const [submitting, setSubmitting] = useState(false);
   const [confirmCityOk, setConfirmCityOk] = useState(false);
   const [orderSent, setOrderSent] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [chopsticksQty, setChopsticksQty] = useState<number>(0);
 
   const getTurnstileToken = useCallback((): string | null => {
@@ -910,7 +1009,7 @@ return (priceNum + addonsCost) * qty;
     [items, resolveProduct, isProductEligibleForPromo]
   );
 
-  const calcDelivery = useCallback(
+const fetchDistanceKm = useCallback(
   async (custLat: number, custLng: number) => {
     if (!restLoc) return;
 
@@ -918,57 +1017,87 @@ return (priceNum + addonsCost) * qty;
       const resp = await fetch(
         `/api/distance?origin=${restLoc.lat},${restLoc.lng}&destination=${custLat},${custLng}`
       );
-      const { distance_km, error } = await resp.json();
-      if (error) return;
 
-      const zone = zones
-        .filter((z) => z.active !== false)
-        .find((z) => distance_km >= z.min_distance_km && distance_km <= z.max_distance_km);
+      const payload = (await resp.json().catch(() => null)) as any;
 
-      if (!zone) {
-        setOutOfRange(true);
-        setDeliveryMinOk(false);
-        setDeliveryMinRequired(0);
-        setDeliveryInfo({ cost: 0, eta: "Poza zasięgiem" });
+      if (!resp.ok || !payload || payload.error) {
+        setDistanceKm(null);
+        setDeliveryInfo(null);
         return;
       }
 
-      setOutOfRange(false);
+      const dk = Number(payload.distance_km);
+      if (!Number.isFinite(dk) || dk < 0) {
+        setDistanceKm(null);
+        setDeliveryInfo(null);
+        return;
+      }
 
-      const perKm =
-        (zone.pricing_type ?? (zone.min_distance_km === 0 ? "flat" : "per_km")) === "per_km";
-      let cost = perKm ? zone.cost * distance_km : zone.cost;
-
-      if (zone.free_over != null && subtotal >= zone.free_over) cost = 0;
-
-      const minOk = subtotal >= (zone.min_order_value || 0);
-      setDeliveryMinOk(minOk);
-      setDeliveryMinRequired(zone.min_order_value || 0);
-
-      const eta = `${zone.eta_min_minutes}-${zone.eta_max_minutes} min`;
-      const roundedDelivery = roundUpToStep(Math.max(0, cost), 0.5);
-setDeliveryInfo({ cost: roundedDelivery, eta });
+      setDistanceKm(dk);
     } catch {
-      // opcjonalnie: setDeliveryInfo(null)
+      setDistanceKm(null);
+      setDeliveryInfo(null);
     }
   },
-  [restLoc, zones, subtotal]
+  [restLoc]
 );
 
+const onAddressSelect = (address: string, lat: number, lng: number) => {
+  setStreet(address);
+  if (lat && lng) {
+    setCustCoords({ lat, lng });
+  }
+};
 
-  const onAddressSelect = (address: string, lat: number, lng: number) => {
-    setStreet(address);
-    if (lat && lng) {
-      setCustCoords({ lat, lng });
-      calcDelivery(lat, lng);
-    }
-  };
-
-  useEffect(() => {
+// Strzał do /api/distance tylko gdy zmienią się koordynaty (subtotal nie wpływa na dystans)
+useEffect(() => {
   if (selectedOption !== "delivery") return;
   if (!custCoords) return;
-  calcDelivery(custCoords.lat, custCoords.lng);
-}, [selectedOption, custCoords, calcDelivery]);
+  fetchDistanceKm(custCoords.lat, custCoords.lng);
+}, [selectedOption, custCoords, fetchDistanceKm]);
+
+// Przelicz koszt/ETA na bazie distanceKm + stref + subtotal (bez ponownego Google call)
+useEffect(() => {
+  if (selectedOption !== "delivery") return;
+
+  if (!custCoords || distanceKm == null) {
+    setDeliveryInfo(null);
+    setOutOfRange(false);
+    setDeliveryMinOk(true);
+    setDeliveryMinRequired(0);
+    return;
+  }
+
+  const zone = zones
+    .filter((z) => z.active !== false)
+    .find((z) => distanceKm >= z.min_distance_km && distanceKm <= z.max_distance_km);
+
+  if (!zone) {
+    setOutOfRange(true);
+    setDeliveryMinOk(false);
+    setDeliveryMinRequired(0);
+    setDeliveryInfo({ cost: 0, eta: "Poza zasięgiem" });
+    return;
+  }
+
+  setOutOfRange(false);
+
+  const perKm =
+    (zone.pricing_type ?? (zone.min_distance_km === 0 ? "flat" : "per_km")) === "per_km";
+
+  let cost = perKm ? zone.cost * distanceKm : zone.cost;
+
+  if (zone.free_over != null && subtotal >= zone.free_over) cost = 0;
+
+  const minOk = subtotal >= (zone.min_order_value || 0);
+  setDeliveryMinOk(minOk);
+  setDeliveryMinRequired(zone.min_order_value || 0);
+
+  const eta = `${zone.eta_min_minutes}-${zone.eta_max_minutes} min`;
+  const roundedDelivery = roundUpToStep(Math.max(0, cost), 0.5);
+  setDeliveryInfo({ cost: roundedDelivery, eta });
+}, [selectedOption, custCoords, distanceKm, zones, subtotal]);
+
 
 const deliveryCost =
   selectedOption === "delivery" ? (deliveryInfo?.cost || 0) : 0;
@@ -1261,6 +1390,45 @@ const totalWithDelivery = Math.max(0, subtotal + deliveryCost - discount);
       return;
     }
 
+    // START: server-side-ish check via DB before submit (authoritative)
+try {
+  const { data: r, error } = await supabase
+    .from("restaurants")
+    .select("active, ordering_delivery_active, ordering_takeaway_active")
+    .eq("slug", restaurantSlug)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  const active = typeof (r as any)?.active === "boolean" ? !!(r as any).active : true;
+  const delOk =
+    typeof (r as any)?.ordering_delivery_active === "boolean"
+      ? !!(r as any).ordering_delivery_active
+      : true;
+  const takeOk =
+    typeof (r as any)?.ordering_takeaway_active === "boolean"
+      ? !!(r as any).ordering_takeaway_active
+      : true;
+
+  if (!active) {
+    setErrorMessage("Zamówienia w tym lokalu są chwilowo wyłączone.");
+    return;
+  }
+  if (selectedOption === "delivery" && !delOk) {
+    setErrorMessage("Dostawa jest chwilowo wyłączona dla tego lokalu.");
+    return;
+  }
+  if (selectedOption === "takeaway" && !takeOk) {
+    setErrorMessage("Wynos jest chwilowo wyłączony dla tego lokalu.");
+    return;
+  }
+} catch {
+  // jeśli nie uda się sprawdzić – nie blokujemy w UI,
+  // ale FINALNIE i tak powinieneś to zablokować w API /api/orders/create
+}
+// END: server-side-ish check via DB before submit
+
+
     const chk = isOpenForSchedule(scheduleDef);
     if (!chk.open) {
       setErrorMessage(
@@ -1269,48 +1437,79 @@ const totalWithDelivery = Math.max(0, subtotal + deliveryCost - discount);
       return;
     }
 
-   if (deliveryTimeOption === "schedule" && selectedOption) {
-    if (!scheduleSlots.includes(scheduledTime)) {
-    setErrorMessage(
-      "Wybrana godzina jest niedostępna. Wybierz jedną z dostępnych godzin."
-    );
-    return;
-  }
-  const [h, m] = scheduledTime.split(":").map(Number);
-  if (!Number.isFinite(h) || !Number.isFinite(m)) {
-    setErrorMessage(
-      selectedOption === "delivery"
-        ? "Podaj prawidłową godzinę dostawy."
-        : "Podaj prawidłową godzinę odbioru."
-    );
-    return;
-  }
+       // --- Lunche: tylko do 16:00 (czas Europe/Warsaw) ---
+    const nowZoned = toZonedTime(new Date(), tz);
+    let scheduledDt: Date | null = null;
 
-  const nowZoned = toZonedTime(new Date(), tz);
-  const dt = new Date(nowZoned);
-  dt.setHours(h, m, 0, 0);
+    const lunchCutoffMinutes = 16 * 60; // 16:00
+    const minutesOfDay = (d: Date) => d.getHours() * 60 + d.getMinutes();
 
-  // jeśli klient wybierze godzinę z przeszłości – traktujemy jako jutro
-  if (dt.getTime() < nowZoned.getTime()) {
-    dt.setDate(dt.getDate() + 1);
-  }
+    const isLunchItem = (it: any) => {
+      const p = resolveProduct(it);
+      const sub = String((p as any)?.subcategory ?? "").toLowerCase();
+      const name = String((p as any)?.name ?? it?.name ?? "").toLowerCase();
+      return /lunch|lunche/.test(sub) || name.startsWith("lunch ");
+    };
 
-  const diffMinutes = (dt.getTime() - nowZoned.getTime()) / 60000;
-  if (diffMinutes < minScheduleMinutes) {
-  setErrorMessage(
-    `Przy wyborze realizacji „na godzinę” minimalny czas to ${minScheduleMinutes} minut od teraz.`
-  );
-  return;
-}
+    const hasLunch = items.some(isLunchItem);
 
-  // NOWE: sprawdzenie blokad godzin z panelu admina
-  if (isDateTimeBlocked(dt, blockedTimes)) {
-    setErrorMessage(
-      "Wybrana godzina jest niedostępna (zablokowana w systemie). Wybierz inną godzinę."
-    );
-    return;
-  }
-}
+    // Jeśli user wybrał realizację "na godzinę" (pickup lub delivery),
+    // upewniamy się, że wybrany czas nie jest z przeszłości oraz że jest >= minScheduleMinutes
+    if (deliveryTimeOption === "schedule" && selectedOption) {
+      if (!scheduleSlots.includes(scheduledTime)) {
+        setErrorMessage(
+          "Wybrana godzina jest niedostępna. Wybierz jedną z dostępnych godzin."
+        );
+        return;
+      }
+
+      const [h, m] = scheduledTime.split(":").map(Number);
+      if (!Number.isFinite(h) || !Number.isFinite(m)) {
+        setErrorMessage("Nieprawidłowa godzina realizacji.");
+        return;
+      }
+
+      const dt = new Date(nowZoned);
+      dt.setHours(h, m, 0, 0);
+
+      // jeśli wybrana godzina już minęła dziś, przesuń na jutro
+      if (dt.getTime() < nowZoned.getTime() - 30_000) {
+        dt.setDate(dt.getDate() + 1);
+      }
+
+      const diffMin = Math.round((dt.getTime() - nowZoned.getTime()) / 60_000);
+      if (diffMin < minScheduleMinutes) {
+        setErrorMessage(
+          `Najwcześniej możesz wybrać godzinę za ok. ${minScheduleMinutes} min.`
+        );
+        return;
+      }
+
+      scheduledDt = dt;
+    }
+
+    // Walidacja lunchy:
+    if (hasLunch) {
+      // 1) nie przyjmujemy lunchy po 16:00 (czas złożenia)
+      const nowMins = minutesOfDay(nowZoned);
+      if (nowMins > lunchCutoffMinutes) {
+        setErrorMessage("Lunche można zamawiać tylko do 16:00.");
+        return;
+      }
+
+      // 2) jeśli “na godzinę”, to również realizacja musi być <= 16:00
+      const effective =
+        deliveryTimeOption === "schedule" && scheduledDt ? scheduledDt : nowZoned;
+
+      const effMins = minutesOfDay(effective);
+      if (effMins > lunchCutoffMinutes) {
+        setErrorMessage(
+          "Lunche realizujemy tylko do 16:00. Wybierz wcześniejszą godzinę lub usuń lunch z koszyka."
+        );
+        return;
+      }
+    }
+
 
     if (!guardEmail()) return;
     const tsToken = getTurnstileToken();
@@ -1327,6 +1526,11 @@ if (TURNSTILE_SITE_KEY && !tsToken) {
         );
         return;
       }
+      if (!deliveryInfo) {
+  setErrorMessage("Nie udało się policzyć kosztu dostawy. Wybierz adres ponownie lub spróbuj za chwilę.");
+  return;
+}
+
       if (outOfRange) {
         setErrorMessage("Adres jest poza zasięgiem dostawy.");
         return;
@@ -1478,10 +1682,37 @@ setOrderSent(true);
 
  if (!isClient || !isCheckoutOpen) return null;
 
-const OPTIONS: { key: OrderOption; label: string; Icon: any }[] = [
-  { key: "takeaway", label: "Na wynos", Icon: ShoppingBag },
-  { key: "delivery", label: "Dostawa", Icon: Truck },
-];
+ // START: per-mode availability (null => traktujemy jako włączone do czasu pobrania)
+const orderingGlobalEnabledUi = restaurantActive !== false;
+const deliveryEnabledUi = orderingGlobalEnabledUi && restaurantDeliveryActive !== false;
+const takeawayEnabledUi = orderingGlobalEnabledUi && restaurantTakeawayActive !== false;
+
+const disabledHint = (opt: OrderOption) => {
+  if (!orderingGlobalEnabledUi) return "Zamówienia wyłączone";
+  if (opt === "delivery" && !deliveryEnabledUi) return "Dostawa wyłączona";
+  if (opt === "takeaway" && !takeawayEnabledUi) return "Wynos wyłączony";
+  return "";
+};
+// END: per-mode availability
+
+
+const OPTIONS: { key: OrderOption; label: string; Icon: any; disabled?: boolean; hint?: string }[] =
+  [
+    {
+      key: "takeaway",
+      label: "Na wynos",
+      Icon: ShoppingBag,
+      disabled: !takeawayEnabledUi,
+      hint: disabledHint("takeaway"),
+    },
+    {
+      key: "delivery",
+      label: "Dostawa",
+      Icon: Truck,
+      disabled: !deliveryEnabledUi,
+      hint: disabledHint("delivery"),
+    },
+  ];
 
 const LegalConsent = (
   <label className="flex items-start gap-2 text-xs leading-5 text-black">
@@ -1644,7 +1875,7 @@ return (
                 <div className="min-h-[320px] flex flex-col items-center justify-center text-center space-y-5 px-4">
                   <div className="bg-white p-4 rounded-2xl shadow flex flex-col items-center gap-2">
                     <div className="bg-white p-3 rounded-xl">
-                      <QRCode value={thanksQrUrl} size={170} />
+                      <QRCode value={googleReviewUrl || thanksQrUrl} size={170} />
                     </div>
                     <p className="text-xs text-black/60 max-w-xs">
                       Zeskanuj kod lub kliknij poniższy przycisk, aby ocenić
@@ -1667,12 +1898,14 @@ return (
                     e-mail.
                   </p>
                   <div className="flex justify-center gap-3 flex-wrap">
-                    <button
-                      onClick={() => window.open(thanksQrUrl, "_blank")}
-                      className={`px-4 py-2 rounded-xl ${accentBtn}`}
-                    >
-                      Zostaw opinię w Google
-                    </button>
+                    <a
+  href={googleReviewUrl || thanksQrUrl}
+  target="_blank"
+  rel="noopener noreferrer"
+  className={`inline-flex items-center justify-center px-4 py-2 rounded-xl ${accentBtn}`}
+>
+  Zostaw opinię w Google
+</a>
                     <button
                       onClick={closeCheckoutModal}
                       className="px-4 py-2 rounded-xl border border-black/15"
@@ -1741,6 +1974,18 @@ return (
   </div>
 </div>
 
+{/* DESKTOP: przycisk Dalej (bo mobile footer ma lg:hidden) */}
+<div className="hidden lg:flex justify-end pt-4">
+  <button
+    onClick={nextStep}
+    disabled={items.length === 0}
+    className={`px-6 py-3 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
+  >
+    Dalej →
+  </button>
+</div>
+
+
                     </div>
                   )}
 
@@ -1751,23 +1996,40 @@ return (
                       <h3 className="text-2xl font-bold">Sposób odbioru</h3>
 
                       <div className="grid grid-cols-2 gap-3">
-                        {OPTIONS.map(({ key, label, Icon }) => (
-                          <button
-                            key={key}
-                            onClick={() => handleSelectOption(key)}
-                            className={clsx(
-                              "flex flex-col items-center justify-center border px-3 py-4 transition",
-                              selectedOption === key
-                                ? "bg-yellow-400 text-black border-yellow-500"
-                                : "bg-gray-50 text-black border-black/10 hover:bg-gray-100"
-                            )}
-                          >
-                            <Icon size={22} />
-                            <span className="mt-1 text-sm font-medium">
-                              {label}
-                            </span>
-                          </button>
-                        ))}
+                        {OPTIONS.map(({ key, label, Icon, disabled, hint }) => (
+  <button
+    key={key}
+    disabled={!!disabled}
+    onClick={() => {
+      if (disabled) {
+        setErrorMessage(
+          hint ||
+            (key === "delivery"
+              ? "Dostawa jest chwilowo wyłączona dla tego lokalu."
+              : "Wynos jest chwilowo wyłączony dla tego lokalu.")
+        );
+        return;
+      }
+      setErrorMessage(null);
+      handleSelectOption(key);
+    }}
+    className={clsx(
+      "flex flex-col items-center justify-center border px-3 py-4 transition",
+      selectedOption === key
+        ? "bg-yellow-400 text-black border-yellow-500"
+        : "bg-gray-50 text-black border-black/10 hover:bg-gray-100",
+      disabled && "opacity-50 cursor-not-allowed hover:bg-gray-50"
+    )}
+    title={disabled ? hint : undefined}
+  >
+    <Icon size={22} />
+    <span className="mt-1 text-sm font-medium">{label}</span>
+    {disabled && hint ? (
+      <span className="mt-1 text-[10px] text-black/60">{hint}</span>
+    ) : null}
+  </button>
+))}
+
                       </div>
 
                       {selectedOption === "delivery" && (
@@ -1834,6 +2096,26 @@ return (
     </p>
   </div>
 )}
+
+{/* DESKTOP: nawigacja kroku 2 (mobile footer ma lg:hidden) */}
+<div className="hidden lg:flex items-center justify-between pt-2">
+  <button
+    type="button"
+    onClick={() => goToStep(1)}
+    className="px-4 py-2 rounded-xl border border-black/15"
+  >
+    ← Cofnij
+  </button>
+
+  <button
+    onClick={nextStep}
+    disabled={!selectedOption}
+    className={`px-6 py-3 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
+  >
+    Dalej →
+  </button>
+</div>
+
 
                       {/* MOBILE: fixed footer – na sam dół (Pałeczki zostają na środku) */}
 <div className="fixed inset-x-0 bottom-0 z-[70] lg:hidden">

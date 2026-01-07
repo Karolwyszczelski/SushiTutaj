@@ -4,25 +4,34 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { createClient } from "@supabase/supabase-js";
-import { getSessionAndRole } from "@/lib/serverAuth";
+import { AdminAuthError, requireRestaurantAccess } from "@/lib/requireAdmin";
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
-);
+function json(body: any, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: { "Cache-Control": "no-store", "Content-Type": "application/json" },
+  });
+}
+
+async function getCtx() {
+  try {
+    return await requireRestaurantAccess(["admin", "employee"]);
+  } catch (e: any) {
+    if (e instanceof AdminAuthError) throw e;
+    throw new AdminAuthError(401, "UNAUTHORIZED", "Unauthorized");
+  }
+}
 
 const PatchSchema = z.object({
-  min_distance_km: z.number().nonnegative().optional(),
-  max_distance_km: z.number().nonnegative().optional(),
-  min_order_value: z.number().nonnegative().optional(),
-  cost: z.number().nonnegative().optional(),
-  free_over: z.number().nonnegative().nullable().optional(),
-  eta_min_minutes: z.number().int().nonnegative().optional(),
-  eta_max_minutes: z.number().int().nonnegative().optional(),
-  cost_fixed: z.number().nonnegative().optional(),
-  cost_per_km: z.number().nonnegative().optional(),
+  min_distance_km: z.coerce.number().nonnegative().optional(),
+  max_distance_km: z.coerce.number().nonnegative().optional(),
+  min_order_value: z.coerce.number().nonnegative().optional(),
+  cost: z.coerce.number().nonnegative().optional(),
+  free_over: z.coerce.number().nonnegative().nullable().optional(),
+  eta_min_minutes: z.coerce.number().int().nonnegative().optional(),
+  eta_max_minutes: z.coerce.number().int().nonnegative().optional(),
+  cost_fixed: z.coerce.number().nonnegative().optional(),
+  cost_per_km: z.coerce.number().nonnegative().optional(),
 });
 
 export async function PATCH(
@@ -30,30 +39,43 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const zoneId = String(id || "").trim();
+  if (!zoneId) return json({ error: "Missing id" }, 400);
 
-  const { session, role } = await getSessionAndRole();
-  if (!session || (role !== "admin" && role !== "employee")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let ctx: Awaited<ReturnType<typeof getCtx>>;
+  try {
+    ctx = await getCtx();
+  } catch (e: any) {
+    if (e instanceof AdminAuthError) return json({ error: e.message, code: e.code }, e.status);
+    return json({ error: "Unauthorized" }, 401);
   }
 
-  const body = await req.json();
+  const body = await req.json().catch(() => ({}));
   const parsed = PatchSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.message }, { status: 400 });
+    return json({ error: "Validation", details: parsed.error.format() }, 400);
   }
 
-  const { data, error } = await supabaseAdmin
+  const patch: Record<string, any> = { ...parsed.data };
+  for (const k of Object.keys(patch)) {
+    if (patch[k] === undefined) delete patch[k];
+  }
+  if (Object.keys(patch).length === 0) {
+    return json({ error: "Empty patch" }, 400);
+  }
+
+  const { data, error } = await ctx.supabase
     .from("delivery_zones")
-    .update(parsed.data)
-    .eq("id", id)
-    .select()
-    .single();
+    .update(patch)
+    .eq("id", zoneId)
+    .eq("restaurant_id", ctx.restaurantId)
+    .select("*")
+    .maybeSingle();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  if (error) return json({ error: error.message }, 500);
+  if (!data) return json({ error: "Not found" }, 404);
 
-  return NextResponse.json({ zone: data });
+  return json({ zone: data }, 200);
 }
 
 export async function DELETE(
@@ -61,20 +83,27 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const zoneId = String(id || "").trim();
+  if (!zoneId) return json({ error: "Missing id" }, 400);
 
-  const { session, role } = await getSessionAndRole();
-  if (!session || (role !== "admin" && role !== "employee")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  let ctx: Awaited<ReturnType<typeof getCtx>>;
+  try {
+    ctx = await getCtx();
+  } catch (e: any) {
+    if (e instanceof AdminAuthError) return json({ error: e.message, code: e.code }, e.status);
+    return json({ error: "Unauthorized" }, 401);
   }
 
-  const { error } = await supabaseAdmin
+  const { data, error } = await ctx.supabase
     .from("delivery_zones")
     .delete()
-    .eq("id", id);
+    .eq("id", zoneId)
+    .eq("restaurant_id", ctx.restaurantId)
+    .select("id")
+    .maybeSingle();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  if (error) return json({ error: error.message }, 500);
+  if (!data) return json({ error: "Not found" }, 404);
 
-  return NextResponse.json({ ok: true });
+  return json({ ok: true }, 200);
 }
