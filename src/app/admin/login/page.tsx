@@ -3,11 +3,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
+import type { Database } from "@/types/supabase";
 
 export default function AdminLogin() {
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -15,10 +19,23 @@ export default function AdminLogin() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // jeśli jest sesja → /admin/AdminPanel
+  // jeśli jest sesja → sprawdź admina i przekieruj
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.replace("/admin/AdminPanel");
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session) {
+        // Wywołaj ensure-cookie żeby ustawić restaurant_id
+        try {
+          const res = await fetch("/api/restaurants/ensure-cookie", {
+            credentials: "include",
+            cache: "no-store",
+          });
+          if (res.ok) {
+            router.replace("/admin/AdminPanel");
+          }
+        } catch {
+          router.replace("/admin/AdminPanel");
+        }
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -31,9 +48,9 @@ export default function AdminLogin() {
       email: email.trim(),
       password,
     });
-    setLoading(false);
 
     if (error) {
+      setLoading(false);
       const m = error.message?.toLowerCase() || "";
       const pretty =
         m.includes("invalid") || m.includes("credentials")
@@ -42,6 +59,27 @@ export default function AdminLogin() {
       setErrorMsg(pretty);
       return;
     }
+
+    // Po zalogowaniu wywołaj ensure-cookie żeby ustawić restaurant_id i restaurant_slug
+    try {
+      const res = await fetch("/api/restaurants/ensure-cookie", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.error === "NO_RESTAURANT_FOR_ADMIN") {
+          setLoading(false);
+          setErrorMsg("Twoje konto nie ma przypisanej restauracji. Skontaktuj się z administratorem.");
+          return;
+        }
+      }
+    } catch (e) {
+      console.error("ensure-cookie error:", e);
+    }
+
+    setLoading(false);
     router.replace("/admin/AdminPanel");
   }
 

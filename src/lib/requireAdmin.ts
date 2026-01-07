@@ -1,6 +1,15 @@
 // src/lib/requireAdmin.ts
 import "server-only";
 import { getAdminContext } from "@/lib/adminContext";
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/supabase";
+
+// Service role client - omija RLS dla restaurant_admins
+const supabaseAdmin = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false, detectSessionInUrl: false } }
+);
 
 export type RestaurantRole = "owner" | "admin" | "manager" | "employee";
 
@@ -24,8 +33,8 @@ export async function requireRestaurantAccess(
 ) {
   const ctx = await getAdminContext(); // { supabase, user, restaurantId }
 
-  // Dociągamy rolę dla tego usera i tej restauracji
-  const { data, error } = await ctx.supabase
+  // Używamy supabaseAdmin (service role) żeby ominąć RLS przy sprawdzaniu roli
+  const { data, error } = await supabaseAdmin
     .from("restaurant_admins")
     .select("role")
     .eq("user_id", ctx.user.id)

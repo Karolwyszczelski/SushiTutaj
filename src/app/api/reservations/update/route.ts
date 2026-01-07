@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 import type { Database } from "@/types/supabase";
@@ -87,12 +87,24 @@ export async function POST(req: Request) {
     }
 
     // 1) Auth: sesja (stabilniej niż getUser() po czasie)
-    const supabaseServer = createRouteHandlerClient<Database>({ cookies });
+    const cookieStore = await cookies();
+    const supabaseServer = createServerClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() { return cookieStore.getAll(); },
+          setAll(cookiesToSet) {
+            try { cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); } catch {}
+          },
+        },
+      }
+    );
     const {
-      data: { session },
-    } = await supabaseServer.auth.getSession();
+      data: { user },
+    } = await supabaseServer.auth.getUser();
 
-    const userId = session?.user?.id ?? null;
+    const userId = user?.id ?? null;
     if (!userId) {
       return NextResponse.json(
         { error: "Nie jesteś zalogowany" },
@@ -101,7 +113,6 @@ export async function POST(req: Request) {
     }
 
     // 2) restaurant_id z cookie (ustawiane przez ensure-cookie)
-    const cookieStore = await cookies();
     const cookieRestaurantIdRaw = cookieStore.get("restaurant_id")?.value ?? null;
     let restaurantId = normalizeUuid(cookieRestaurantIdRaw);
 

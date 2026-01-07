@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 import { Plus, RotateCw, Trash2, Save, Info } from "lucide-react";
 
 type UUID = string;
@@ -28,7 +28,7 @@ const DEFAULT_SIZE = { w: 140, h: 90 };
 const DEFAULT_SEATS = 2;
 
 export default function TableLayoutForm() {
-  const supabase = useMemo(() => createClientComponentClient(), []);
+  const supabase = useMemo(() => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!), []);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const [restaurantId, setRestaurantId] = useState<UUID | null>(null);

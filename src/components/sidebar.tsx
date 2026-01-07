@@ -19,7 +19,7 @@ import {
   Utensils,
 } from "lucide-react";
 import clsx from "clsx";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 import type { Database } from "@/types/supabase";
 
 type Role = "admin" | "employee";
@@ -58,7 +58,7 @@ function getCookie(name: string) {
 }
 
 export default function Sidebar() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
   const pathname = usePathname() || "";
   const params = useSearchParams();
   const router = useRouter();
@@ -83,47 +83,6 @@ export default function Sidebar() {
     return urlSlug || getCookie("restaurant_slug");
   });
 
-  // rola
-  useEffect(() => {
-    let live = true;
-
-    type RestaurantAdminRoleRow = { role?: string | null };
-
-    const load = async () => {
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!session) return;
-
-        const { data } = await supabase
-          .from("restaurant_admins")
-          .select("role")
-          .eq("user_id", session.user.id)
-          .order("added_at", { ascending: false })
-          .limit(1)
-          .maybeSingle<RestaurantAdminRoleRow>();
-
-        const r = String(data?.role ?? "staff").toLowerCase();
-        const ui: Role =
-          r === "owner" || r === "manager" ? "admin" : "employee";
-        if (live) setRole(ui);
-      } catch {
-        // opcjonalnie log
-      }
-    };
-
-    const sub = supabase.auth.onAuthStateChange(() => {
-      void load();
-    });
-    void load();
-
-    return () => {
-      live = false;
-      sub.data.subscription.unsubscribe();
-    };
-  }, [supabase]);
-
   // zapamiętanie złożenia
   useEffect(() => {
     try {
@@ -131,8 +90,10 @@ export default function Sidebar() {
     } catch {}
   }, [collapsed]);
 
-  // upewnij cookie + dolep slug do bieżącego URL jeśli go brak
+  // upewnij cookie + dolep slug do bieżącego URL + pobierz rolę z API
   useEffect(() => {
+    let live = true;
+
     const ensure = async () => {
       const urlSlug = params?.get("restaurant")?.toLowerCase() || null;
       const cookieSlug = getCookie("restaurant_slug");
@@ -148,6 +109,17 @@ export default function Sidebar() {
         });
         const j = await r.json().catch(() => ({}));
         const s = j?.restaurant_slug || finalSlug || null;
+
+        // Ustaw rolę z odpowiedzi API (używa service role, więc omija RLS)
+        if (live && j?.role) {
+          const dbRole = String(j.role).toLowerCase();
+          const uiRole: Role =
+            dbRole === "owner" || dbRole === "manager" || dbRole === "admin"
+              ? "admin"
+              : "employee";
+          setRole(uiRole);
+        }
+
         if (s && !urlSlug) {
           // dopnij slug do aktualnej ścieżki
           const href = `${pathname}?restaurant=${encodeURIComponent(s)}`;
@@ -156,7 +128,18 @@ export default function Sidebar() {
         if (s && s !== slug) setSlug(s);
       } catch {}
     };
+
     void ensure();
+
+    // Nasłuchuj zmian auth i odśwież
+    const sub = supabase.auth.onAuthStateChange(() => {
+      void ensure();
+    });
+
+    return () => {
+      live = false;
+      sub.data.subscription.unsubscribe();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]); // wywołuj przy zmianie podstrony
 

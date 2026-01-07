@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 import { RefreshCw, ChevronDown } from "lucide-react";
 
 type Order = {
@@ -62,7 +62,7 @@ const optLabel = (o?: string | null) =>
   o === "takeaway" ? "Na wynos" : o === "delivery" ? "Dostawa" : "—";
 
 export default function CurrentOrdersPage() {
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [restaurantSlug, setRestaurantSlug] = useState<string | null>(null);
 

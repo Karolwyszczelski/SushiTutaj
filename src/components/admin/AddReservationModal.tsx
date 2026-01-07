@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 
 export default function AddReservationModal({
   onClose,
@@ -10,7 +10,7 @@ export default function AddReservationModal({
   onClose(): void;
   onCreated(): void;
 }) {
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
   const [customerName, setCustomerName] = useState("");
   const [reserveDateTime, setReserveDateTime] = useState(""); // "YYYY-MM-DDTHH:MM"
   const [partySize, setPartySize] = useState(1);

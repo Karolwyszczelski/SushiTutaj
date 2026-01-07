@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 
 type Mode = "loading" | "recovery" | "done" | "error";
 
 export default function AuthCallbackPage() {
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
   const [mode, setMode] = useState<Mode>("loading");
   const [error, setError] = useState<string | null>(null);
   const [pass, setPass] = useState("");

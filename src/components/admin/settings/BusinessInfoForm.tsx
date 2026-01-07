@@ -4,10 +4,10 @@
 
 import { useEffect, useState } from "react";
 import type { Database } from "@/types/supabase";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 import Image from "next/image";
 
-type Props = { supabase: ReturnType<typeof createClientComponentClient<Database>> };
+type Props = { supabase: ReturnType<typeof createBrowserClient<Database>> };
 
 interface Settings {
   business_name: string;

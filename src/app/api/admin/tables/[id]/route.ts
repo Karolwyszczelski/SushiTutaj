@@ -45,9 +45,9 @@ async function requireRestaurantAccess(
 ) {
   try {
     const ctx = await getAdminContext(); // { supabase, user, restaurantId }
-    const sbAny = ctx.supabase as any;
 
-    const { data, error } = await sbAny
+    // Używamy supabaseAdmin (service role) żeby ominąć RLS przy sprawdzaniu roli
+    const { data, error } = await supabaseAdmin
       .from("restaurant_admins")
       .select("role")
       .eq("user_id", ctx.user.id)
@@ -55,7 +55,7 @@ async function requireRestaurantAccess(
       .maybeSingle();
 
     if (error) return { ok: false as const, status: 500, error: "Server error" };
-    const role = (data?.role as string | null)?.toLowerCase() ?? null;
+    const role = ((data as any)?.role as string | null)?.toLowerCase() ?? null;
 
     if (!role || !roles.includes(role as any)) {
       return { ok: false as const, status: 403, error: "Forbidden" };

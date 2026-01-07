@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import type { Database } from "@/types/supabase";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 
 const WEEKDAYS = [
   "Poniedziałek",
@@ -25,7 +25,7 @@ export interface DayHours {
   closed: boolean;
 }
 
-type Props = { supabase: ReturnType<typeof createClientComponentClient<Database>> };
+type Props = { supabase: ReturnType<typeof createBrowserClient<Database>> };
 
 export default function OpeningHoursForm({ supabase }: Props) {
   const [hours, setHours] = useState<DayHours[]>([]);

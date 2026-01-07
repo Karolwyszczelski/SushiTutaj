@@ -1158,7 +1158,7 @@ if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
   </div>
 )}
 
-        {!isSet && (
+        {!isSet && !isDrink && !isDessert && (
           <div>
             <div className="font-semibold mb-1">Dodatki:</div>
             <div className="flex flex-wrap gap-2">

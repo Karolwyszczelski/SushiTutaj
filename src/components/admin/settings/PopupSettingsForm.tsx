@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 import {
   Upload,
   X,
@@ -34,7 +34,7 @@ type PopupRow = {
 };
 
 export default function PopupSettingsForm({ restaurantId }: { restaurantId: string }) {
-  const supabase = useMemo(() => createClientComponentClient(), []);
+  const supabase = useMemo(() => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!), []);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

@@ -5,7 +5,15 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import type { Database } from "@/types/supabase";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
+
+// Service role client - omija RLS dla restaurant_admins
+const supabaseAdmin = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false, detectSessionInUrl: false } }
+);
 
 function normalizeUuid(v?: string | null) {
   if (!v) return null;
@@ -63,17 +71,37 @@ function clearSupabaseAuthCookies(res: NextResponse) {
 
 
 export async function GET(req: Request) {
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+  // Next.js 15: cookies() musi być await'owane
+  const cookieStore = await cookies();
+  
+  const supabase = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options);
+            });
+          } catch {}
+        },
+      },
+    }
+  );
 
-  // Sesja (stabilniej niż getUser() po czasie)
-  let session: any = null;
+  // Autoryzacja użytkownika (getUser() weryfikuje z serwerem auth)
+  let user: any = null;
 
 try {
-  const { data, error } = await supabase.auth.getSession();
+  const { data, error } = await supabase.auth.getUser();
   if (error) throw error;
-  session = data.session;
+  user = data.user;
 } catch (e: any) {
-  console.error("[orders.current] getSession error:", e?.message || e);
+  console.error("[orders.current] getUser error:", e?.message || e);
 
   const res = NextResponse.json(
     { error: "Unauthorized", code: "AUTH_REFRESH_TOKEN_MISSING" },
@@ -84,7 +112,7 @@ try {
   return res;
 }
 
-const userId = session?.user?.id;
+const userId = user?.id;
 if (!userId) {
   return NextResponse.json(
     { error: "Unauthorized", code: "NO_SESSION" },
@@ -101,8 +129,7 @@ if (!userId) {
     (url.searchParams.get("restaurant") || "").toLowerCase().trim() || null;
   const paramForced = !!slugParam;
 
-  // cookies
-  const cookieStore = await cookies();
+  // cookies - już mamy cookieStore z góry
   const cookieRid = normalizeUuid(cookieStore.get("restaurant_id")?.value || null);
   let rid: string | null = cookieRid;
   let rslug: string | null =
@@ -128,12 +155,9 @@ if (!userId) {
     rslug = found.slug?.toLowerCase() ?? slugParam;
   }
 
-  // UWAGA: jeśli Database nie ma restaurant_admins -> TS będzie krzyczał (never).
-  // Tymczasowo używamy any TYLKO do tej tabeli.
-  const sbAny = supabase as any;
-
+  // Używamy supabaseAdmin (service role) do zapytań restaurant_admins - omija RLS
   async function firstAssignedRestaurantId(uid: string) {
-    const { data, error } = await sbAny
+    const { data, error } = await supabaseAdmin
       .from("restaurant_admins")
       .select("restaurant_id, added_at")
       .eq("user_id", uid)
@@ -147,7 +171,7 @@ if (!userId) {
   }
 
   async function hasAccessToRestaurant(uid: string, restaurantId: string) {
-    const { data, error } = await sbAny
+    const { data, error } = await supabaseAdmin
       .from("restaurant_admins")
       .select("restaurant_id")
       .eq("user_id", uid)

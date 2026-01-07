@@ -4,8 +4,16 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
+
+// Service role client - omija RLS
+const supabaseAdmin = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false, detectSessionInUrl: false } }
+);
 
 const CK_BASE = {
   path: "/",
@@ -51,7 +59,28 @@ function inferSlugFromReferer(req: Request): string | null {
 
 
 export async function GET(req: Request) {
-  const supabase = createRouteHandlerClient<Database>({ cookies });
+  // Next.js 15: cookies() musi być await'owane
+  const cookieStore = await cookies();
+  
+  const supabase = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options);
+            });
+          } catch {}
+        },
+      },
+    }
+  );
+
   const url = new URL(req.url);
   const search = url.searchParams;
 
@@ -62,7 +91,6 @@ export async function GET(req: Request) {
     search.get("city") ||
     null;
 
-  const cookieStore = await cookies();
   const cookieId = cookieStore.get("restaurant_id")?.value ?? null;
   const cookieSlug = cookieStore.get("restaurant_slug")?.value ?? null;
 
@@ -75,20 +103,22 @@ export async function GET(req: Request) {
   let restaurantSlug: string | null = desiredSlug;
 
   try {
+    // Używamy getUser() zamiast getSession() - bardziej niezawodne
     const {
-      data: { session },
-    } = await supabase.auth.getSession();
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    const userId = session?.user?.id ?? null;
+    const userId = user?.id ?? null;
 
     // Helper: czy admin ma przypisaną restaurację o danym ID?
+    // WAŻNE: używamy supabaseAdmin (service role) żeby ominąć RLS
     async function adminHasRestaurant(id: string) {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from("restaurant_admins")
         .select("restaurant_id")
         .eq("user_id", userId!)
         .eq("restaurant_id", id)
-        .maybeSingle<{ restaurant_id: string }>();
+        .maybeSingle();
 
       if (error) return { ok: false, error };
       return { ok: !!data, error: null as any };
@@ -107,11 +137,11 @@ export async function GET(req: Request) {
 
       // 0b) brak ID, ale jest slug → zamień slug na ID i waliduj przypisanie
       if (!restaurantId && restaurantSlug) {
-        const { data: bySlug, error: bySlugError } = await supabase
+        const { data: bySlug, error: bySlugError } = await supabaseAdmin
           .from("restaurants")
           .select("id, slug")
           .eq("slug", restaurantSlug)
-          .maybeSingle<RestaurantBySlugRow>();
+          .maybeSingle();
 
         if (bySlugError) {
           console.error("ensure-cookie restaurants by slug error:", bySlugError.message);
@@ -122,7 +152,7 @@ export async function GET(req: Request) {
           const check = await adminHasRestaurant(bySlug.id);
           if (check.ok) {
             restaurantId = bySlug.id;
-            restaurantSlug = bySlug.slug?.toLowerCase() ?? restaurantSlug;
+            restaurantSlug = (bySlug.slug as string)?.toLowerCase() ?? restaurantSlug;
           } else {
             // slug wskazuje restaurację, do której admin nie ma dostępu → fallback na pierwszą przypisaną
             restaurantId = null;
@@ -136,14 +166,15 @@ export async function GET(req: Request) {
       }
 
       // 0c) jeśli nadal brak ID → bierz pierwszy przypisany lokal admina
+      // WAŻNE: używamy supabaseAdmin (service role) żeby ominąć RLS
       if (!restaurantId) {
-        const { data: adminRow, error: adminError } = await supabase
+        const { data: adminRow, error: adminError } = await supabaseAdmin
           .from("restaurant_admins")
           .select("restaurant_id")
           .eq("user_id", userId)
           .order("added_at", { ascending: true })
           .limit(1)
-          .maybeSingle<{ restaurant_id: string }>();
+          .maybeSingle();
 
         if (adminError) {
           console.error("ensure-cookie restaurant_admins error:", adminError.message);
@@ -154,17 +185,17 @@ export async function GET(req: Request) {
           return makeRes({ error: "NO_RESTAURANT_FOR_ADMIN" }, 404);
         }
 
-        restaurantId = adminRow.restaurant_id;
+        restaurantId = adminRow.restaurant_id as string;
       }
     }
 
     // 1) Public (brak userId): mamy slug, brak ID → pobierz po slugu
     if (!userId && restaurantSlug && !restaurantId) {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from("restaurants")
         .select("id, slug")
         .eq("slug", restaurantSlug)
-        .maybeSingle<RestaurantBySlugRow>();
+        .maybeSingle();
 
       if (error) {
         console.error("ensure-cookie restaurants by slug error:", error.message);
@@ -173,16 +204,16 @@ export async function GET(req: Request) {
       if (!data) return makeRes({ error: "RESTAURANT_NOT_FOUND" }, 404);
 
       restaurantId = data.id;
-      restaurantSlug = data.slug?.toLowerCase() ?? restaurantSlug;
+      restaurantSlug = (data.slug as string)?.toLowerCase() ?? restaurantSlug;
     }
 
        // 2) Mamy ID, ale nie mamy slugu → dociągnij slug po ID (wspólne dla admin/public)
     if (restaurantId && !restaurantSlug) {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseAdmin
         .from("restaurants")
         .select("slug")
         .eq("id", restaurantId)
-        .maybeSingle<RestaurantSlugRow>();
+        .maybeSingle();
 
       if (error) {
         console.error("ensure-cookie restaurants by id error:", error.message);
@@ -194,7 +225,7 @@ export async function GET(req: Request) {
         restaurantId = null;
         restaurantSlug = null;
       } else {
-        restaurantSlug = data.slug?.toLowerCase() ?? null;
+        restaurantSlug = (data.slug as string)?.toLowerCase() ?? null;
       }
     }
 
@@ -206,7 +237,7 @@ export async function GET(req: Request) {
 
       // public bez kontekstu – zwróć 200 i (opcjonalnie) wyczyść stare cookies
       const res = makeRes(
-        { ok: false, restaurant_id: null, restaurant_slug: null },
+        { ok: false, restaurant_id: null, restaurant_slug: null, role: null },
         200
       );
 
@@ -216,12 +247,26 @@ export async function GET(req: Request) {
       return res;
     }
 
+    // Pobierz rolę admina dla tej restauracji
+    let adminRole: string | null = null;
+    if (userId && restaurantId) {
+      const { data: roleData } = await supabaseAdmin
+        .from("restaurant_admins")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("restaurant_id", restaurantId)
+        .limit(1)
+        .maybeSingle();
+      
+      adminRole = (roleData?.role as string) ?? null;
+    }
 
     // 4) Ustaw cookies + zwróć
     const res = makeRes(
       {
         restaurant_id: restaurantId,
         restaurant_slug: restaurantSlug,
+        role: adminRole,
       },
       200
     );

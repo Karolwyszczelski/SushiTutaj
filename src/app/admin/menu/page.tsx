@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 import {
   Pencil,
   Trash,
@@ -63,7 +63,7 @@ function ProductModal({
   onClose: () => void;
   onSaved: (p: Product) => void;
 }) {
-  const supabase = useMemo(() => createClientComponentClient(), []);
+  const supabase = useMemo(() => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!), []);
   const isEditing = !!product;
 
   const [form, setForm] = useState({
@@ -503,7 +503,7 @@ function ProductModal({
 
 /* ========= Główna Strona z Zakładkami ========= */
 export default function AdminMenuPage() {
-  const supabase = useMemo(() => createClientComponentClient(), []);
+  const supabase = useMemo(() => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!), []);
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [slug, setSlug] = useState<string | null>(null);
 

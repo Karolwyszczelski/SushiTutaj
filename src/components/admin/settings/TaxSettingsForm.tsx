@@ -3,13 +3,13 @@
 
 import { useEffect, useState } from "react";
 import type { Database } from "@/types/supabase";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 
 interface TaxRate {
   category: string;
   rate: number;
 }
-type Props = { supabase: ReturnType<typeof createClientComponentClient<Database>> };
+type Props = { supabase: ReturnType<typeof createBrowserClient<Database>> };
 
 export default function TaxSettingsForm({ supabase }: Props) {
   const [taxes, setTaxes] = useState<TaxRate[]>([]);

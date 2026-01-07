@@ -16,7 +16,7 @@ import { toZonedTime } from "date-fns-tz";
 import useIsClient from "@/lib/useIsClient";
 import useCartStore from "@/store/cartStore";
 import AddressAutocomplete from "@/components/menu/AddressAutocomplete";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 import { useIsMobile } from "./checkoutModal/hooks";
 import { ChopsticksControl } from "./checkoutModal/ChopsticksControl";
 import { ProductItem } from "./checkoutModal/ProductItem";
@@ -90,7 +90,7 @@ export default function CheckoutModal() {
   const isClient = useIsClient();
   const session = useSession();
   const isLoggedIn = !!session?.user;
-  const supabaseAuth = createClientComponentClient();
+  const supabaseAuth = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
   const {
     isCheckoutOpen,

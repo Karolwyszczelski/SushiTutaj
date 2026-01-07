@@ -1,14 +1,16 @@
 // src/lib/supabase-browser.ts
 "use client";
 
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 import type { Database } from "@/types/supabase";
 
-// Trzymamy dokładnie ten typ, który zwraca helper – bez ręcznego SupabaseClient<>
-let _client: ReturnType<typeof createClientComponentClient<Database>> | null = null;
+let _client: ReturnType<typeof createBrowserClient<Database>> | null = null;
 
 export function getSupabaseBrowser() {
   if (_client) return _client;
-  _client = createClientComponentClient<Database>();
+  _client = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   return _client;
 }

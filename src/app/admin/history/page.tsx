@@ -3,7 +3,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 
 /* ====== Miasta jak w AdminPanel ====== */
 const CITIES = [
@@ -92,7 +92,7 @@ const optionLabel = (opt?: string | null) => {
 
 export default function HistoryPage() {
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
   /* ====== Sterowanie ====== */
   const [booted, setBooted] = useState(false);

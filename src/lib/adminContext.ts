@@ -1,7 +1,15 @@
 // src/lib/adminContext.ts
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/supabase";
+
+// Service role client - omija RLS (do sprawdzenia restaurant_admins)
+const supabaseAdmin = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false, detectSessionInUrl: false } }
+);
 
 function normalizeUuid(v?: string | null) {
   if (!v) return null;
@@ -38,22 +46,18 @@ export async function getAdminContext() {
     }
   );
 
-  // Stabilniej niż getUser() przy odświeżaniu sesji
+  // Używamy getUser() - bardziej niezawodne niż getSession() (weryfikuje token z serwerem)
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const user = session?.user ?? null;
   if (!user) throw new Error("Unauthorized");
 
   const cookieRid = normalizeUuid(cookieStore.get("restaurant_id")?.value ?? null);
 
-  // UWAGA: jeśli typy Database nie mają restaurant_admins, TS będzie krzyczał.
-  // Tymczasowo: any tylko dla tej tabeli.
-  const sbAny = supabase as any;
-
+  // Używamy supabaseAdmin (service role) żeby ominąć RLS przy sprawdzaniu restaurant_admins
   async function hasAccessToRestaurant(userId: string, restaurantId: string) {
-    const { data, error } = await sbAny
+    const { data, error } = await supabaseAdmin
       .from("restaurant_admins")
       .select("restaurant_id")
       .eq("user_id", userId)
@@ -65,7 +69,7 @@ export async function getAdminContext() {
   }
 
   async function firstAssignedRestaurantId(userId: string) {
-    const { data, error } = await sbAny
+    const { data, error } = await supabaseAdmin
       .from("restaurant_admins")
       .select("restaurant_id, added_at")
       .eq("user_id", userId)

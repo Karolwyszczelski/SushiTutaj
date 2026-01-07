@@ -1,9 +1,39 @@
 // SSR/Route Handlers: rozwiąż restaurant_id z ?restaurant=slug lub z membership
 import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/supabase";
+
+// Service role client - omija RLS dla restaurant_admins
+const supabaseAdmin = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false, detectSessionInUrl: false } }
+);
 
 export async function resolveRestaurantId(req: Request) {
-  const supabase = createRouteHandlerClient({ cookies });
+  // Next.js 15: cookies() musi być await'owane
+  const cookieStore = await cookies();
+  
+  const supabase = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options);
+            });
+          } catch {}
+        },
+      },
+    }
+  );
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -12,8 +42,8 @@ export async function resolveRestaurantId(req: Request) {
   const url = new URL(req.url);
   const wantSlug = url.searchParams.get("restaurant")?.toLowerCase() || null;
 
-  // membershipy użytkownika (RLS safe, anon+session)
-  const { data: mem, error: mErr } = await supabase
+  // Używamy supabaseAdmin (service role) żeby ominąć RLS przy sprawdzaniu membershipów
+  const { data: mem, error: mErr } = await supabaseAdmin
     .from("restaurant_admins")
     .select("restaurant_id, restaurants:restaurants!inner(slug)")
     .eq("user_id", user.id);

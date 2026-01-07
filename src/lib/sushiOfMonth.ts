@@ -1,7 +1,7 @@
-import { supabaseServer } from "@/lib/supabaseServer";
+import { createSupabaseServer } from "@/lib/supabaseServer";
 
 export async function getSushiOfMonth(restaurantId?: string) {
-  const supabase = supabaseServer();
+  const supabase = await createSupabaseServer();
 
   // najpierw próbujemy konkretny lokal (jeśli masz w cookie/ctx)
   if (restaurantId) {

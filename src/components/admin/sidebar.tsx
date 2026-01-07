@@ -18,7 +18,7 @@ import {
   Utensils,
 } from "lucide-react";
 import clsx from "clsx";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 import type { Database } from "@/types/supabase";
 
 type Role = "admin" | "employee";
@@ -59,6 +59,7 @@ function getCookie(name: string) {
 type EnsureCookieResp = {
   restaurant_id?: string | null;
   restaurant_slug?: string | null;
+  role?: string | null;
 };
 
 function roleToUiRole(raw: string | null | undefined): Role {
@@ -67,7 +68,10 @@ function roleToUiRole(raw: string | null | undefined): Role {
 }
 
 function SidebarInner() {
-  const supabase = createClientComponentClient<Database>();
+  const supabase = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
   const pathname = usePathname() || "";
   const params = useSearchParams();
   const searchKey = params?.toString();
@@ -122,11 +126,18 @@ function SidebarInner() {
         const json = (await res.json()) as EnsureCookieResp;
         const srvSlug = json.restaurant_slug?.toLowerCase() ?? null;
         const srvRid = json.restaurant_id ?? null;
+        const srvRole = json.role ?? null;
 
         if (cancelled) return;
 
         if (srvRid && srvRid !== restaurantId) setRestaurantId(srvRid);
         if (srvSlug && srvSlug !== slug) setSlug(srvSlug);
+        
+        // Ustaw rolę z API (omija RLS)
+        if (srvRole) {
+          const uiRole = roleToUiRole(srvRole);
+          setRole(uiRole);
+        }
 
         // localStorage tylko jako cache dla UI
         if (srvSlug && typeof window !== "undefined") {
@@ -161,61 +172,29 @@ function SidebarInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, searchKey, router]);
 
-  // 2) Rola: najlepiej dla aktualnej restauracji
+  // 2) Subskrypcja na zmiany auth - odśwież dane gdy zmieni się sesja
   useEffect(() => {
-    let live = true;
-
-    const load = async () => {
+    const sub = supabase.auth.onAuthStateChange(async () => {
+      // Po zmianie sesji (np. refresh) wywołaj ponownie ensure-cookie
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!session) return;
-
-        const sbAny = supabase as any;
-
-        let row: any = null;
-
-        if (restaurantId) {
-          const { data } = await sbAny
-            .from("restaurant_admins")
-            .select("role")
-            .eq("user_id", session.user.id)
-            .eq("restaurant_id", restaurantId)
-            .limit(1)
-            .maybeSingle();
-
-          row = data ?? null;
+        const res = await fetch(`/api/restaurants/ensure-cookie`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (res.ok) {
+          const json = (await res.json()) as EnsureCookieResp;
+          if (json.role) setRole(roleToUiRole(json.role));
+          if (json.restaurant_id) setRestaurantId(json.restaurant_id);
+          if (json.restaurant_slug) setSlug(json.restaurant_slug.toLowerCase());
         }
-
-        if (!row) {
-          const { data } = await sbAny
-            .from("restaurant_admins")
-            .select("role")
-            .eq("user_id", session.user.id)
-            .order("added_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          row = data ?? null;
-        }
-
-        const uiRole = roleToUiRole(row?.role ?? null);
-        if (live) setRole(uiRole);
       } catch {}
-    };
-
-    const sub = supabase.auth.onAuthStateChange(() => {
-      void load();
     });
 
-    void load();
-
     return () => {
-      live = false;
       sub.data.subscription.unsubscribe();
     };
-  }, [supabase, restaurantId]);
+  }, [supabase]);
 
   // query dla linków
   const withQs = useMemo(

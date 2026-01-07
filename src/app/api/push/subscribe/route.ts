@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient } from "@supabase/ssr";
 
 import type { Database } from "@/types/supabase";
 
@@ -21,18 +21,38 @@ function normSlug(v: unknown): string | null {
 
 export async function POST(req: Request) {
   try {
+    // Next.js 15: cookies() musi być await'owane
+    const cookieStore = await cookies();
+    
     // 1) Auth (żeby endpoint nie był publiczny)
-    const supabase = createRouteHandlerClient<Database>({ cookies });
+    const supabase = createServerClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) => {
+                cookieStore.set(name, value, options);
+              });
+            } catch {}
+          },
+        },
+      }
+    );
 
-    let session: any = null;
+    let user: any = null;
     try {
-      const { data } = await supabase.auth.getSession();
-      session = data?.session ?? null;
+      const { data } = await supabase.auth.getUser();
+      user = data?.user ?? null;
     } catch {
-      session = null;
+      user = null;
     }
 
-    const userId = session?.user?.id as string | undefined;
+    const userId = user?.id as string | undefined;
     if (!userId) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
@@ -50,10 +70,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "INVALID_SUBSCRIPTION" }, { status: 400 });
     }
 
-    // 3) Resolve restauracji: preferuj slug z body > cookie
-    const ck = await cookies();
-    const cookieRid = ck.get("restaurant_id")?.value ?? null;
-    const cookieSlug = normSlug(ck.get("restaurant_slug")?.value);
+    // 3) Resolve restauracji: preferuj slug z body > cookie (cookieStore już await'owane na górze)
+    const cookieRid = cookieStore.get("restaurant_id")?.value ?? null;
+    const cookieSlug = normSlug(cookieStore.get("restaurant_slug")?.value);
 
     let restaurantId: string | null = cookieRid;
     let restaurantSlug: string | null = null;

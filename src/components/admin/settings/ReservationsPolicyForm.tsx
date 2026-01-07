@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import type { Database } from "@/types/supabase";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 
 interface Policy {
   max_party_size: number;
@@ -12,7 +12,7 @@ interface Policy {
   cancellation_deadline_hours: number;
 }
 
-type Props = { supabase: ReturnType<typeof createClientComponentClient<Database>> };
+type Props = { supabase: ReturnType<typeof createBrowserClient<Database>> };
 
 export default function ReservationsPolicyForm({ supabase }: Props) {
   const [p, setP] = useState<Policy>({

@@ -4,8 +4,9 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient } from "@supabase/ssr";
 import { z } from "zod";
+import type { Database } from "@/types/supabase";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -28,7 +29,7 @@ const zoneSchema = z.object({
 type ZoneInput = z.infer<typeof zoneSchema>;
 
 async function requireAdminAndRestaurant() {
-  // NOWE: cookies musi być await
+  // Next.js 15: cookies musi być await
   const cookieStore = await cookies();
   const restaurantId = cookieStore.get("restaurant_id")?.value;
 
@@ -41,13 +42,25 @@ async function requireAdminAndRestaurant() {
     };
   }
 
-  const routeClient = createRouteHandlerClient({ cookies });
-  const {
-    data: { session },
-    error: sessionError,
-  } = await routeClient.auth.getSession();
+  const routeClient = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return cookieStore.getAll(); },
+        setAll(cookiesToSet) {
+          try { cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)); } catch {}
+        },
+      },
+    }
+  );
 
-  if (sessionError || !session) {
+  const {
+    data: { user },
+    error: sessionError,
+  } = await routeClient.auth.getUser();
+
+  if (sessionError || !user) {
     return {
       error: NextResponse.json({ error: "Brak sesji." }, { status: 401 }),
     };
@@ -57,7 +70,7 @@ async function requireAdminAndRestaurant() {
   const { data: membership, error: membershipError } = await supabaseAdmin
     .from("restaurant_admins")
     .select("restaurant_id, role")
-    .eq("user_id", session.user.id)
+    .eq("user_id", user.id)
     .eq("restaurant_id", restaurantId)
     .in("role", ["owner", "admin", "manager"])
     .maybeSingle();

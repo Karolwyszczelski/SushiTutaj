@@ -7,7 +7,7 @@ import React, {
   FormEvent,
   useCallback,
 } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 import { RotateCcw, Save, Upload, X, Image as ImageIcon } from "lucide-react";
 
 type Row = {
@@ -61,7 +61,7 @@ function withCacheBuster(url: string, buster: number) {
 }
 
 export default function SushiOfMonthForm() {
-  const supabase = useMemo(() => createClientComponentClient(), []);
+  const supabase = useMemo(() => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!), []);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 import { Loader2, Save, Info, Package, Clock, MapPin } from "lucide-react";
 
 type CheckoutConfig = {
@@ -33,7 +33,7 @@ function clampFloat(n: number, min: number, max: number) {
 }
 
 export default function CheckoutConfigForm({ restaurantId }: { restaurantId: string | null }) {
-  const supabase = useMemo(() => createClientComponentClient(), []);
+  const supabase = useMemo(() => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!), []);
 
   const [config, setConfig] = useState<CheckoutConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(true);

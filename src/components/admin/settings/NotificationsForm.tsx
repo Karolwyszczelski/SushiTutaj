@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import type { Database } from "@/types/supabase";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 
 interface Notifications {
   sms_enabled: boolean;
@@ -15,7 +15,7 @@ interface Notifications {
   tpl_reservation_cancel:   string;
 }
 
-type Props = { supabase: ReturnType<typeof createClientComponentClient<Database>> };
+type Props = { supabase: ReturnType<typeof createBrowserClient<Database>> };
 
 export default function NotificationsForm({ supabase }: Props) {
   const [n, setN] = useState<Notifications>({

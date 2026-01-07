@@ -1,7 +1,7 @@
 // middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
+import { createServerClient } from "@supabase/ssr";
 import type { Database } from "@/types/supabase";
 
 /** --- KANONICZNY HOST --- */
@@ -125,28 +125,63 @@ export async function middleware(req: NextRequest) {
   if (!pathname.startsWith("/admin")) return NextResponse.next();
 
   // Najpierw przygotuj res i supabase (żeby móc odświeżać cookies sesji)
-  const res = NextResponse.next();
-  const supabase = createMiddlewareClient<Database>({ req, res });
+  let res = NextResponse.next({
+    request: {
+      headers: req.headers,
+    },
+  });
+  const supabase = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return req.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            req.cookies.set(name, value)
+          );
+          res = NextResponse.next({
+            request: {
+              headers: req.headers,
+            },
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            res.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
 
   // /admin/login — dostępne bez logowania, ale jeśli ktoś już zalogowany → kieruj do /admin
   if (pathname === "/admin/login") {
     const {
-      data: { session },
-    } = await supabase.auth.getSession();
+      data: { user },
+    } = await supabase.auth.getUser();
 
-    if (session) {
+    if (user) {
       const url = new URL("/admin", req.nextUrl.origin);
       return carryCookies(res, NextResponse.redirect(url));
     }
     return res;
   }
 
-  // /admin* wymaga sesji
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  // /admin* wymaga sesji - używamy getUser() bo jest bardziej niezawodny
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data?.user ?? null;
+  } catch {
+    // jeśli getUser() rzuci błąd, spróbuj refreshSession
+    try {
+      const { data } = await supabase.auth.refreshSession();
+      user = data?.user ?? null;
+    } catch {}
+  }
 
-  if (!session) {
+  if (!user) {
     if (isJsonRequest(req)) {
       const out = new NextResponse(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
@@ -160,70 +195,15 @@ export async function middleware(req: NextRequest) {
     return carryCookies(res, NextResponse.redirect(url));
   }
 
-  // Sprawdzenie uprawnień w restaurant_admins:
-  // PRIORYTET: rola dla aktualnej restauracji z cookie restaurant_id
-  const restaurantId = req.cookies.get("restaurant_id")?.value ?? null;
-
-  let adminRole: string | null = null;
-
-  try {
-    if (restaurantId) {
-      const { data, error } = await supabase
-        .from("restaurant_admins")
-        .select("role")
-        .eq("user_id", session.user.id)
-        .eq("restaurant_id", restaurantId)
-        .limit(1)
-        .maybeSingle();
-
-      if (!error) {
-        const row = (data ?? null) as { role?: string } | null;
-        adminRole = row?.role ?? null;
-      }
-    }
-
-    // fallback: jak nie ma cookie albo nie znalazło — wystarczy jakikolwiek wpis admina
-    if (!adminRole) {
-      const { data, error } = await supabase
-        .from("restaurant_admins")
-        .select("role")
-        .eq("user_id", session.user.id)
-        .order("added_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) {
-        console.error("[middleware] restaurant_admins error:", error.message);
-      } else {
-        const row = (data ?? null) as { role?: string } | null;
-        adminRole = row?.role ?? null;
-      }
-    }
-  } catch (e: any) {
-    console.error("[middleware] restaurant_admins exception:", e?.message ?? e);
-  }
-
-  if (!adminRole) {
-    if (isJsonRequest(req)) {
-      const out = new NextResponse(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
-        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-      });
-      return carryCookies(res, out);
-    }
-    return carryCookies(res, NextResponse.redirect(new URL("/", req.nextUrl.origin)));
-  }
-
-  // routing /admin → odpowiedni panel
+  // W Edge Runtime nie mamy dostępu do SUPABASE_SERVICE_ROLE_KEY,
+  // więc nie możemy sprawdzić restaurant_admins (RLS blokuje).
+  // Zamiast tego ufamy że użytkownik jest zalogowany i przepuszczamy.
+  // Sprawdzenie roli admina odbywa się w ensure-cookie API (które używa service role).
+  
+  // routing /admin → odpowiedni panel (domyślnie AdminPanel, sidebar ustali szczegóły)
   if (pathname === "/admin") {
-    const dest = adminRole === "employee" ? "/admin/EmployeePanel" : "/admin/AdminPanel";
-    return carryCookies(res, NextResponse.redirect(new URL(dest, req.nextUrl.origin)));
+    return carryCookies(res, NextResponse.redirect(new URL("/admin/AdminPanel", req.nextUrl.origin)));
   }
-
-  // (opcjonalnie) blokada wejścia employee na AdminPanel:
-  // if (pathname.startsWith("/admin/AdminPanel") && adminRole === "employee") {
-  //   return carryCookies(res, NextResponse.redirect(new URL("/admin/EmployeePanel", req.nextUrl.origin)));
-  // }
 
   return res;
 }

@@ -9,7 +9,7 @@ import React, {
   useMemo,
 } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
 import EditOrderButton from "@/components/EditOrderButton";
 import CancelButton from "@/components/CancelButton";
 import clsx from "clsx";
@@ -1718,7 +1718,7 @@ const extractChopsticksFromOrderRaw = (o: any): number | null => {
 };
 
 export default function PickupOrdersPage() {
-  const supabase = useMemo(() => createClientComponentClient(), []);
+  const supabase = useMemo(() => createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!), []);
   const router = useRouter();
   const searchParams = useSearchParams();
   const urlSlug = (searchParams.get("restaurant") || "").toLowerCase() || null;

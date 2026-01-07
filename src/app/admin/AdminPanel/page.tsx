@@ -5,7 +5,8 @@ import React, { Suspense, useEffect, useMemo, useState } from "react";
 import NextDynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createBrowserClient } from "@supabase/ssr";
+import type { Database } from "@/types/supabase";
 import {
   Settings,
   TrendingUp,
@@ -153,7 +154,10 @@ export const dynamic = "force-dynamic";
 
 function AdminPanel() {
   const router = useRouter();
-  const supabase = createClientComponentClient();
+  const supabase = createBrowserClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   const [city, setCity] = useState<CityPick>("ciechanow");
   const [days, setDays] = useState<7 | 30 | 90>(30);
