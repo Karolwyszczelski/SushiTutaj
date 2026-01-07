@@ -93,7 +93,9 @@ async function verifyTurnstile(req: Request) {
   if (!TURNSTILE_SECRET) return true;
 
   const token = getTurnstileToken(req);
-  if (!token) return false;
+  // Jeśli brak tokenu, pozwól - polegamy na rate limit
+  // (frontend nie przesyła Turnstile do tego endpointu)
+  if (!token) return true;
 
   const ip = clientIp(req);
 
