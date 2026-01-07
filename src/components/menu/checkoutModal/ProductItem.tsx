@@ -244,12 +244,12 @@ const isSetMonth =
   const lineTotal = (priceNum + addonsCost) * (prod.quantity || 1);
 
   // ===== helpery do zliczania addonów (pozwala mieć N× ten sam addon) =====
-const countAddon = (label: string): number => {
+const countAddon = useCallback((label: string): number => {
   const arr: string[] = Array.isArray(prod.addons)
     ? ((prod.addons as any[]).filter((x) => typeof x === "string") as string[])
     : [];
   return arr.reduce((acc, a) => (a === label ? acc + 1 : acc), 0);
-};
+}, [prod.addons]);
 
 const syncAddonCount = useCallback((label: string, desiredCount: number) => {
   const desired = Math.max(0, Math.floor(Number(desiredCount || 0)));
@@ -267,7 +267,7 @@ const syncAddonCount = useCallback((label: string, desiredCount: number) => {
       removeAddon(prod.name, label, { removeOne: true });
     }
   }
-}, [prod.name]);
+}, [prod.name, addAddon, removeAddon, countAddon]);
 
 
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import {
   Pencil,
@@ -821,8 +821,11 @@ export default function AdminMenuPage() {
   }, [products, filterCat, sortKey, search]);
 
   const onSearchChange = useCallback(
-    debounce((v: string) => setSearch(v), 300),
-    [] // eslint-disable-line react-hooks/exhaustive-deps
+    (v: string) => {
+      const debouncedSetSearch = debounce((val: string) => setSearch(val), 300);
+      debouncedSetSearch(v);
+    },
+    []
   );
 
   /* Pomocniczy komponent do zakładek */

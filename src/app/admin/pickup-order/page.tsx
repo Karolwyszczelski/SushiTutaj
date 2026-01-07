@@ -1547,7 +1547,7 @@ const TimeQuickSet: React.FC<{
     dirtyRef.current = false;
     setVal(initial || "");
     setLocalErr(null);
-  }, [order.id, mode]); // order.id jest kluczem stabilnym
+  }, [order.id, mode, initial]); // order.id jest kluczem stabilnym
 
   // jeśli dane się zmieniły (np. realtime) – aktualizuj tylko, gdy user nie zaczął edycji
   useEffect(() => {
@@ -1982,7 +1982,7 @@ const slugToSend = desiredSlug;
     setPushStatus("error");
     setPushError("Nie udało się włączyć powiadomień.");
   }
-}, [supabase, urlSlug, restaurantSlug]);
+}, [supabase, urlSlug, restaurantSlug, ensureRestaurantContext]);
 
   const [page, setPage] = useState(1);
   const perPage = 10;
@@ -2143,7 +2143,7 @@ const slugToSend = desiredSlug;
   return () => {
     cancelled = true;
   };
-}, [booted, restaurantSlug, urlSlug, supabase]);
+}, [booted, restaurantSlug, urlSlug, supabase, ensureRestaurantContext]);
 
  /* AUDIO – dźwięk nowego zamówienia */
 const newOrderAudio = useRef<HTMLAudioElement | null>(null);
@@ -2503,7 +2503,7 @@ if (ev === "UPDATE" && !isUnaccepted(oldStatus) && isUnaccepted(newStatus)) ding
     return () => {
       void supabase.removeChannel(ch);
     };
-  }, [supabase, restaurantId, booted, authChecked]);
+  }, [supabase, restaurantId, booted, authChecked, dingOnce]);
 
    /* polling płatności */
   useEffect(() => {
@@ -2984,7 +2984,7 @@ const isNonEmptyString = (v: unknown): v is string =>
     ((p as any).setSwaps as Array<{ qty?: number; from?: string; to?: string; label: string }> | undefined) || [];
 
   // dodatki / sosy bez swapów (swapy pokazujemy osobno)
-  const addonsOnly = p.addons || [];
+  const addonsOnly = useMemo(() => p.addons || [], [p.addons]);
 
   const displayAddons = useMemo(
   () =>

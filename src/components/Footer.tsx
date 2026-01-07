@@ -36,7 +36,6 @@ export default function Footer() {
   const [r, setR] = useState<R | null>(null);
 
   const hideFooter = pathname?.startsWith("/admin");
-  if (hideFooter) return null;
 
   useEffect(() => {
     let ignore = false;
@@ -88,6 +87,8 @@ export default function Footer() {
     } catch {}
     if (typeof window !== "undefined") window.location.reload();
   };
+
+  if (hideFooter) return null;
 
   return (
     <footer className="text-white py-12">
