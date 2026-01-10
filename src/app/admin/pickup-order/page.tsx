@@ -2558,6 +2558,11 @@ if (ev === "UPDATE" && !isUnaccepted(oldStatus) && isUnaccepted(newStatus)) ding
             : o
         )
       );
+    } catch (e: any) {
+      // Ignoruj błędy sieciowe (np. Failed to fetch)
+      if (e?.name !== "AbortError") {
+        console.warn("[refreshPaymentStatus] network error", e?.message);
+      }
     } finally {
       setEditingOrderId(null);
     }
@@ -2586,6 +2591,11 @@ if (ev === "UPDATE" && !isUnaccepted(oldStatus) && isUnaccepted(newStatus)) ding
 
     updateLocal(id, { status: "completed" });
     fetchOrders({ silent: true }); // żeby przerzuciło do historii nawet jeśli realtime/polling się rozminie
+  } catch (e: any) {
+    if (e?.name !== "AbortError") {
+      setErrorMsg("Błąd sieci. Spróbuj ponownie.");
+      console.warn("[completeOrder] network error", e?.message);
+    }
   } finally {
     setEditingOrderId(null);
   }
@@ -2658,6 +2668,11 @@ scheduled_delivery_at:
   order.scheduled_delivery_at ??
   null,
     });
+  } catch (e: any) {
+    if (e?.name !== "AbortError") {
+      setErrorMsg("Błąd sieci. Spróbuj ponownie.");
+      console.warn("[acceptAndSetTime] network error", e?.message);
+    }
   } finally {
     setEditingOrderId(null);
   }
@@ -2707,6 +2722,11 @@ const acceptAndSetAbsoluteTime = async (order: Order, hhmm: string) => {
         order.scheduled_delivery_at ??
         null,
     });
+  } catch (e: any) {
+    if (e?.name !== "AbortError") {
+      setErrorMsg("Błąd sieci. Spróbuj ponownie.");
+      console.warn("[acceptAndSetAbsoluteTime] network error", e?.message);
+    }
   } finally {
     setEditingOrderId(null);
   }
@@ -2738,6 +2758,10 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
 
     updateLocal(order.id, { deliveryTime: newDeliveryTime });
     fetchOrders({ silent: true });
+  } catch (e: any) {
+    if (e?.name !== "AbortError") {
+      console.warn("[setAbsoluteTime] network error", e?.message);
+    }
   } finally {
     setEditingOrderId(null);
   }
@@ -2760,21 +2784,30 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
       if (!res.ok) return;
       updateLocal(order.id, { deliveryTime: dt });
       fetchOrders({ silent: true });
+    } catch (e: any) {
+      if (e?.name !== "AbortError") {
+        console.warn("[extendTime] network error", e?.message);
+      }
     } finally {
       setEditingOrderId(null);
     }
   };
 
   const restoreOrder = async (id: string) => {
-    const res = await fetch(`/api/orders/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "new" }),
-    });
-    if (res.ok) {
-      updateLocal(id, { status: "new" });
-      fetchOrders({ silent: true });
-
+    try {
+      const res = await fetch(`/api/orders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "new" }),
+      });
+      if (res.ok) {
+        updateLocal(id, { status: "new" });
+        fetchOrders({ silent: true });
+      }
+    } catch (e: any) {
+      if (e?.name !== "AbortError") {
+        console.warn("[restoreOrder] network error", e?.message);
+      }
     }
   };
 
@@ -2891,6 +2924,10 @@ const calcEarnedStickers = (o: Order) => {
         payment_method: method,
         payment_status: patch.payment_status ?? o.payment_status,
       });
+    } catch (e: any) {
+      if (e?.name !== "AbortError") {
+        console.warn("[setPaymentMethod] network error", e?.message);
+      }
     } finally {
       setEditingOrderId(null);
     }

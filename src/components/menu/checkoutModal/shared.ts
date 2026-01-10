@@ -1341,16 +1341,19 @@ function buildSetSwapsPayload(
   rows.forEach((row) => {
     const baseLabel = `${row.cat} ${row.from}`.replace(/\s+/g, " ").trim();
 
+    // Używamy pełnego klucza (z kategorią) do wyszukiwania swap
+    // aby rozróżnić rolki z tym samym składnikiem w różnych kategoriach
+    const rowKeyBase = normalizeSetRowKeyForPayload(row);
+    
     const foundSwap = swapsArr.find(
       (s: any) =>
         s &&
         typeof s.from === "string" &&
-        s.from.toLowerCase() === row.from.toLowerCase()
+        s.from.toLowerCase() === rowKeyBase.toLowerCase()
     );
 
     const toLabel = (foundSwap?.to as string) || row.from;
 
-    const rowKeyBase = normalizeSetRowKeyForPayload(row);
     const prefix = `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — `;
     const rowExtras = addonsArr
       .filter(

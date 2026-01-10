@@ -17,10 +17,23 @@ Sentry.init({
   // https://docs.sentry.io/platforms/javascript/guides/nextjs/configuration/options/#sendDefaultPii
   sendDefaultPii: true,
   
-  // Ignoruj błędy, które nie są istotne
+  // Ignoruj błędy sieciowe i nieistotne błędy
   ignoreErrors: [
+    // Błędy sieciowe
+    "TypeError: Failed to fetch",
+    "TypeError: NetworkError when attempting to fetch resource",
+    "TypeError: Load failed",
+    "Failed to fetch",
+    "Load failed",
+    "AbortError",
+    // Typowe błędy
     "ResizeObserver loop limit exceeded",
+    "ResizeObserver loop completed with undelivered notifications",
     "Non-Error promise rejection captured",
+    // Błędy auth/sesji
+    "Auth session missing",
+    "Invalid Refresh Token",
+    "Refresh Token Not Found",
   ],
 
   // Tylko w produkcji wysyłaj

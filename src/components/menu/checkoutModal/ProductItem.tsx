@@ -218,16 +218,21 @@ const isSetMonth =
   const isRawRow = (row: { qty: number; cat: string; from: string }) =>
     /surowy/i.test(row.from);
 
-  const getSetSwapCurrent = (rowFrom: string): string => {
-    if (isSetMonth) return rowFrom;
+  /**
+   * Zwraca aktualnie wybraną wartość zamiany dla danej rolki w zestawie.
+   * WAŻNE: Używamy pełnego klucza (cat + from), żeby rozróżnić rolki
+   * z tym samym składnikiem w różnych kategoriach (np. Hosomaki tuńczyk vs Futomaki tuńczyk).
+   */
+  const getSetSwapCurrent = (rowKey: string, originalFrom: string): string => {
+    if (isSetMonth) return originalFrom;
     const swaps = Array.isArray(prod.swaps) ? prod.swaps : [];
     const found = swaps.find(
       (s: any) =>
         s &&
         typeof s.from === "string" &&
-        s.from.toLowerCase() === rowFrom.toLowerCase()
+        s.from.toLowerCase() === rowKey.toLowerCase()
     );
-    return (found?.to as string) || rowFrom;
+    return (found?.to as string) || originalFrom;
   };
 
   const priceNum =
@@ -344,44 +349,67 @@ const syncAddonCount = useCallback((label: string, desiredCount: number) => {
     return false;
   };
 
-  const doSetSwap = (rowFrom: string, to: string) => {
+  /**
+   * Wykonuje zamianę składnika w zestawie.
+   * WAŻNE: rowKey to pełny klucz (cat + from), np. "Hosomaki tuńczyk surowy",
+   * originalFrom to oryginalna nazwa składnika (np. "tuńczyk surowy").
+   */
+  const doSetSwap = (rowKey: string, originalFrom: string, to: string) => {
   if (isSetMonth) return; // Zestaw miesiąca: brak zamian
 
-  const current = getSetSwapCurrent(rowFrom);
+  const current = getSetSwapCurrent(rowKey, originalFrom);
   if (!to || to === current) return;
 
   const swaps = Array.isArray(prod.swaps) ? prod.swaps : [];
 
-  const rowFromLc = rowFrom.trim().toLowerCase();
+  const rowKeyLc = rowKey.trim().toLowerCase();
   const toLc = to.trim().toLowerCase();
+  const originalFromLc = originalFrom.trim().toLowerCase();
 
-  // 1) wykonaj zamianę w stanie koszyka
-  swapIngredient(prod.name, rowFrom, to);
+  // 1) wykonaj zamianę w stanie koszyka (używamy pełnego klucza)
+  swapIngredient(prod.name, rowKey, to);
 
   // 2) zasymuluj nextSwaps po tej zmianie
   const nextSwaps = [...swaps];
   const existingIdx = nextSwaps.findIndex(
-    (s: any) => s && s.from && String(s.from).trim().toLowerCase() === rowFromLc
+    (s: any) => s && s.from && String(s.from).trim().toLowerCase() === rowKeyLc
   );
 
   if (existingIdx >= 0) {
-    if (toLc === rowFromLc) {
+    // Jeśli zamieniono z powrotem na oryginał, usuń swap
+    if (toLc === originalFromLc) {
       nextSwaps.splice(existingIdx, 1);
     } else {
       nextSwaps[existingIdx] = { ...nextSwaps[existingIdx], to };
     }
   } else {
-    if (toLc !== rowFromLc) nextSwaps.push({ from: rowFrom, to });
+    // Nie dodawaj swap jeśli wybrano to samo co oryginał
+    if (toLc !== originalFromLc) nextSwaps.push({ from: rowKey, to });
   }
 
   // 3) policz ile jest aktywnych (płatnych) zamian
-  const activeSwapCount = nextSwaps.filter(
-    (s: any) =>
-      s &&
-      typeof s.from === "string" &&
-      typeof s.to === "string" &&
-      s.from.trim().toLowerCase() !== s.to.trim().toLowerCase()
-  ).length;
+  // Zamiana jest płatna jeśli wartość "to" różni się od oryginalnego składnika
+  // Musimy wyciągnąć oryginalny składnik z rowKey (usuwając prefix kategorii)
+  const activeSwapCount = nextSwaps.filter((s: any) => {
+    if (!s || typeof s.from !== "string" || typeof s.to !== "string") return false;
+    
+    const fromKey = s.from.trim().toLowerCase();
+    const toVal = s.to.trim().toLowerCase();
+    
+    // Wyciągnij oryginalny składnik z klucza (usuń prefix kategorii)
+    // rowKey ma format "Kategoria składnik", np. "Hosomaki tuńczyk surowy"
+    const catPrefixes = ["futomaki", "hosomaki", "california", "nigiri"];
+    let originalIngredient = fromKey;
+    for (const prefix of catPrefixes) {
+      if (fromKey.startsWith(prefix + " ")) {
+        originalIngredient = fromKey.slice(prefix.length + 1);
+        break;
+      }
+    }
+    
+    // Zamiana jest płatna jeśli "to" różni się od oryginalnego składnika
+    return originalIngredient !== toVal;
+  }).length;
 
   // 4) ustaw liczbę addonów "Zamiana w zestawie" = liczba aktywnych zamian
   syncAddonCount(SWAP_FEE_NAME, activeSwapCount);
@@ -697,7 +725,11 @@ const showSauces = !isDrink && !isDessert;
   const catKey = normalize(row.cat);
   const isCaliforniaRow = /california/i.test(row.cat || "");
 
-    const current = getSetSwapCurrent(row.from);
+  // znormalizowany klucz tej rolki w zestawie - MUSI być przed getSetSwapCurrent!
+  const rowKeyBase = normalizeSetRowKey(row);
+
+  // Używamy pełnego klucza (z kategorią) aby rozróżnić rolki z tym samym składnikiem
+  const current = getSetSwapCurrent(rowKeyBase, row.from);
 
   // produkt WYBRANEJ rolki (po zamianie) – nie oryginał ani cały zestaw
   const currentPrefixed = withCategoryPrefix(current, row.cat);
@@ -748,10 +780,6 @@ const showSauces = !isDrink && !isDessert;
   const rawOptions = [current, row.from, ...pool];
   const selectOptions = Array.from(new Set(rawOptions));
 
-  // znormalizowany klucz tej rolki w zestawie
-  const rowKeyBase = normalizeSetRowKey(row);
-
-  // pieczenie konkretnej rolki w zestawie
   // pieczenie konkretnej rolki w zestawie
   const rollAddonLabel = RAW_SET_BAKE_ROLL_PREFIX + rowKeyBase;
 
@@ -890,7 +918,7 @@ if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
           removeAddon(prod.name, rollAddonLabel);
         }
 
-                // Jeśli do tej rolki były dodane dodatki (Tempura / Płatek / itd.),
+        // Jeśli do tej rolki były dodane dodatki (Tempura / Płatek / itd.),
         // a po zamianie nowa rolka JUŻ to ma lub nie powinna tego mieć -> zdejmij addon, żeby nie naliczać podwójnie
         for (const ex of EXTRAS) {
           const k = extraKey(ex);
@@ -903,7 +931,7 @@ if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
         }
 
 
-        doSetSwap(row.from, next);
+        doSetSwap(rowKeyBase, row.from, next);
       }}
       aria-label={`Zamiana: ${row.qty}x ${row.cat} ${row.from}`}
     >

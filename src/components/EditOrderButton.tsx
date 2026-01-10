@@ -257,7 +257,7 @@ const ProductItemEditor: React.FC<{
   restaurantSlug: string;
   helpers: {
     addAddon: (index: number, addon: string) => void;
-    removeAddon: (index: number, addon: string) => void;
+    removeAddon: (index: number, addon: string, opts?: { removeOne?: boolean }) => void;
     swapIngredient: (index: number, from: string, to: string) => void;
     removeItem: (index: number) => void;
     removeWholeItem: (index: number) => void;
@@ -365,15 +365,20 @@ const ProductItemEditor: React.FC<{
   const isRawRow = (row: { qty: number; cat: string; from: string }) =>
     /surowy/i.test(row.from);
 
-  const getSetSwapCurrent = (rowFrom: string): string => {
+  /**
+   * Zwraca aktualnie wybraną wartość zamiany dla danej rolki w zestawie.
+   * WAŻNE: Używamy pełnego klucza (cat + from), żeby rozróżnić rolki
+   * z tym samym składnikiem w różnych kategoriach.
+   */
+  const getSetSwapCurrent = (rowKey: string, originalFrom: string): string => {
     const swaps = Array.isArray(item.swaps) ? item.swaps : [];
     const found = swaps.find(
       (s) =>
         s &&
         typeof s.from === "string" &&
-        s.from.toLowerCase() === rowFrom.toLowerCase()
+        s.from.toLowerCase() === rowKey.toLowerCase()
     );
-    return (found?.to as string) || rowFrom;
+    return (found?.to as string) || originalFrom;
   };
 
   const priceNum =
@@ -449,15 +454,90 @@ const ProductItemEditor: React.FC<{
     return false;
   };
 
-  const doSetSwap = (rowFrom: string, to: string) => {
-    const current = getSetSwapCurrent(rowFrom);
+  /** Zlicza ile razy dany addon występuje w item.addons */
+  const countAddon = (label: string): number => {
+    const arr = Array.isArray(item.addons) ? item.addons : [];
+    return arr.reduce((acc, a) => (a === label ? acc + 1 : acc), 0);
+  };
+
+  /** Synchronizuje liczbę addonów danego typu z pożądaną liczbą */
+  const syncAddonCount = (label: string, desiredCount: number) => {
+    const desired = Math.max(0, Math.floor(Number(desiredCount || 0)));
+    const current = countAddon(label);
+
+    if (current < desired) {
+      for (let i = 0; i < desired - current; i++) {
+        addAddon(index, label);
+      }
+      return;
+    }
+
+    if (current > desired) {
+      for (let i = 0; i < current - desired; i++) {
+        removeAddon(index, label, { removeOne: true });
+      }
+    }
+  };
+
+  /**
+   * Wykonuje zamianę składnika w zestawie.
+   * WAŻNE: rowKey to pełny klucz (cat + from), np. "Hosomaki tuńczyk surowy",
+   * originalFrom to oryginalna nazwa składnika (np. "tuńczyk surowy").
+   */
+  const doSetSwap = (rowKey: string, originalFrom: string, to: string) => {
+    const current = getSetSwapCurrent(rowKey, originalFrom);
     if (!to || to === current) return;
 
-    swapIngredient(index, rowFrom, to);
+    const swaps = Array.isArray(item.swaps) ? item.swaps : [];
+    const rowKeyLc = rowKey.trim().toLowerCase();
+    const toLc = to.trim().toLowerCase();
+    const originalFromLc = originalFrom.trim().toLowerCase();
 
-    if (!(item.addons ?? []).includes(SWAP_FEE_NAME)) {
-      addAddon(index, SWAP_FEE_NAME);
+    // 1) wykonaj zamianę w stanie (używamy pełnego klucza)
+    swapIngredient(index, rowKey, to);
+
+    // 2) zasymuluj nextSwaps po tej zmianie
+    const nextSwaps = [...swaps];
+    const existingIdx = nextSwaps.findIndex(
+      (s: any) => s && s.from && String(s.from).trim().toLowerCase() === rowKeyLc
+    );
+
+    if (existingIdx >= 0) {
+      // Jeśli zamieniono z powrotem na oryginał, usuń swap
+      if (toLc === originalFromLc) {
+        nextSwaps.splice(existingIdx, 1);
+      } else {
+        nextSwaps[existingIdx] = { ...nextSwaps[existingIdx], to };
+      }
+    } else {
+      // Nie dodawaj swap jeśli wybrano to samo co oryginał
+      if (toLc !== originalFromLc) nextSwaps.push({ from: rowKey, to });
     }
+
+    // 3) policz ile jest aktywnych (płatnych) zamian
+    // Zamiana jest płatna jeśli wartość "to" różni się od oryginalnego składnika
+    const catPrefixes = ["futomaki", "hosomaki", "california", "nigiri"];
+    const activeSwapCount = nextSwaps.filter((s: any) => {
+      if (!s || typeof s.from !== "string" || typeof s.to !== "string") return false;
+      
+      const fromKey = s.from.trim().toLowerCase();
+      const toVal = s.to.trim().toLowerCase();
+      
+      // Wyciągnij oryginalny składnik z klucza (usuń prefix kategorii)
+      let originalIngredient = fromKey;
+      for (const prefix of catPrefixes) {
+        if (fromKey.startsWith(prefix + " ")) {
+          originalIngredient = fromKey.slice(prefix.length + 1);
+          break;
+        }
+      }
+      
+      // Zamiana jest płatna jeśli "to" różni się od oryginalnego składnika
+      return originalIngredient !== toVal;
+    }).length;
+
+    // 4) ustaw liczbę addonów "Zamiana w zestawie" = liczba aktywnych zamian
+    syncAddonCount(SWAP_FEE_NAME, activeSwapCount);
   };
 
   const isSweetPotatoFries = useMemo(() => {
@@ -579,9 +659,12 @@ const ProductItemEditor: React.FC<{
                 (n) =>
                   (productCategory(n) || "").toLowerCase() !== "specjały"
               );
-              const current = getSetSwapCurrent(row.from);
-
+              
+              // Pełny klucz dla tej rolki (z kategorią)
               const rowKeyBase = normalizeSetRowKey(row);
+              
+              // Używamy pełnego klucza aby rozróżnić rolki z tym samym składnikiem
+              const current = getSetSwapCurrent(rowKeyBase, row.from);
 
               const rollAddonLabel = RAW_SET_BAKE_ROLL_PREFIX + rowKeyBase;
               const rawRow = isRawRow(row);
@@ -653,7 +736,7 @@ const ProductItemEditor: React.FC<{
                     <select
                       className="border border-black/15 rounded px-2 py-1 bg-white"
                       value={current}
-                      onChange={(e) => doSetSwap(row.from, e.target.value)}
+                      onChange={(e) => doSetSwap(rowKeyBase, row.from, e.target.value)}
                     >
                       {[current, ...pool.filter((n) => n !== current)].map(
                         (n) => (
@@ -1130,13 +1213,22 @@ export default function EditOrderButton({
         )
       );
     },
-    removeAddon: (idx: number, addon: string) => {
+    removeAddon: (idx: number, addon: string, opts?: { removeOne?: boolean }) => {
       setItems((prev) =>
-        prev.map((it, i) =>
-          i === idx
-            ? { ...it, addons: (it.addons || []).filter((a) => a !== addon) }
-            : it
-        )
+        prev.map((it, i) => {
+          if (i !== idx) return it;
+          const addons = it.addons || [];
+          if (opts?.removeOne) {
+            // Usuń tylko pierwsze wystąpienie
+            const idx = addons.indexOf(addon);
+            if (idx === -1) return it;
+            const newAddons = [...addons];
+            newAddons.splice(idx, 1);
+            return { ...it, addons: newAddons };
+          }
+          // Usuń wszystkie wystąpienia
+          return { ...it, addons: addons.filter((a) => a !== addon) };
+        })
       );
     },
     swapIngredient: (idx: number, from: string, to: string) => {
