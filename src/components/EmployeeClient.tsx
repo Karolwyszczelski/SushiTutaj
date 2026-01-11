@@ -44,6 +44,61 @@ function urlBase64ToUint8Array(base64String: string) {
 const DBMOD_PREFIX = "DBMOD|"; // DBMOD|<groupId>|<modifierId>|<priceCents>|<name>
 const DBVAR_PREFIX = "DBVAR|"; // DBVAR|<variantId>|<priceCents>|<name>
 
+/* ========= Retry fetch helper dla słabego internetu ========= */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+interface FetchWithRetryOptions extends RequestInit {
+  retries?: number;
+  retryDelay?: number;
+  timeout?: number;
+}
+
+async function fetchWithRetry(
+  url: string,
+  options: FetchWithRetryOptions = {}
+): Promise<Response> {
+  const { retries = 3, retryDelay = 1500, timeout = 15000, ...fetchOpts } = options;
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const existingSignal = fetchOpts.signal;
+      
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      
+      if (existingSignal) {
+        existingSignal.addEventListener("abort", () => controller.abort());
+      }
+
+      const res = await fetch(url, {
+        ...fetchOpts,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      return res;
+    } catch (e: any) {
+      lastError = e;
+
+      if (e?.name === "AbortError" && fetchOpts.signal?.aborted) {
+        throw e;
+      }
+
+      if (attempt >= retries) {
+        throw e;
+      }
+
+      const delay = retryDelay * Math.pow(1.5, attempt);
+      console.warn(`[fetchWithRetry] Próba ${attempt + 1}/${retries + 1} nieudana, ponawiam za ${Math.round(delay)}ms...`, e?.message);
+      await sleep(delay);
+    }
+  }
+
+  throw lastError || new Error("Fetch failed after retries");
+}
+
 function prettyAddonLabel(a: string): string {
   const s = (a || "").trim();
   if (!s) return "";
@@ -2282,22 +2337,29 @@ const fetchOrders = useCallback(
       const slug = restaurantSlug || urlSlug;
       if (slug) qs.set("restaurant", slug);
 
-      let res = await fetch(`/api/orders/current?${qs.toString()}`, {
+      // Użyj fetchWithRetry dla lepszej obsługi słabego internetu
+      let res = await fetchWithRetry(`/api/orders/current?${qs.toString()}`, {
         method: "GET",
         credentials: "include",
         cache: "no-store",
         signal: ac.signal,
+        retries: 3,
+        retryDelay: 1000,
+        timeout: 12000,
       });
 
       // Retry po 401 (po nocy token/cookie bywa nieświeże)
       if (res.status === 401) {
         await supabase.auth.refreshSession().catch(() => null);
 
-        res = await fetch(`/api/orders/current?${qs.toString()}`, {
+        res = await fetchWithRetry(`/api/orders/current?${qs.toString()}`, {
           method: "GET",
           credentials: "include",
           cache: "no-store",
           signal: ac.signal,
+          retries: 2,
+          retryDelay: 1000,
+          timeout: 12000,
         });
       }
 
@@ -2415,14 +2477,27 @@ const fetchOrders = useCallback(
       prevIdsRef.current = new Set(mapped.map((o) => o.id));
       initializedRef.current = true;
 
+      // Sukces - wyczyść błąd sieci jeśli był
+      setErrorMsg(null);
       setOrders(mapped);
     } catch (e: any) {
       if (e?.name !== "AbortError") {
-        setErrorMsg("Błąd sieci");
+        // Bardziej pomocny komunikat dla słabego internetu
+        const isTimeout = e?.message?.includes("timeout") || e?.message?.includes("abort");
+        const msg = isTimeout
+          ? "Słabe połączenie - próbuję ponownie..."
+          : "Błąd sieci - sprawdź połączenie internetowe";
+        
+        if (!opts?.silent || orders.length === 0) {
+          setErrorMsg(msg);
+        }
+        
         if (!opts?.silent) {
           setOrders([]);
           setTotal(0);
         }
+        
+        console.warn("[fetchOrders] network error:", e?.message);
       }
     } finally {
       if (!opts?.silent) setLoading(false);
@@ -2573,10 +2648,13 @@ if (ev === "UPDATE" && !isUnaccepted(oldStatus) && isUnaccepted(newStatus)) ding
     setEditingOrderId(id);
     setErrorMsg(null);
 
-    const res = await fetch(`/api/orders/${id}`, {
+    const res = await fetchWithRetry(`/api/orders/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "completed" }),
+      retries: 3,
+      retryDelay: 1500,
+      timeout: 15000,
     });
 
     const j = (await res.json().catch(() => ({}))) as any;
@@ -2588,6 +2666,11 @@ if (ev === "UPDATE" && !isUnaccepted(oldStatus) && isUnaccepted(newStatus)) ding
 
     updateLocal(id, { status: "completed" });
     fetchOrders({ silent: true }); // żeby przerzuciło do historii nawet jeśli realtime/polling się rozminie
+  } catch (e: any) {
+    if (e?.name !== "AbortError") {
+      setErrorMsg("Błąd sieci. Spróbuj ponownie.");
+      console.warn("[completeOrder] network error", e?.message);
+    }
   } finally {
     setEditingOrderId(null);
   }
@@ -2622,7 +2705,7 @@ if (ev === "UPDATE" && !isUnaccepted(oldStatus) && isUnaccepted(newStatus)) ding
     setEditingOrderId(order.id);
     setErrorMsg(null);
 
-    const res = await fetch(`/api/orders/${order.id}`, {
+    const res = await fetchWithRetry(`/api/orders/${order.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2632,6 +2715,9 @@ if (ev === "UPDATE" && !isUnaccepted(oldStatus) && isUnaccepted(newStatus)) ding
         delivery_time: eta,
         // UWAGA: client_delivery_time zostaje taki, jak przyszedł z CheckoutModal
       }),
+      retries: 3,
+      retryDelay: 1500,
+      timeout: 15000,
     });
 
     const j = (await res.json().catch(() => ({}))) as any;
@@ -2660,11 +2746,15 @@ scheduled_delivery_at:
   order.scheduled_delivery_at ??
   null,
     });
+  } catch (e: any) {
+    if (e?.name !== "AbortError") {
+      setErrorMsg("Błąd sieci. Spróbuj ponownie.");
+      console.warn("[acceptAndSetTime] network error", e?.message);
+    }
   } finally {
     setEditingOrderId(null);
   }
 };
-
 // Akceptacja z ABSOLUTNĄ godziną (HH:MM) – klient dostaje godzinę jak przy akceptacji
 const acceptAndSetAbsoluteTime = async (order: Order, hhmm: string) => {
   const iso = buildIsoForOrderHHMM(order, hhmm, TZ);

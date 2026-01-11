@@ -44,6 +44,66 @@ function urlBase64ToUint8Array(base64String: string) {
 const DBMOD_PREFIX = "DBMOD|"; // DBMOD|<groupId>|<modifierId>|<priceCents>|<name>
 const DBVAR_PREFIX = "DBVAR|"; // DBVAR|<variantId>|<priceCents>|<name>
 
+/* ========= Retry fetch helper dla słabego internetu ========= */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+interface FetchWithRetryOptions extends RequestInit {
+  retries?: number;
+  retryDelay?: number;
+  timeout?: number;
+}
+
+async function fetchWithRetry(
+  url: string,
+  options: FetchWithRetryOptions = {}
+): Promise<Response> {
+  const { retries = 3, retryDelay = 1500, timeout = 15000, ...fetchOpts } = options;
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      // Timeout dla każdej próby
+      const controller = new AbortController();
+      const existingSignal = fetchOpts.signal;
+      
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      
+      // Jeśli jest zewnętrzny signal, nasłuchuj na niego
+      if (existingSignal) {
+        existingSignal.addEventListener("abort", () => controller.abort());
+      }
+
+      const res = await fetch(url, {
+        ...fetchOpts,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      return res;
+    } catch (e: any) {
+      lastError = e;
+
+      // Nie ponawiaj przy celowym aborcie
+      if (e?.name === "AbortError" && fetchOpts.signal?.aborted) {
+        throw e;
+      }
+
+      // Ostatnia próba - rzuć błąd
+      if (attempt >= retries) {
+        throw e;
+      }
+
+      // Czekaj przed ponowną próbą (exponential backoff)
+      const delay = retryDelay * Math.pow(1.5, attempt);
+      console.warn(`[fetchWithRetry] Próba ${attempt + 1}/${retries + 1} nieudana, ponawiam za ${Math.round(delay)}ms...`, e?.message);
+      await sleep(delay);
+    }
+  }
+
+  throw lastError || new Error("Fetch failed after retries");
+}
+
 function prettyAddonLabel(a: string): string {
   const s = (a || "").trim();
   if (!s) return "";
@@ -1398,6 +1458,75 @@ const Badge: React.FC<{
   );
 };
 
+/* ========= Network Status Indicator ========= */
+const NetworkStatusIndicator: React.FC<{ isOnline: boolean; lastSuccess: number | null }> = ({
+  isOnline,
+  lastSuccess,
+}) => {
+  const [, forceUpdate] = useState(0);
+
+  // Odświeżaj "x sekund temu" co sekundę
+  useEffect(() => {
+    const id = setInterval(() => forceUpdate((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const secondsAgo = lastSuccess ? Math.floor((Date.now() - lastSuccess) / 1000) : null;
+  const isStale = secondsAgo !== null && secondsAgo > 30;
+
+  if (isOnline && !isStale) return null; // wszystko OK, nie pokazuj nic
+
+  return (
+    <div
+      className={clsx(
+        "flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium",
+        !isOnline
+          ? "bg-rose-100 text-rose-800"
+          : isStale
+          ? "bg-amber-100 text-amber-800"
+          : "bg-emerald-100 text-emerald-800"
+      )}
+    >
+      <span
+        className={clsx(
+          "h-2 w-2 rounded-full",
+          !isOnline ? "bg-rose-500 animate-pulse" : isStale ? "bg-amber-500" : "bg-emerald-500"
+        )}
+      />
+      {!isOnline ? (
+        "Brak połączenia z internetem"
+      ) : isStale ? (
+        `Ostatnie odświeżenie: ${secondsAgo}s temu`
+      ) : (
+        "Połączono"
+      )}
+    </div>
+  );
+};
+
+/* --------- Live Clock – aktualny czas --------- */
+const LiveClock: React.FC = () => {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+
+  return (
+    <div className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-white shadow">
+      <span className="text-xs font-medium text-slate-400">Aktualny czas:</span>
+      <span className="font-mono text-lg font-bold tracking-wider">
+        {hh}:{mm}:{ss}
+      </span>
+    </div>
+  );
+};
+
 const InlineCountdown: React.FC<{
   targetTime: string;
   onComplete?: () => void;
@@ -1539,21 +1668,27 @@ const TimeQuickSet: React.FC<{
   }, [mode, requested, currentLocal]);
 
   const dirtyRef = useRef(false);
+  const orderIdRef = useRef(order.id);
   const [val, setVal] = useState<string>(initial || "");
   const [localErr, setLocalErr] = useState<string | null>(null);
 
-  // reset przy zmianie zamówienia lub trybu
+  // reset TYLKO przy zmianie zamówienia (order.id) - nie przy każdym renderze
   useEffect(() => {
-    dirtyRef.current = false;
-    setVal(initial || "");
-    setLocalErr(null);
-  }, [order.id, mode, initial]); // order.id jest kluczem stabilnym
+    if (orderIdRef.current !== order.id) {
+      orderIdRef.current = order.id;
+      dirtyRef.current = false;
+      setVal(initial || "");
+      setLocalErr(null);
+    }
+  }, [order.id, initial]);
 
   // jeśli dane się zmieniły (np. realtime) – aktualizuj tylko, gdy user nie zaczął edycji
   useEffect(() => {
     if (dirtyRef.current) return;
-    setVal(initial || "");
-  }, [initial]);
+    if (orderIdRef.current === order.id) {
+      setVal(initial || "");
+    }
+  }, [initial, order.id]);
 
   const norm = useMemo(() => normalizeTimeLoose(val), [val]);
   const display = norm || val || "--:--";
@@ -1828,6 +1963,28 @@ const ensureRestaurantContext = useCallback(
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
+
+  // Status połączenia sieciowego
+  const [isOnline, setIsOnline] = useState(true);
+  const [lastSuccessfulFetch, setLastSuccessfulFetch] = useState<number | null>(null);
+
+  // Nasłuchuj na online/offline
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    setIsOnline(navigator.onLine);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
     // Powiadomienia push – status dla obsługi
   const [pushStatus, setPushStatus] = useState<PushStatus>("checking");
@@ -2280,22 +2437,29 @@ const fetchOrders = useCallback(
       const slug = restaurantSlug || urlSlug;
       if (slug) qs.set("restaurant", slug);
 
-      let res = await fetch(`/api/orders/current?${qs.toString()}`, {
+      // Użyj fetchWithRetry dla lepszej obsługi słabego internetu
+      let res = await fetchWithRetry(`/api/orders/current?${qs.toString()}`, {
         method: "GET",
         credentials: "include",
         cache: "no-store",
         signal: ac.signal,
+        retries: 3,
+        retryDelay: 1000,
+        timeout: 12000,
       });
 
       // Retry po 401 (po nocy token/cookie bywa nieświeże)
       if (res.status === 401) {
         await supabase.auth.refreshSession().catch(() => null);
 
-        res = await fetch(`/api/orders/current?${qs.toString()}`, {
+        res = await fetchWithRetry(`/api/orders/current?${qs.toString()}`, {
           method: "GET",
           credentials: "include",
           cache: "no-store",
           signal: ac.signal,
+          retries: 2,
+          retryDelay: 1000,
+          timeout: 12000,
         });
       }
 
@@ -2413,14 +2577,29 @@ const fetchOrders = useCallback(
       prevIdsRef.current = new Set(mapped.map((o) => o.id));
       initializedRef.current = true;
 
+      // Sukces - wyczyść błąd sieci jeśli był i zapisz czas
+      setErrorMsg(null);
+      setLastSuccessfulFetch(Date.now());
       setOrders(mapped);
     } catch (e: any) {
       if (e?.name !== "AbortError") {
-        setErrorMsg("Błąd sieci");
+        // Bardziej pomocny komunikat dla słabego internetu
+        const isTimeout = e?.message?.includes("timeout") || e?.message?.includes("abort");
+        const msg = isTimeout
+          ? "Słabe połączenie - próbuję ponownie..."
+          : "Błąd sieci - sprawdź połączenie internetowe";
+        
+        // Pokaż błąd tylko jeśli nie jest silent lub nie ma jeszcze danych
+        if (!opts?.silent || orders.length === 0) {
+          setErrorMsg(msg);
+        }
+        
         if (!opts?.silent) {
           setOrders([]);
           setTotal(0);
         }
+        
+        console.warn("[fetchOrders] network error:", e?.message);
       }
     } finally {
       if (!opts?.silent) setLoading(false);
@@ -2576,10 +2755,13 @@ if (ev === "UPDATE" && !isUnaccepted(oldStatus) && isUnaccepted(newStatus)) ding
     setEditingOrderId(id);
     setErrorMsg(null);
 
-    const res = await fetch(`/api/orders/${id}`, {
+    const res = await fetchWithRetry(`/api/orders/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "completed" }),
+      retries: 3,
+      retryDelay: 1500,
+      timeout: 15000,
     });
 
     const j = (await res.json().catch(() => ({}))) as any;
@@ -2630,7 +2812,7 @@ if (ev === "UPDATE" && !isUnaccepted(oldStatus) && isUnaccepted(newStatus)) ding
     setEditingOrderId(order.id);
     setErrorMsg(null);
 
-    const res = await fetch(`/api/orders/${order.id}`, {
+    const res = await fetchWithRetry(`/api/orders/${order.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2640,6 +2822,9 @@ if (ev === "UPDATE" && !isUnaccepted(oldStatus) && isUnaccepted(newStatus)) ding
         delivery_time: eta,
         // UWAGA: client_delivery_time zostaje taki, jak przyszedł z CheckoutModal
       }),
+      retries: 3,
+      retryDelay: 1500,
+      timeout: 15000,
     });
 
     const j = (await res.json().catch(() => ({}))) as any;
@@ -2690,7 +2875,7 @@ const acceptAndSetAbsoluteTime = async (order: Order, hhmm: string) => {
     setEditingOrderId(order.id);
     setErrorMsg(null);
 
-    const res = await fetch(`/api/orders/${order.id}`, {
+    const res = await fetchWithRetry(`/api/orders/${order.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2698,6 +2883,9 @@ const acceptAndSetAbsoluteTime = async (order: Order, hhmm: string) => {
         deliveryTime: iso,
         delivery_time: iso,
       }),
+      retries: 3,
+      retryDelay: 1500,
+      timeout: 15000,
     });
 
     const j = (await res.json().catch(() => ({}))) as any;
@@ -2744,14 +2932,20 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
     setEditingOrderId(order.id);
     setErrorMsg(null);
 
-    const res = await fetch(`/api/orders/${order.id}`, {
+    const res = await fetchWithRetry(`/api/orders/${order.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ deliveryTime: iso, delivery_time: iso }),
+      retries: 3,
+      retryDelay: 1500,
+      timeout: 15000,
     });
 
     const j = (await res.json().catch(() => ({}))) as any;
-    if (!res.ok) return;
+    if (!res.ok) {
+      setErrorMsg(j?.error || "Nie udało się ustawić godziny.");
+      return;
+    }
 
     const newDeliveryTime: string =
       (j.deliveryTime as string) || (j.delivery_time as string) || iso;
@@ -2760,6 +2954,7 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
     fetchOrders({ silent: true });
   } catch (e: any) {
     if (e?.name !== "AbortError") {
+      setErrorMsg("Błąd sieci. Spróbuj ponownie.");
       console.warn("[setAbsoluteTime] network error", e?.message);
     }
   } finally {
@@ -2776,10 +2971,13 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
     const dt = new Date(base.getTime() + minutes * 60000).toISOString();
     try {
       setEditingOrderId(order.id);
-      const res = await fetch(`/api/orders/${order.id}`, {
+      const res = await fetchWithRetry(`/api/orders/${order.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ deliveryTime: dt, delivery_time: dt }),
+        retries: 2,
+        retryDelay: 1000,
+        timeout: 12000,
       });
       if (!res.ok) return;
       updateLocal(order.id, { deliveryTime: dt });
@@ -2795,19 +2993,28 @@ const setAbsoluteTime = async (order: Order, hhmm: string) => {
 
   const restoreOrder = async (id: string) => {
     try {
-      const res = await fetch(`/api/orders/${id}`, {
+      setEditingOrderId(id);
+      const res = await fetchWithRetry(`/api/orders/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "new" }),
+        retries: 3,
+        retryDelay: 1500,
+        timeout: 15000,
       });
       if (res.ok) {
         updateLocal(id, { status: "new" });
         fetchOrders({ silent: true });
+      } else {
+        setErrorMsg("Nie udało się przywrócić zamówienia.");
       }
     } catch (e: any) {
       if (e?.name !== "AbortError") {
+        setErrorMsg("Błąd sieci. Spróbuj ponownie.");
         console.warn("[restoreOrder] network error", e?.message);
       }
+    } finally {
+      setEditingOrderId(null);
     }
   };
 
@@ -3819,6 +4026,13 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
 
   return (
     <div className="mx-auto max-w-6xl p-4 text-slate-900 sm:p-6">
+      {/* Wskaźnik statusu połączenia sieciowego */}
+      {(!isOnline || (lastSuccessfulFetch && Date.now() - lastSuccessfulFetch > 30000)) && (
+        <div className="mb-3">
+          <NetworkStatusIndicator isOnline={isOnline} lastSuccess={lastSuccessfulFetch} />
+        </div>
+      )}
+
       {errorMsg && (
         <div className="mb-3 rounded-2xl border border-rose-400 bg-rose-50 p-3 text-sm font-medium text-rose-900">
           {errorMsg}
@@ -3914,6 +4128,8 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
       {/* Pasek filtrów */}
       <div className="sticky top-0 z-10 -mx-4 mb-5 bg-white/90 p-4 backdrop-blur sm:mx-0 sm:rounded-2xl sm:border sm:border-slate-200">
         <div className="flex flex-wrap items-center gap-2">
+          {/* Zegar live */}
+          <LiveClock />
           <select
             className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 shadow-sm"
             value={filterStatus}

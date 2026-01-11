@@ -9,6 +9,44 @@ interface CancelButtonProps {
   onOrderUpdated: (orderId: string, updatedData?: { status: string }) => void;
 }
 
+/* ========= Retry fetch helper ========= */
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit & { retries?: number; retryDelay?: number; timeout?: number } = {}
+): Promise<Response> {
+  const { retries = 3, retryDelay = 1500, timeout = 15000, ...fetchOpts } = options;
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      const res = await fetch(url, {
+        ...fetchOpts,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      return res;
+    } catch (e: any) {
+      lastError = e;
+
+      if (attempt >= retries) {
+        throw e;
+      }
+
+      const delay = retryDelay * Math.pow(1.5, attempt);
+      await sleep(delay);
+    }
+  }
+
+  throw lastError || new Error("Fetch failed after retries");
+}
+
 export default function CancelButton({
   orderId,
   onOrderUpdated,
@@ -20,10 +58,13 @@ export default function CancelButton({
     setLoading(true);
 
     try {
-      const res = await fetch(`/api/orders/${orderId}`, {
+      const res = await fetchWithRetry(`/api/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "cancelled" }),
+        retries: 3,
+        retryDelay: 1500,
+        timeout: 15000,
       });
 
       const payload = await res.json();
@@ -36,9 +77,13 @@ export default function CancelButton({
 
       // powiadamiamy rodzica o zmianie statusu
       onOrderUpdated(orderId, { status: "cancelled" });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Błąd anulowania zamówienia:", err);
-      alert("Błąd sieci podczas anulowania zamówienia.");
+      const isTimeout = err?.message?.includes("abort");
+      alert(isTimeout 
+        ? "Słabe połączenie - spróbuj ponownie za chwilę." 
+        : "Błąd sieci podczas anulowania zamówienia. Spróbuj ponownie."
+      );
     } finally {
       setLoading(false);
     }
