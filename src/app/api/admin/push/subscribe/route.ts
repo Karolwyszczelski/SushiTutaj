@@ -83,14 +83,22 @@ export async function POST(req: Request) {
     const restaurantId = ctx.restaurantId;
     const restaurantSlug = await getRestaurantSlugById(restaurantId);
 
-    // 4) Delete existing + insert (zamiast upsert - nie wymaga UNIQUE constraint)
-    // Najpierw usuwamy istniejący rekord z tym samym endpoint
-    await supabaseAdmin
+    // 4) Delete ALL existing for this restaurant + insert fresh
+    // Usuwamy stare subskrypcje dla tej restauracji (mogą być wygasłe)
+    const { data: deleted } = await supabaseAdmin
       .from("admin_push_subscriptions")
       .delete()
-      .eq("endpoint", endpoint);
+      .eq("restaurant_id", restaurantId)
+      .select("id");
 
-    // Teraz wstawiamy nowy rekord
+    if (deleted && deleted.length > 0) {
+      pushLogger.info("Usunięto stare subskrypcje", { 
+        count: deleted.length, 
+        restaurant_slug: restaurantSlug 
+      });
+    }
+
+    // Teraz wstawiamy nowy rekord z aktualnym timestampem
     const { error: insertError } = await supabaseAdmin
       .from("admin_push_subscriptions")
       .insert({
@@ -104,6 +112,7 @@ export async function POST(req: Request) {
         },
         p256dh,
         auth,
+        created_at: new Date().toISOString(), // świeży timestamp
       } as any);
 
     if (insertError) {
@@ -111,11 +120,17 @@ export async function POST(req: Request) {
       return makeRes({ error: "DB_ERROR", details: insertError.message }, 500);
     }
 
+    pushLogger.info("Zapisano nową subskrypcję push", { 
+      restaurant_slug: restaurantSlug,
+      endpoint_suffix: endpoint.slice(-30) 
+    });
+
     return makeRes(
       {
         ok: true,
         restaurant_id: restaurantId,
         restaurant_slug: restaurantSlug,
+        renewed: true,
       },
       200
     );

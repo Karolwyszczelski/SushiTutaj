@@ -1979,13 +1979,21 @@ const enablePush = useCallback(async () => {
 
     await reg.update().catch(() => {});
 
+    // ZAWSZE odnawiamy subskrypcję - stare wygasają po ~2 dniach
     const existing = await reg.pushManager.getSubscription();
-    const sub =
-      existing ??
-      (await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-      }));
+    if (existing) {
+      try {
+        await existing.unsubscribe();
+        console.log("[push] Usunięto starą subskrypcję, tworzę nową...");
+      } catch (e) {
+        console.warn("[push] Błąd przy usuwaniu starej subskrypcji:", e);
+      }
+    }
+
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+    });
 
     const payload =
       typeof (sub as any).toJSON === "function"
@@ -2129,11 +2137,15 @@ useEffect(() => {
   };
 }, [urlSlug]);
 
-  // Push: po BOOT (gdy cookies restauracji są już ustawione) dosyłamy istniejącą subskrypcję do backendu
+  // Push: po BOOT (gdy cookies restauracji są już ustawione) AUTOMATYCZNIE ODNAWIAMY subskrypcję
 useEffect(() => {
   if (!booted) return;
   if (typeof window === "undefined") return;
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  if (!VAPID_PUBLIC_KEY) return;
+
+  // Sprawdź czy user ma uprawnienia do powiadomień
+  if (Notification.permission !== "granted") return;
 
   let cancelled = false;
 
@@ -2142,12 +2154,25 @@ useEffect(() => {
       const reg = await navigator.serviceWorker.getRegistration();
       if (!reg) return;
 
-            await reg.update().catch(() => {});
+      await reg.update().catch(() => {});
 
-      const sub = await reg.pushManager.getSubscription();
-      if (!sub) return;
+      // ZAWSZE odnawiamy subskrypcję przy BOOT - zapobiega wygasaniu
+      const existing = await reg.pushManager.getSubscription();
+      if (existing) {
+        try {
+          await existing.unsubscribe();
+          console.log("[push] Boot: usunięto starą subskrypcję, tworzę nową...");
+        } catch (e) {
+          console.warn("[push] Boot: błąd przy usuwaniu starej subskrypcji:", e);
+        }
+      }
 
-            const payload =
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+
+      const payload =
         typeof (sub as any).toJSON === "function"
           ? (sub as any).toJSON()
           : JSON.parse(JSON.stringify(sub));
