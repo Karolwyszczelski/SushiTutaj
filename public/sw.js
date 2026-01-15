@@ -49,6 +49,10 @@ self.addEventListener("push", (event) => {
         tag, // <-- najważniejsze: unikalny tag per zamówienie (eliminuje “3 zamówienia -> 1 powiadomienie”)
         requireInteraction: true,
         timestamp: Date.now(),
+        // === KLUCZOWE DLA ZABLOKOWANEGO EKRANU ===
+        renotify: true,  // Wymusza dźwięk/wibrację nawet przy tym samym tagu
+        silent: false,   // Wymusza dźwięk systemowy (nie cichy)
+        vibrate: [300, 100, 300, 100, 400], // Wzorzec wibracji w ms
       })
       .catch((err) => {
         console.error("[sw] showNotification error:", err);
