@@ -2149,6 +2149,35 @@ const slugToSend = desiredSlug;
   }
 }, [supabase, urlSlug, restaurantSlug, ensureRestaurantContext]);
 
+// Wyłączenie powiadomień push
+const disablePush = useCallback(async () => {
+  try {
+    setPushError(null);
+    setPushStatus("checking");
+
+    if (typeof window === "undefined") return;
+    if (!("serviceWorker" in navigator)) {
+      setPushStatus("idle");
+      return;
+    }
+
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg) {
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await sub.unsubscribe();
+        console.log("[push] Subskrypcja wyłączona");
+      }
+    }
+
+    setPushStatus("idle");
+  } catch (e) {
+    console.error("[push] disablePush error", e);
+    setPushStatus("error");
+    setPushError("Nie udało się wyłączyć powiadomień.");
+  }
+}, []);
+
   const [page, setPage] = useState(1);
   const perPage = 10;
   const [total, setTotal] = useState(0);
@@ -4114,6 +4143,27 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
     Włącz powiadomienia
   </button>
 )}
+
+          {pushStatus === "subscribed" && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={enablePush}
+                className="h-9 rounded-md bg-sky-600 px-3 text-xs font-semibold text-white shadow hover:bg-sky-500"
+                title="Odśwież subskrypcję (użyj jeśli powiadomienia nie działają)"
+              >
+                🔄 Odśwież
+              </button>
+              <button
+                type="button"
+                onClick={disablePush}
+                className="h-9 rounded-md bg-slate-500 px-3 text-xs font-semibold text-white shadow hover:bg-slate-400"
+                title="Wyłącz powiadomienia push"
+              >
+                Wyłącz
+              </button>
+            </div>
+          )}
 
 
           {pushStatus === "not-allowed" && (
