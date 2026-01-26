@@ -1,0 +1,185 @@
+/* Tailwind */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Kolory */
+:root{
+  --accent-red-dark:#7a0d0d;
+  --accent-red:#a61b1b;
+  --accent-red-dark-2:#b11212;
+  --bg-dim:0.05; /* przyciemnienie tła */
+}
+
+/* Bazowe */
+html,body{height:100%}
+html{
+  color-scheme:dark;
+  -webkit-text-size-adjust:100%;
+  text-rendering:optimizeLegibility;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  scroll-behavior:smooth;
+}
+
+/* Tło + warstwa przyciemniająca */
+body{
+  color:#fff;
+  background:#191818 center/cover no-repeat fixed;
+  font-family:var(--font-sans),ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans","Apple Color Emoji","Segoe UI Emoji";
+  min-height:100svh;
+  position:relative;
+}
+body::before{
+  content:"";
+  position:fixed; inset:0;
+  background:rgba(0,0,0,var(--bg-dim));
+  pointer-events:none;
+  z-index:0; /* nad tłem, pod treścią */
+}
+body > *{ position:relative; z-index:1; }
+
+@media (max-width:1024px){
+  body{ background-attachment:scroll; }
+}
+
+/* Akcentowa czcionka dla H1/H2 */
+.font-display{ font-family:var(--font-display), serif; }
+
+/* Linki i focus */
+a{ color:#fff; }
+a:hover{ opacity:.9; }
+:focus-visible{ outline:2px solid #fff; outline-offset:2px; }
+
+/* Ikony na biało */
+.icon-plus path,.icon-check path{
+  fill:#fff !important;
+  stroke:#fff !important;
+  display:inline !important;
+  opacity:1 !important;
+}
+
+/* Tap behavior */
+*{ -webkit-tap-highlight-color:transparent; }
+html,body{ touch-action:manipulation; }
+
+/* Preferencje ruchu */
+@media (prefers-reduced-motion:reduce){
+  html{ scroll-behavior:auto; }
+}
+
+/* Animacje */
+@keyframes plate-spin{
+  0%{ transform:rotate(0deg); }
+  60%{ transform:rotate(360deg); }
+  100%{ transform:rotate(360deg); }
+}
+.plate-spin{ animation:plate-spin 1.8s ease-in-out both; }
+@media (prefers-reduced-motion:reduce){
+  .plate-spin{ animation:none !important; }
+}
+
+/* Utilsy layoutu i fade krawędzi */
+@layer utilities{
+  /* spójny padding L/R dla sekcji */
+  .wrap{ @apply mx-auto w-full max-w-7xl px-5 sm:px-8 lg:px-40; }
+
+  /* miękkie wygaszenie zawartości do tła */
+  .fade-edges{
+    -webkit-mask-image: radial-gradient(120% 120% at 50% 50%, #000 65%, transparent 100%);
+            mask-image: radial-gradient(120% 120% at 50% 50%, #000 65%, transparent 100%);
+    -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+  }
+
+  /* przyciski */
+  .btn-primary{
+    @apply rounded-full px-6 py-3 text-sm font-medium
+           bg-gradient-to-r from-[var(--accent-red-dark)]
+           via-[var(--accent-red)] to-[var(--accent-red-dark-2)]
+           hover:opacity-95;
+  }
+  .btn-ghost{
+    @apply rounded-full px-6 py-3 text-sm font-medium
+           border border-white/20 hover:bg-white/10;
+  }
+}
+
+/* wygaszenie krawędzi obrazka (Safari/Chromium) */
+.edge-fade{
+  -webkit-mask-image: radial-gradient(140% 140% at 50% 50%, #000 68%, rgba(0,0,0,0) 90%);
+          mask-image: radial-gradient(140% 140% at 50% 50%, #000 68%, rgba(0,0,0,0) 90%);
+  -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
+}
+
+/* Płynny scroll wewnątrz modala na iOS/Android */
+.modal-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Google Places Autocomplete dropdown */
+.pac-container {
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
+}
+
+/* Stabilniejsze przewijanie w modalach na mobile */
+.modal-scroll {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Regulaminy/Polityki: przywróć odstępy (Tailwind preflight zeruje marginesy) */
+@layer base {
+  .prose :where(p):not(:where(.not-prose, .not-prose *)) {
+    margin: 0.95em 0;
+    line-height: 1.75;
+  }
+
+  .prose :where(ul):not(:where(.not-prose, .not-prose *)),
+  .prose :where(ol):not(:where(.not-prose, .not-prose *)) {
+    margin: 0.95em 0;
+    padding-left: 1.5em;
+  }
+
+  .prose :where(ul):not(:where(.not-prose, .not-prose *)) { list-style: disc; }
+  .prose :where(ol):not(:where(.not-prose, .not-prose *)) { list-style: decimal; }
+
+  .prose :where(li):not(:where(.not-prose, .not-prose *)) {
+    margin: 0.25em 0;
+    line-height: 1.7;
+  }
+
+  .prose :where(h1):not(:where(.not-prose, .not-prose *)) {
+    margin: 0 0 0.9em;
+  }
+
+  .prose :where(h2):not(:where(.not-prose, .not-prose *)) {
+    margin: 1.8em 0 0.7em;
+    padding-bottom: 0.35em;
+    border-bottom: 1px solid rgba(255,255,255,0.10);
+  }
+
+  .prose :where(h3):not(:where(.not-prose, .not-prose *)) {
+    margin: 1.2em 0 0.4em;
+  }
+
+  .prose :where(hr):not(:where(.not-prose, .not-prose *)) {
+    margin: 2.2em 0;
+    border-color: rgba(255,255,255,0.10);
+  }
+
+  /* Nadpisz globalne a{color:#fff;} tylko w treściach prawnych */
+  .prose :where(a):not(:where(.not-prose, .not-prose *)) {
+    color: var(--accent, #de1d13);
+    text-decoration: underline;
+    text-decoration-color: rgba(255,255,255,0.20);
+    text-underline-offset: 3px;
+  }
+  .prose :where(a:hover):not(:where(.not-prose, .not-prose *)) {
+    opacity: 1; /* nadpisuje a:hover{opacity:.9;} */
+    text-decoration-color: var(--accent, #de1d13);
+  }
+
+  .prose :where(strong):not(:where(.not-prose, .not-prose *)) {
+    color: #fff;
+  }
+}

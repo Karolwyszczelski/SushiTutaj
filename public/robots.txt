@@ -1,0 +1,10 @@
+User-agent: *
+Disallow: /wp-admin/
+Disallow: /wp-includes/
+Disallow: /wp-content/
+Disallow: /*?s=
+Disallow: /category/
+Disallow: /tag/
+Disallow: /author/
+Disallow: /archives/
+Sitemap: https://www.sushitutaj.pl/sitemap.xml
