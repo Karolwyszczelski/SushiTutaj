@@ -2667,7 +2667,7 @@ const fetchOrders = useCallback(
       }
     }
   },
-  [booted, page, perPage, restaurantSlug, urlSlug, sortOrder, dingOnce, supabase]
+  [booted, page, perPage, restaurantSlug, urlSlug, sortOrder, dingOnce, supabase, orders.length]
 );
 
 // aktualizuj ref po każdej zmianie fetchOrders
