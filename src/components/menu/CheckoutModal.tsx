@@ -1144,7 +1144,17 @@ useEffect(() => {
   const perKm =
     (zone.pricing_type ?? (zone.min_distance_km === 0 ? "flat" : "per_km")) === "per_km";
 
-  let cost = perKm ? zone.cost * distanceKm : zone.cost;
+  // POPRAWKA: dla per_km używamy cost_fixed + cost_per_km * distanceKm
+  // zamiast starego pola zone.cost
+  let cost: number;
+  if (perKm) {
+    const fixedPart = Number(zone.cost_fixed ?? 0);
+    const perKmPart = Number(zone.cost_per_km ?? zone.cost ?? 0);
+    cost = fixedPart + perKmPart * distanceKm;
+  } else {
+    // flat: używamy cost lub cost_fixed
+    cost = Number(zone.cost ?? zone.cost_fixed ?? 0);
+  }
 
   if (zone.free_over != null && subtotal >= zone.free_over) cost = 0;
 

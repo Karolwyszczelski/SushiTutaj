@@ -114,8 +114,11 @@ export async function enforceDeliveryZonePricing(
   const perKmRateRaw =
     zone.cost_per_km != null ? Number(zone.cost_per_km) : Number(zone.cost ?? 0);
 
+  // POPRAWKA: dla per_km używamy cost_fixed + cost_per_km * distance_km
   let serverCost =
-    pricingType === "per_km" ? perKmRateRaw * distance_km : flatCostRaw;
+    pricingType === "per_km" 
+      ? flatCostRaw + perKmRateRaw * distance_km 
+      : flatCostRaw;
 
   // Darmowa dostawa powyżej progu – próg liczony od produktów + opakowanie
   if (zone.free_over != null && baseWithoutDelivery >= Number(zone.free_over)) {
