@@ -56,6 +56,8 @@ type Zone = {
   max_distance_km: number;
   min_order_value: number;
   cost: number;
+  cost_fixed?: number;
+  cost_per_km?: number;
   free_over: number | null;
   eta_min_minutes: number;
   eta_max_minutes: number;
