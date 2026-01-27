@@ -208,17 +208,22 @@ function getSauceRuleForItemServer(params: {
   }
 
   // single rolls => 1 sos gratis (COUNT)
+  // UWAGA: "hosomak" bez "i" też musi pasować (nazwa może być "Hosomak Łosoś")
   const isSingleRoll =
     !isSetLike &&
     (subPlain.includes("rolk") ||
       subPlain.includes("uramaki") ||
       subPlain.includes("futomaki") ||
+      subPlain.includes("futomak") ||
       subPlain.includes("hosomaki") ||
+      subPlain.includes("hosomak") ||
       subPlain.includes("maki") ||
       namePlain.includes("roll") ||
       namePlain.includes("uramaki") ||
       namePlain.includes("futomaki") ||
+      namePlain.includes("futomak") ||
       namePlain.includes("hosomaki") ||
+      namePlain.includes("hosomak") ||
       namePlain.includes("maki"));
 
   if (isSingleRoll) {

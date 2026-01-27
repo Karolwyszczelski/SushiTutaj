@@ -628,6 +628,7 @@ function getSauceRuleForItem(params: {
   }
 
     // START: single rolls => 1 sauce free (COUNT)
+  // UWAGA: "hosomak" / "futomak" bez "i" też musi pasować (nazwa może być "Hosomak Łosoś")
   const isSingleRoll =
     !isSetLike &&
     (
@@ -635,13 +636,17 @@ function getSauceRuleForItem(params: {
       sub.includes("california") ||
       sub.includes("uramaki") ||
       sub.includes("futomaki") ||
+      sub.includes("futomak") ||
       sub.includes("hosomaki") ||
+      sub.includes("hosomak") ||
       sub.includes("maki") ||
       namePlain.includes("california") ||
       namePlain.includes("roll") ||
       namePlain.includes("uramaki") ||
       namePlain.includes("futomaki") ||
+      namePlain.includes("futomak") ||
       namePlain.includes("hosomaki") ||
+      namePlain.includes("hosomak") ||
       namePlain.includes("maki")
     );
 

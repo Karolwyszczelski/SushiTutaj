@@ -918,16 +918,13 @@ if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
           removeAddon(prod.name, rollAddonLabel);
         }
 
-        // Jeśli do tej rolki były dodane dodatki (Tempura / Płatek / itd.),
-        // a po zamianie nowa rolka JUŻ to ma lub nie powinna tego mieć -> zdejmij addon, żeby nie naliczać podwójnie
+        // POPRAWKA: Przy zamianie rolki ZAWSZE usuwamy dodatki (Tempura / Płatek / Tamago / Ryba pieczona)
+        // przypisane do tej rolki, bo klient zmienił rolkę więc jego wybór dodatku powinien być zresetowany.
+        // Wcześniej usuwaliśmy tylko gdy !allowedAfter, co powodowało "osierocone" addony.
         for (const ex of EXTRAS) {
           const k = extraKey(ex);
           const onExtra = (prod.addons ?? []).includes(k);
-          if (!onExtra) continue;
-
-          // używamy tej samej logiki co przy renderze przycisków
-          const allowedAfter = isExtraAllowedForRowText(ex, nextText);
-          if (!allowedAfter) removeAddon(prod.name, k);
+          if (onExtra) removeAddon(prod.name, k);
         }
 
 
