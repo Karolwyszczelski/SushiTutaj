@@ -158,7 +158,8 @@ export default function HistoryPage() {
             .select("*")
             .in("restaurant_id", ids)
             .gte("created_at", sinceISO)
-            .order("created_at", { ascending: false });
+            .order("created_at", { ascending: false })
+            .limit(10);
 
           if (error) throw error;
           if (!stop) setOrders((data || []) as OrderRow[]);
@@ -175,7 +176,8 @@ export default function HistoryPage() {
             .select("*")
             .eq("restaurant_id", (r as any)?.id || "")
             .gte("created_at", sinceISO)
-            .order("created_at", { ascending: false });
+            .order("created_at", { ascending: false })
+            .limit(10);
 
           if (error) throw error;
           if (!stop) setOrders((data || []) as OrderRow[]);
@@ -426,6 +428,18 @@ export default function HistoryPage() {
       <div className="mt-4 text-right text-xs text-slate-500">
         Wyniki: {filtered.length}
       </div>
+
+      {/* Informacja o limicie zamówień */}
+      {filtered.length >= 10 && (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-center">
+          <p className="text-sm text-amber-800">
+            Wyświetlamy tylko <strong>10 ostatnich zamówień</strong>.
+          </p>
+          <p className="text-sm text-amber-700 mt-1">
+            Potrzebujesz pełnej historii? Skontaktuj się z administratorem systemu lub skorzystaj z eksportu CSV.
+          </p>
+        </div>
+      )}
 
       {/* Przyciski szybkie jak w AdminPanel */}
       <div className="mt-6 flex flex-wrap gap-3">

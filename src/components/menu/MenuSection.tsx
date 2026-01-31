@@ -93,6 +93,39 @@ const SUBCAT_PREFIX: Record<string, string> = {
   nigiri: "Nigiri",
 };
 
+/**
+ * Formatuje opis zestawu: rozdziela elementy na osobne linie.
+ * Np. "16 szt, SUROWY: 6x Futomaki łosoś, 8x Hosomaki" →
+ *   ["16 szt, SUROWY:", "6x Futomaki łosoś", "8x Hosomaki"]
+ */
+const formatSetDescription = (desc: string | null): string[] => {
+  if (!desc) return [];
+  
+  // Znajdź nagłówek (np. "16 szt, SUROWY:" lub "22 szt, MIESZANY:")
+  const headerMatch = desc.match(/^(\d+\s*szt\.?\s*,?\s*(?:SUROWY|MIESZANY|PIECZONY|WEGE|VEGE)?\s*:?)\s*/i);
+  
+  const lines: string[] = [];
+  let rest = desc;
+  
+  if (headerMatch) {
+    lines.push(headerMatch[1].trim());
+    rest = desc.slice(headerMatch[0].length);
+  }
+  
+  // Podziel pozostałą część po przecinkach, ale uwzględnij wzorce jak "6x", "8x" itp.
+  // Każdy element zaczyna się od liczby + "x" (np. "6x Futomaki")
+  const items = rest.split(/,\s*/).filter(Boolean);
+  
+  for (const item of items) {
+    const trimmed = item.trim();
+    if (trimmed) {
+      lines.push(trimmed);
+    }
+  }
+  
+  return lines;
+};
+
 const normalizeDisplay = (s: string) =>
   s
     .trim()
@@ -561,12 +594,6 @@ useEffect(() => {
     const lunchBlocked = lunchClosed && isLunchProduct(p);
     const expanded = !!expandedDesc[p.id];
     const displayName = buildDisplayName(p);
-    const hasLong = !!p.description && p.description.length > 120;
-    const brief = !p.description
-      ? ""
-      : hasLong && !expanded
-      ? p.description.slice(0, 120) + "…"
-      : p.description;
 
     return (
       <article
@@ -595,23 +622,37 @@ useEffect(() => {
 
           {p.description && (
             <div className="mt-1 text-xs font-light text-white/70">
-              <p>{brief}</p>
-              {hasLong && (
-                <button
-                  type="button"
-                  className="mt-1 underline text-xs"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpandedDesc((s) => ({
-                      ...s,
-                      [p.id]: !s[p.id],
-                    }));
-                  }}
-                  aria-expanded={expanded}
-                >
-                  {expanded ? "Pokaż mniej" : "Pokaż cały opis"}
-                </button>
-              )}
+              {(() => {
+                const lines = formatSetDescription(p.description);
+                const showAll = expanded || lines.length <= 4;
+                const displayLines = showAll ? lines : lines.slice(0, 3);
+                return (
+                  <>
+                    <ul className="space-y-0.5 list-none">
+                      {displayLines.map((line, i) => (
+                        <li key={i}>{line}</li>
+                      ))}
+                      {!showAll && <li>…</li>}
+                    </ul>
+                    {lines.length > 4 && (
+                      <button
+                        type="button"
+                        className="mt-1 underline text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedDesc((s) => ({
+                            ...s,
+                            [p.id]: !s[p.id],
+                          }));
+                        }}
+                        aria-expanded={expanded}
+                      >
+                        {expanded ? "Pokaż mniej" : "Pokaż cały opis"}
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
 
@@ -647,15 +688,9 @@ useEffect(() => {
 
   const CardDesktop = ({ p }: { p: Product }) => {
     const isAdded = justAdded.includes(p.id);
-      const lunchBlocked = lunchClosed && isLunchProduct(p);
+    const lunchBlocked = lunchClosed && isLunchProduct(p);
     const expanded = !!expandedDesc[p.id];
     const displayName = buildDisplayName(p);
-    const hasLong = !!p.description && p.description.length > 160;
-    const brief = !p.description
-      ? ""
-      : hasLong && !expanded
-      ? p.description.slice(0, 160) + "…"
-      : p.description;
 
     return (
       <article
@@ -686,23 +721,37 @@ useEffect(() => {
 
           {p.description && (
             <div className="mt-1 text-sm font-light text-white/70">
-              <p>{brief}</p>
-              {hasLong && (
-                <button
-                  type="button"
-                  className="mt-1 underline text-xs"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpandedDesc((s) => ({
-                      ...s,
-                      [p.id]: !s[p.id],
-                    }));
-                  }}
-                  aria-expanded={expanded}
-                >
-                  {expanded ? "Pokaż mniej" : "Pokaż cały opis"}
-                </button>
-              )}
+              {(() => {
+                const lines = formatSetDescription(p.description);
+                const showAll = expanded || lines.length <= 5;
+                const displayLines = showAll ? lines : lines.slice(0, 4);
+                return (
+                  <>
+                    <ul className="space-y-0.5 list-none">
+                      {displayLines.map((line, i) => (
+                        <li key={i}>{line}</li>
+                      ))}
+                      {!showAll && <li>…</li>}
+                    </ul>
+                    {lines.length > 5 && (
+                      <button
+                        type="button"
+                        className="mt-1 underline text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedDesc((s) => ({
+                            ...s,
+                            [p.id]: !s[p.id],
+                          }));
+                        }}
+                        aria-expanded={expanded}
+                      >
+                        {expanded ? "Pokaż mniej" : "Pokaż cały opis"}
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
 

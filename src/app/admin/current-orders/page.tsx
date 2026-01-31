@@ -175,7 +175,7 @@ export default function CurrentOrdersPage() {
   // 3) Filtrowanie i wyszukiwanie
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return orders.filter((o) => {
+    let result = orders.filter((o) => {
       const st = (o.status || "").toLowerCase();
       if (filter === "new" && !(st === "new" || st === "placed")) return false;
       if (filter === "accepted" && st !== "accepted") return false;
@@ -186,6 +186,30 @@ export default function CurrentOrdersPage() {
         String(o.phone || "").toLowerCase().includes(term)
       );
     });
+    
+    // Limit 10 dla wszystkich kategorii oprócz "Nowe"
+    if (filter !== "new" && result.length > 10) {
+      result = result.slice(0, 10);
+    }
+    
+    return result;
+  }, [orders, filter, search]);
+
+  // Sprawdź czy są więcej zamówień niż limit (do wyświetlenia komunikatu)
+  const hasMoreOrders = useMemo(() => {
+    if (filter === "new") return false;
+    const term = search.trim().toLowerCase();
+    const allFiltered = orders.filter((o) => {
+      const st = (o.status || "").toLowerCase();
+      if (filter === "accepted" && st !== "accepted") return false;
+      if (!term) return true;
+      return (
+        String(o.id).toLowerCase().includes(term) ||
+        String(o.customer_name || "").toLowerCase().includes(term) ||
+        String(o.phone || "").toLowerCase().includes(term)
+      );
+    });
+    return allFiltered.length > 10;
   }, [orders, filter, search]);
 
   // 4) KPI do nagłówka
@@ -354,6 +378,22 @@ export default function CurrentOrdersPage() {
             ))}
           </div>
         </>
+      )}
+
+      {/* Informacja o limicie zamówień */}
+      {hasMoreOrders && (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-center">
+          <p className="text-sm text-amber-800">
+            Wyświetlamy tylko <strong>10 ostatnich zamówień</strong>.
+          </p>
+          <p className="text-sm text-amber-700 mt-1">
+            Pełna historia dostępna w zakładce{" "}
+            <a href="/admin/history" className="font-medium underline hover:no-underline">
+              Historia zamówień
+            </a>
+            .
+          </p>
+        </div>
       )}
 
       {/* Loader overlay jak w AdminPanel */}

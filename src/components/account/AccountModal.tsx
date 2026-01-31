@@ -260,7 +260,7 @@ export default function AccountModal({
         `)
         .eq("user", user.id)
         .order("created_at", { ascending: false })
-        .limit(20);
+        .limit(10);
       if (!error && data) {
         // Mapuj order_items na items
         const mapped = (data as any[]).map((o) => ({
@@ -932,6 +932,24 @@ useEffect(() => {
                       </div>
                     );
                   })}
+                </div>
+              )}
+              
+              {/* Informacja o pełnej historii */}
+              {orders.length >= 10 && (
+                <div className="mt-4 p-4 rounded-xl bg-black/5 text-center">
+                  <p className="text-sm text-black/70">
+                    Wyświetlamy tylko 10 ostatnich zamówień.
+                  </p>
+                  <p className="text-sm text-black/70 mt-1">
+                    Potrzebujesz pełnej historii? Napisz do nas:{" "}
+                    <a 
+                      href="mailto:kontakt@sushitutaj.pl" 
+                      className="text-[var(--accent-red,#a61b1b)] font-medium hover:underline"
+                    >
+                      kontakt@sushitutaj.pl
+                    </a>
+                  </p>
                 </div>
               )}
             </div>
