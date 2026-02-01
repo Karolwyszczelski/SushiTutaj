@@ -70,6 +70,9 @@ export async function POST(req: Request) {
     // 2) Walidacja subskrypcji (obsługa obu formatów: { subscription: {...} } lub bezpośrednio {...})
     const rawBody = await req.json().catch(() => null);
     const body = (rawBody?.subscription ?? rawBody) as PushSubscriptionJSON | null;
+    const bodySlug = typeof rawBody?.restaurant_slug === "string" 
+      ? rawBody.restaurant_slug.toLowerCase().trim() 
+      : null;
 
     const endpoint = sanitizeEndpoint(body?.endpoint);
     const p256dh = sanitizeKey(body?.keys?.p256dh);
@@ -79,48 +82,66 @@ export async function POST(req: Request) {
       return makeRes({ error: "INVALID_SUBSCRIPTION" }, 400);
     }
 
-    // 3) Ustalamy slug z DB po ctx.restaurantId (nie z cookie/body)
-    const restaurantId = ctx.restaurantId;
-    const restaurantSlug = await getRestaurantSlugById(restaurantId);
+    // 3) Ustalamy restaurantId - preferuj slug z body (jeśli admin ma do niego dostęp)
+    let restaurantId = ctx.restaurantId;
+    let restaurantSlug = await getRestaurantSlugById(restaurantId);
 
-    // 4) Delete ALL existing for this restaurant + insert fresh
-    // Usuwamy stare subskrypcje dla tej restauracji (mogą być wygasłe)
-    const { data: deleted } = await supabaseAdmin
-      .from("admin_push_subscriptions")
-      .delete()
-      .eq("restaurant_id", restaurantId)
-      .select("id");
+    // Jeśli klient wysłał slug w body i jest inny niż z kontekstu - sprawdź i użyj
+    if (bodySlug && bodySlug !== restaurantSlug) {
+      const { data: bySlug, error: slugErr } = await supabaseAdmin
+        .from("restaurants")
+        .select("id, slug")
+        .eq("slug", bodySlug)
+        .maybeSingle();
 
-    if (deleted && deleted.length > 0) {
-      pushLogger.info("Usunięto stare subskrypcje", { 
-        count: deleted.length, 
-        restaurant_slug: restaurantSlug 
-      });
+      if (!slugErr && bySlug?.id) {
+        // Sprawdź czy admin ma dostęp do tej restauracji
+        const { data: access } = await supabaseAdmin
+          .from("restaurant_admins")
+          .select("restaurant_id")
+          .eq("user_id", ctx.user.id)
+          .eq("restaurant_id", bySlug.id)
+          .limit(1);
+
+        if (access && access.length > 0) {
+          restaurantId = bySlug.id;
+          restaurantSlug = (bySlug.slug as string)?.toLowerCase() ?? bodySlug;
+          pushLogger.info("Użyto slug z body zamiast z kontekstu", { 
+            bodySlug, 
+            contextSlug: await getRestaurantSlugById(ctx.restaurantId) 
+          });
+        }
+      }
     }
 
-    // Teraz wstawiamy nowy rekord z aktualnym timestampem
-    const { error: insertError } = await supabaseAdmin
+    // 4) UPSERT zamiast DELETE ALL + INSERT
+    // endpoint jest unikalny globalnie - aktualizujemy wpis dla tego konkretnego endpointu
+    // NIE usuwamy innych subskrypcji dla tej restauracji (mogą być inne tablety/przeglądarki)
+    const { error: upsertError } = await supabaseAdmin
       .from("admin_push_subscriptions")
-      .insert({
-        restaurant_id: restaurantId,
-        restaurant_slug: restaurantSlug,
-        endpoint,
-        subscription: {
+      .upsert(
+        {
+          restaurant_id: restaurantId,
+          restaurant_slug: restaurantSlug,
           endpoint,
-          expirationTime: body?.expirationTime ?? null,
-          keys: { p256dh, auth },
-        },
-        p256dh,
-        auth,
-        created_at: new Date().toISOString(), // świeży timestamp
-      } as any);
+          subscription: {
+            endpoint,
+            expirationTime: body?.expirationTime ?? null,
+            keys: { p256dh, auth },
+          },
+          p256dh,
+          auth,
+          created_at: new Date().toISOString(),
+        } as any,
+        { onConflict: "endpoint" }
+      );
 
-    if (insertError) {
-      pushLogger.error("insert error", { error: insertError.message, code: insertError.code });
-      return makeRes({ error: "DB_ERROR", details: insertError.message }, 500);
+    if (upsertError) {
+      pushLogger.error("upsert error", { error: upsertError.message, code: upsertError.code });
+      return makeRes({ error: "DB_ERROR", details: upsertError.message }, 500);
     }
 
-    pushLogger.info("Zapisano nową subskrypcję push", { 
+    pushLogger.info("Zapisano/zaktualizowano subskrypcję push", { 
       restaurant_slug: restaurantSlug,
       endpoint_suffix: endpoint.slice(-30) 
     });

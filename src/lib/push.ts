@@ -58,7 +58,12 @@ export async function sendPushForRestaurant(
   restaurantId: string,
   payload: PushPayload
 ): Promise<void> {
-  if (!HAS_VAPID) return;
+  if (!HAS_VAPID) {
+    console.warn("[push] Pomijam - brak kluczy VAPID");
+    return;
+  }
+
+  console.log("[push] Wysyłam dla restauracji:", restaurantId);
 
   const { data, error } = await supabaseAdmin
     .from("admin_push_subscriptions")
@@ -72,7 +77,13 @@ export async function sendPushForRestaurant(
   }
 
   const subs = (data as AdminPushSubscriptionRow[]) || [];
-  if (!subs.length) return;
+  
+  if (!subs.length) {
+    console.warn("[push] Brak subskrypcji dla restauracji:", restaurantId);
+    return;
+  }
+  
+  console.log(`[push] Znaleziono ${subs.length} subskrypcji dla restauracji:`, restaurantId);
 
   const basePayload = {
     type: clampStr(payload.type, 40) ?? "order",
