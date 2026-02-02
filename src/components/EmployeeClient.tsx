@@ -1980,21 +1980,20 @@ const enablePush = useCallback(async () => {
 
     await reg.update().catch(() => {});
 
-    // ZAWSZE odnawiamy subskrypcję - stare wygasają po ~2 dniach
-    const existing = await reg.pushManager.getSubscription();
-    if (existing) {
-      try {
-        await existing.unsubscribe();
-        console.log("[push] Usunięto starą subskrypcję, tworzę nową...");
-      } catch (e) {
-        console.warn("[push] Błąd przy usuwaniu starej subskrypcji:", e);
-      }
+    // Użyj istniejącej subskrypcji jeśli jest - NIE twórz nowej przy każdym BOOT
+    // Subskrypcje FCM nie wygasają automatycznie - tylko gdy user wyczyści dane
+    let sub = await reg.pushManager.getSubscription();
+    
+    if (!sub) {
+      // Brak subskrypcji - utwórz nową
+      console.log("[push] Brak subskrypcji, tworzę nową...");
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    } else {
+      console.log("[push] Używam istniejącej subskrypcji");
     }
-
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-    });
 
     const payload =
       typeof (sub as any).toJSON === "function"
@@ -2157,21 +2156,20 @@ useEffect(() => {
 
       await reg.update().catch(() => {});
 
-      // ZAWSZE odnawiamy subskrypcję przy BOOT - zapobiega wygasaniu
-      const existing = await reg.pushManager.getSubscription();
-      if (existing) {
-        try {
-          await existing.unsubscribe();
-          console.log("[push] Boot: usunięto starą subskrypcję, tworzę nową...");
-        } catch (e) {
-          console.warn("[push] Boot: błąd przy usuwaniu starej subskrypcji:", e);
-        }
+      // Użyj istniejącej subskrypcji - NIE twórz nowej przy każdym BOOT
+      // Subskrypcje FCM nie wygasają automatycznie
+      let sub = await reg.pushManager.getSubscription();
+      
+      if (!sub) {
+        // Brak subskrypcji - utwórz nową
+        console.log("[push] Boot: brak subskrypcji, tworzę nową...");
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+      } else {
+        console.log("[push] Boot: synchronizuję istniejącą subskrypcję z bazą");
       }
-
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-      });
 
       const payload =
         typeof (sub as any).toJSON === "function"
