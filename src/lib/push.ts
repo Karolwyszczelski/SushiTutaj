@@ -85,7 +85,21 @@ export async function sendPushForRestaurant(
   
   console.log(`[push] Znaleziono ${subs.length} subskrypcji dla restauracji:`, restaurantId);
 
+  // Generuj unikalne ID dla tego powiadomienia - gwarantuje że SW nie połączy go z innym
+  const uniqueNotificationId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  
+  // Wyciągnij orderId z tytułu jeśli jest (format: "Nowe zamówienie #123")
+  const orderIdMatch = payload.title?.match(/#(\d+)/);
+  const orderId = orderIdMatch ? orderIdMatch[1] : null;
+
   const basePayload = {
+    // Unikalne ID powiadomienia - używane przez SW do tagowania
+    id: uniqueNotificationId,
+    // Order ID jeśli dostępne (dla grupowania po stronie użytkownika)
+    orderId: orderId,
+    // Unikalny tag - zapewnia że każde powiadomienie jest osobne
+    tag: `order-${orderId || uniqueNotificationId}`,
+    // Typ powiadomienia
     type: clampStr(payload.type, 40) ?? "order",
     title: clampStr(payload.title, 120) ?? "Nowe zamówienie",
     body:
@@ -93,6 +107,8 @@ export async function sendPushForRestaurant(
       clampStr(payload.title, 120) ??
       "Pojawiło się nowe zdarzenie w systemie.",
     url: clampStr(payload.url, 300) ?? "/admin/pickup-order",
+    // Timestamp dla sortowania
+    timestamp: Date.now(),
   };
 
   const payloadJson = JSON.stringify(basePayload);
@@ -125,12 +141,19 @@ export async function sendPushForRestaurant(
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
           try {
             await webpush.sendNotification(sub, payloadJson, {
-              // TTL 5 minut - daje czas na wybudzenie tabletu z trybu uśpienia
-              // ale nie za długo, żeby nie dostarczać przestarzałych powiadomień
-              TTL: 60 * 5,
+              // TTL 4 godziny (14400 sekund) - daje dużo czasu na wybudzenie urządzenia
+              // z trybu uśpienia/oszczędzania baterii. Dla zamówień restauracyjnych
+              // 4h to rozsądny kompromis między dostarczalnością a aktualnością.
+              TTL: 60 * 60 * 4,
+              
+              // Urgency "high" wymusza natychmiastowe dostarczenie przez FCM/APNs
+              // nawet gdy urządzenie jest w trybie Doze/uśpienia
               urgency: "high",
-              // Topic max 32 znaki - używamy skróconego hash z restaurantId
-              topic: `${restaurantId.slice(0, 8)}-${basePayload.type}`.slice(0, 32),
+              
+              // UWAGA: Celowo NIE używamy "topic" - topic powoduje że push service
+              // nadpisuje poprzednie niedostarczone powiadomienia z tym samym topic.
+              // Dla zamówień chcemy żeby KAŻDE powiadomienie dotarło osobno.
+              // Zamiast tego używamy unikalnego tagu po stronie Service Workera.
             });
             // Sukces - przerywamy pętlę
             lastError = null;

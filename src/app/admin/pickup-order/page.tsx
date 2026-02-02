@@ -2143,6 +2143,23 @@ const slugToSend = desiredSlug;
       return;
     }
 
+    // KRYTYCZNE: Po udanej subskrypcji, zsynchronizuj restaurant_slug z SW (IndexedDB)
+    // Dzięki temu SW wie do której restauracji przypisać subskrypcję przy odnawianiu w tle
+    try {
+      const resJson = await res.clone().json().catch(() => ({}));
+      const confirmedSlug = resJson?.restaurant_slug || slugToSend;
+      
+      if (confirmedSlug && reg?.active) {
+        reg.active.postMessage({
+          type: "SET_RESTAURANT",
+          payload: { restaurant_slug: confirmedSlug }
+        });
+        console.log("[push] SET_RESTAURANT wysłane do SW:", confirmedSlug);
+      }
+    } catch (swErr) {
+      console.warn("[push] Nie udało się zsynchronizować slug z SW:", swErr);
+    }
+
     setPushStatus("subscribed");
   } catch (e) {
     console.error("[push] enablePush error", e);
@@ -2346,7 +2363,23 @@ const slugToSend = desiredSlug;
             "Powiadomienia są włączone, ale nie udało się zsynchronizować subskrypcji z bazą. Kliknij „Włącz powiadomienia” ponownie."
           );
         }
+      } else {
+        // KRYTYCZNE: Po udanej synchronizacji, ustaw restaurant_slug w SW IndexedDB
+        try {
+          const resJson = await res.clone().json().catch(() => ({}));
+          const confirmedSlug = resJson?.restaurant_slug || slugToSend;
+          
+          if (confirmedSlug && reg?.active) {
+            reg.active.postMessage({
+              type: "SET_RESTAURANT",
+              payload: { restaurant_slug: confirmedSlug }
+            });
+            console.log("[push] Boot: SET_RESTAURANT wysłane do SW:", confirmedSlug);
+          }
+        } catch (swErr) {
+          console.warn("[push] Boot: nie udało się zsynchronizować slug z SW:", swErr);
       }
+        }
     } catch (e) {
       console.warn("[push] sync existing error", e);
     }

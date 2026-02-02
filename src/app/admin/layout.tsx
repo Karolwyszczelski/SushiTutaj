@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import { usePathname } from "next/navigation";
 import Sidebar from "@/components/admin/sidebar";
 import NotificationBell from "@/components/admin/NotificationBell";
+import PushServiceWorkerManager from "@/components/admin/PushServiceWorkerManager";
 
 // Admin może być spokojnie zawsze dynamiczny
 export const dynamic = "force-dynamic";
@@ -16,6 +17,9 @@ function AdminShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-slate-50">
+      {/* Service Worker Manager - utrzymuje SW aktywny i zarejestrowany */}
+      <PushServiceWorkerManager />
+      
       {/* Sidebar (ma useSearchParams) */}
       <aside className="flex-none">
         <Sidebar />
