@@ -58,9 +58,9 @@ export default function ValentinesContestTermsPage() {
                 </li>
                 <li>
                   Organizatorem Konkursu i fundatorem nagród jest **** z siedzibą
-                  w [Miejscowość], przy ul. [Ulica i numer], kod pocztowy
-                  [XX-XXX], wpisana do Rejestru Przedsiębiorców KRS pod numerem:
-                  / CEIDG, posiadająca NIP:, REGON: (dalej: „Organizator”).
+                  w Ciechanowie, przy ul. Warszawska 51, kod pocztowy
+                  06-400, wpisana do Rejestru Przedsiębiorców KRS pod numerem:
+                  / CEIDG, posiadająca NIP: 5661896378 (dalej: &bdquo;Organizator&rdquo;).
                 </li>
                 <li>
                   Konkurs prowadzony jest na terytorium Rzeczypospolitej Polskiej
