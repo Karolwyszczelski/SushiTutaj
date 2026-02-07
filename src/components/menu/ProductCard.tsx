@@ -23,6 +23,27 @@ function parseIngredients(v: any): string[] {
   return [];
 }
 
+/** Rozdziela tekst na główny opis i informacje dodatkowe (zaczynające się od + lub "Wersja") */
+function splitDescription(text: string): { main: string; extras: string[] } {
+  // Szukamy wzorców: "+6x ...", "Wersja pieczona...", itp.
+  const extraPatterns = /(\+\d+x?\s+[^.]+(?:za\s+\d+\s*zł)?\.?|Wersja\s+[^.]+(?:\+\d+\s*zł)?\.?)/gi;
+  const extras: string[] = [];
+  let main = text;
+  
+  const matches = text.match(extraPatterns);
+  if (matches) {
+    matches.forEach(match => {
+      main = main.replace(match, '').trim();
+      extras.push(match.trim());
+    });
+  }
+  
+  // Usuń podwójne spacje i przecinki na końcu
+  main = main.replace(/,\s*$/, '').replace(/\s+/g, ' ').trim();
+  
+  return { main, extras };
+}
+
 export default function ProductCard({ product, index }: ProductCardProps) {
   const addItem = useCartStore((state) => state.addItem);
   const isFirst = index === 0;
@@ -32,7 +53,8 @@ export default function ProductCard({ product, index }: ProductCardProps) {
   };
 
   const ing = parseIngredients(product.ingredients);
-  const bodyText = ing.length ? ing.join(", ") : (product.description ?? "");
+  const rawText = ing.length ? ing.join(", ") : (product.description ?? "");
+  const { main: mainText, extras } = splitDescription(rawText);
 
   if (isFirst) {
     // --- PIERWSZA KARTA ---
@@ -70,10 +92,19 @@ export default function ProductCard({ product, index }: ProductCardProps) {
           {product.name}
         </h3>
 
-        {bodyText && (
-          <p className="mt-1 text-xs leading-tight line-clamp-3">
-            {bodyText}
+        {mainText && (
+          <p className="mt-1 text-xs leading-tight">
+            {mainText}
           </p>
+        )}
+        {extras.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-black/20 space-y-1">
+            {extras.map((extra, i) => (
+              <p key={i} className="text-xs leading-tight font-medium">
+                {extra}
+              </p>
+            ))}
+          </div>
         )}
       </div>
     );
@@ -119,10 +150,19 @@ export default function ProductCard({ product, index }: ProductCardProps) {
         {product.name}
       </h3>
 
-      {bodyText && (
-        <p className="mt-1 text-xs leading-tight line-clamp-3">
-          {bodyText}
+      {mainText && (
+        <p className="mt-1 text-xs leading-tight group-hover:text-black">
+          {mainText}
         </p>
+      )}
+      {extras.length > 0 && (
+        <div className="mt-2 pt-2 border-t border-white/20 group-hover:border-black/20 space-y-1">
+          {extras.map((extra, i) => (
+            <p key={i} className="text-xs leading-tight font-medium text-yellow-400 group-hover:text-black">
+              {extra}
+            </p>
+          ))}
+        </div>
       )}
     </div>
   );
