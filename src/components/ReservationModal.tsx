@@ -7,16 +7,11 @@ import { DayPicker } from "react-day-picker";
 import "react-day-picker/dist/style.css";
 import { format, startOfMonth, endOfMonth, isSameDay } from "date-fns";
 import { pl } from "date-fns/locale";
-import { createClient } from "@supabase/supabase-js";
 import { toZonedTime } from "date-fns-tz";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
 const TZ = "Europe/Warsaw";
 const nowPL = () => toZonedTime(new Date(), TZ);
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 type Props = { isOpen: boolean; onClose: () => void; id?: string };
 
@@ -90,7 +85,7 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
 
         if (!slug) return;
 
-        const { data, error } = await supabase
+        const { data, error } = await getSupabaseBrowser()
           .from("restaurants")
           .select("id")
           .eq("slug", slug)
@@ -114,7 +109,7 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
       try {
         const from = format(startOfMonth(currentMonth), "yyyy-MM-dd");
         const to = format(endOfMonth(currentMonth), "yyyy-MM-dd");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabaseBrowser()
           .from("reservations")
           .select("reservation_date")
           .eq("restaurant_id", restaurantId)
@@ -156,7 +151,7 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
     (async () => {
       try {
         const day = format(selectedDate, "yyyy-MM-dd");
-        const { data, error } = await supabase
+        const { data, error } = await getSupabaseBrowser()
           .from("reservations")
           .select("reservation_time")
           .eq("restaurant_id", restaurantId)
