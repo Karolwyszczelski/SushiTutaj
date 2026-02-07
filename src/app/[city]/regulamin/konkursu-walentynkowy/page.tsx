@@ -13,7 +13,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: `Regulamin konkursu walentynkowego ${cityName} – Sushi Tutaj`,
     description:
-      "Regulamin konkursu „Walentynkowe Emoji Love" – zasady udziału, nagrody, dane osobowe i reklamacje.",
+      "Regulamin konkursu Walentynkowe Emoji Love – zasady udziału, nagrody, dane osobowe i reklamacje.",
     alternates: { canonical: `/${city}/regulamin/konkursu-walentynkowy` },
     robots: { index: true, follow: true },
   };
