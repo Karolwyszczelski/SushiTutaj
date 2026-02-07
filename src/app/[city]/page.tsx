@@ -109,7 +109,7 @@ export default async function Home({ params }: CityPageProps) {
       >
         <span className="inline-flex items-center gap-2">
           <span>💕</span>
-          <span>Weź udział w konkursie Walentynkowym „Emoji Love" i wygraj Zestaw Walentynkowy!</span>
+          <span>Weź udział w konkursie Walentynkowym &bdquo;Emoji Love&rdquo; i wygraj Zestaw Walentynkowy!</span>
           <span>💕</span>
         </span>
       </a>
