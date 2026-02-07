@@ -3,18 +3,29 @@ export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
 
-export const metadata: Metadata = {
-  title: "Regulamin konkursu walentynkowego – Sushi Tutaj",
-  description:
-    "Regulamin konkursu „Walentynkowe Emoji Love” – zasady udziału, nagrody, dane osobowe i reklamacje.",
-  alternates: { canonical: "/regulamin/konkursu-walentynkowy" },
-  robots: { index: true, follow: true },
-};
+type CityParams = { city: string };
+type PageProps = { params: Promise<CityParams> };
 
-export default function ValentinesContestTermsPage() {
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { city } = await params;
+  const cityName = city === "szczytno" ? "Szczytno" : city === "przasnysz" ? "Przasnysz" : city;
+  
+  return {
+    title: `Regulamin konkursu walentynkowego ${cityName} – Sushi Tutaj`,
+    description:
+      "Regulamin konkursu „Walentynkowe Emoji Love" – zasady udziału, nagrody, dane osobowe i reklamacje.",
+    alternates: { canonical: `/${city}/regulamin/konkursu-walentynkowy` },
+    robots: { index: true, follow: true },
+  };
+}
+
+export default async function ValentinesContestTermsPage({ params }: PageProps) {
+  const { city } = await params;
+  const isSzczytno = city === "szczytno";
+
   return (
     <main className="relative min-h-screen bg-[#070707] text-white overflow-hidden">
-      {/* tło (delikatne, żeby nie „zlewało” tekstu) */}
+      {/* tło (delikatne, żeby nie „zlewało" tekstu) */}
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <div className="absolute -top-44 -left-44 h-[560px] w-[560px] rounded-full bg-[var(--accent,#de1d13)]/18 blur-3xl" />
         <div className="absolute top-24 -right-56 h-[680px] w-[680px] rounded-full bg-white/10 blur-3xl" />
@@ -27,7 +38,7 @@ export default function ValentinesContestTermsPage() {
         <div className="mb-8 text-center">
           <p className="text-xs tracking-[0.28em] text-white/60">DOKUMENTY</p>
           <p className="mt-3 text-sm md:text-base text-white/70">
-            Regulamin konkursu Facebook „Walentynkowe Emoji Love”.
+            Regulamin konkursu Facebook &bdquo;Walentynkowe Emoji Love&rdquo;.
           </p>
         </div>
 
@@ -47,31 +58,31 @@ export default function ValentinesContestTermsPage() {
   prose-strong:text-white
   prose-li:marker:text-white/40"
             >
-              <h1>REGULAMIN KONKURSU „WALENTYNKOWE EMOJI LOVE”</h1>
+              <h1>REGULAMIN KONKURSU &bdquo;WALENTYNKOWE EMOJI LOVE&rdquo;</h1>
 
               <h2>§ 1. Postanowienia ogólne i definicje</h2>
               <ol>
                 <li>
-                  Niniejszy regulamin (dalej: „Regulamin”) określa warunki,
+                  Niniejszy regulamin (dalej: &bdquo;Regulamin&rdquo;) określa warunki,
                   zasady oraz tryb przeprowadzania konkursu pod nazwą
-                  „Walentynkowe Emoji Love” (dalej: „Konkurs”).
+                  &bdquo;Walentynkowe Emoji Love&rdquo; (dalej: &bdquo;Konkurs&rdquo;).
                 </li>
                 <li>
                   Organizatorem Konkursu i fundatorem nagród jest **** z siedzibą
                   w [Miejscowość], przy ul. [Ulica i numer], kod pocztowy
                   [XX-XXX], wpisana do Rejestru Przedsiębiorców KRS pod numerem:
-                  / CEIDG, posiadająca NIP:, REGON: (dalej: „Organizator”).
+                  / CEIDG, posiadająca NIP:, REGON: (dalej: &bdquo;Organizator&rdquo;).
                 </li>
                 <li>
                   Konkurs prowadzony jest na terytorium Rzeczypospolitej Polskiej
                   za pośrednictwem serwisu społecznościowego Facebook, na
-                  oficjalnym fanpage’u Organizatora dostępnym pod adresem: ****
-                  (dalej: „Fanpage”).
+                  oficjalnym fanpage&apos;u Organizatora dostępnym pod adresem: ****
+                  (dalej: &bdquo;Fanpage&rdquo;).
                 </li>
                 <li>
                   Konkurs rozpoczyna się w dniu **** z chwilą publikacji posta
                   konkursowego i trwa do dnia **** do godziny 23:59 (dalej:
-                  „Czas Trwania Konkursu”).
+                  &bdquo;Czas Trwania Konkursu&rdquo;).
                 </li>
                 <li>
                   Konkurs nie jest grą losową, loterią fantową, zakładem
@@ -95,7 +106,7 @@ export default function ValentinesContestTermsPage() {
               <h2>§ 2. Uczestnicy Konkursu</h2>
               <ol>
                 <li>
-                  Uczestnikiem Konkursu (dalej: „Uczestnik”) może być każda osoba
+                  Uczestnikiem Konkursu (dalej: &bdquo;Uczestnik&rdquo;) może być każda osoba
                   fizyczna, która łącznie spełnia następujące warunki: a)
                   ukończyła 18 lat i posiada pełną zdolność do czynności
                   prawnych; b) zamieszkuje na terytorium Rzeczypospolitej
@@ -120,11 +131,11 @@ export default function ValentinesContestTermsPage() {
               <ol>
                 <li>
                   Warunkiem wzięcia udziału w Konkursie jest wykonanie w Czasie
-                  Trwania Konkursu zadania konkursowego (dalej: „Zadanie
-                  Konkursowe”), które polega na: „Opublikowaniu pod postem
-                  konkursowym na Fanpage’u komentarza, w którym Uczestnik opisuje
+                  Trwania Konkursu zadania konkursowego (dalej: &bdquo;Zadanie
+                  Konkursowe&rdquo;), które polega na: &bdquo;Opublikowaniu pod postem
+                  konkursowym na Fanpage&apos;u komentarza, w którym Uczestnik opisuje
                   swoje plany na Walentynki (rzeczywiste lub wymarzone),
-                  wykorzystując do tego wyłącznie ciąg emotikon (emoji).”
+                  wykorzystując do tego wyłącznie ciąg emotikon (emoji).&rdquo;
                 </li>
                 <li>Zadanie Konkursowe musi być wynikiem własnej twórczości Uczestnika.</li>
                 <li>
@@ -153,7 +164,7 @@ export default function ValentinesContestTermsPage() {
                 <li>
                   Celem zapewnienia prawidłowego przebiegu Konkursu oraz
                   wyłonienia Zwycięzców, Organizator powołuje 3-osobową Komisję
-                  Konkursową (dalej: „Komisja”).
+                  Konkursową (dalej: &bdquo;Komisja&rdquo;).
                 </li>
                 <li>
                   Komisja dokona oceny zgłoszonych Prac Konkursowych po
@@ -180,9 +191,22 @@ export default function ValentinesContestTermsPage() {
               <h2>§ 5. Nagrody i podatki</h2>
               <ol>
                 <li>
-                  Nagrodami w Konkursie są: 3 x Zestaw Walentynkowy nr 1 (zestaw
-                  produktów wybranych przez Organizatora) o wartości jednostkowej
-                  **** zł brutto każdy.
+                  Nagrodami w Konkursie są:
+                  {isSzczytno ? (
+                    <ul>
+                      <li>
+                        <strong>🥇 I MIEJSCE:</strong> Zestaw Walentynkowy nr 1 (Sushi) + 2 bilety do Cinema Lumiere + Bukiet od Kwiaciarni Gabi 🌹
+                      </li>
+                      <li>
+                        <strong>🥈 II MIEJSCE:</strong> Zestaw Walentynkowy nr 1 (Sushi) + 2 bilety do Cinema Lumiere + Bukiet od Kwiaciarni Gabi 🌹
+                      </li>
+                      <li>
+                        <strong>🥉 III MIEJSCE:</strong> Zestaw Walentynkowy nr 1 (Sushi) + 2 bilety do Cinema Lumiere 🎬
+                      </li>
+                    </ul>
+                  ) : (
+                    <> 3 x Zestaw Walentynkowy nr 1 (zestaw produktów wybranych przez Organizatora) o wartości jednostkowej **** zł brutto każdy.</>
+                  )}
                 </li>
                 <li>
                   Zwycięzcy nie przysługuje prawo do wymiany Nagrody na
@@ -210,17 +234,30 @@ export default function ValentinesContestTermsPage() {
                 </li>
               </ol>
 
+              {isSzczytno && (
+                <>
+                  <h2>§ 5a. Sponsorzy nagród</h2>
+                  <p>
+                    Partnerami Konkursu i fundatorami nagród dodatkowych są:
+                  </p>
+                  <ul>
+                    <li><strong>Cinema Lumiere</strong> – bilety do kina</li>
+                    <li><strong>Kwiaciarnia Gabi</strong> – bukiety kwiatów</li>
+                  </ul>
+                </>
+              )}
+
               <h2>§ 6. Ogłoszenie wyników i wydanie nagród</h2>
               <ol>
                 <li>
                   Wyniki Konkursu zostaną ogłoszone w dniu **** poprzez
-                  opublikowanie posta wynikowego na Fanpage’u Organizatora lub
+                  opublikowanie posta wynikowego na Fanpage&apos;u Organizatora lub
                   komentarza pod postem konkursowym, zawierającego oznaczenie
                   profili Zwycięzców.
                 </li>
                 <li>
                   Zwycięzcy zobowiązani są do skontaktowania się z Organizatorem
-                  w wiadomości prywatnej (Messenger) na Fanpage’u w terminie 3
+                  w wiadomości prywatnej (Messenger) na Fanpage&apos;u w terminie 3
                   dni roboczych od dnia ogłoszenia wyników, w celu podania danych
                   niezbędnych do wysyłki Nagrody: a) Imię i Nazwisko; b) Dokładny
                   adres do wysyłki na terenie Polski; c) Numer telefonu (dla
@@ -257,7 +294,7 @@ export default function ValentinesContestTermsPage() {
                   treści Zadania Konkursowego w celach związanych z realizacją i
                   promocją Konkursu. Licencja obejmuje prawo do: utrwalania,
                   zwielokrotniania, publicznego udostępniania w sieci Internet
-                  (w tym na Fanpage’u i stronie www Organizatora), w szczególności
+                  (w tym na Fanpage&apos;u i stronie www Organizatora), w szczególności
                   w celu ogłoszenia wyników Konkursu.
                 </li>
               </ol>
