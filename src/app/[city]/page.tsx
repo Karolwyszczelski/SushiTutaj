@@ -102,6 +102,18 @@ export default async function Home({ params }: CityPageProps) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
+      {/* Walentynkowy banner konkursowy */}
+      <a
+        href={`/${slug}/regulamin/konkursu-walentynkowy`}
+        className="block w-full bg-gradient-to-r from-pink-600 via-red-500 to-pink-600 text-white text-center py-3 px-4 font-medium hover:from-pink-700 hover:via-red-600 hover:to-pink-700 transition-all"
+      >
+        <span className="inline-flex items-center gap-2">
+          <span>💕</span>
+          <span>Weź udział w konkursie Walentynkowym „Emoji Love" i wygraj Zestaw Walentynkowy!</span>
+          <span>💕</span>
+        </span>
+      </a>
+
       {/* POP-UPY (Slider) */}
       <PromoModal
         restaurantId={r?.id ?? null}
