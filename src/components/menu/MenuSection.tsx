@@ -116,14 +116,24 @@ const formatSetDescription = (desc: string | null): string[] => {
   // Każdy element zaczyna się od liczby + "x" (np. "6x Futomaki")
   const items = rest.split(/,\s*/).filter(Boolean);
   
+  const result: string[] = [];
   for (const item of items) {
     const trimmed = item.trim();
-    if (trimmed) {
-      lines.push(trimmed);
+    if (!trimmed) continue;
+    
+    // Sprawdź czy w środku jest "Wersja pieczona" - jeśli tak, rozdziel
+    const versionMatch = trimmed.match(/^(.*?)\s*\.?\s*(Wersja\s+pieczona\s*\+?\s*\d*\s*z[łl]?.*)$/i);
+    if (versionMatch && versionMatch[1] && versionMatch[2]) {
+      const before = versionMatch[1].replace(/[.\s]+$/, '').trim();
+      const version = versionMatch[2].replace(/^[.\s]+/, '').trim();
+      if (before) result.push(before);
+      if (version) result.push(version);
+    } else {
+      result.push(trimmed);
     }
   }
   
-  return lines;
+  return [...lines, ...result];
 };
 
 const normalizeDisplay = (s: string) =>
