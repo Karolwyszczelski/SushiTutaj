@@ -2599,37 +2599,45 @@ useEffect(() => {
   useEffect(() => {
     if (!authChecked) return;
     if (!booted) return;
+    // KRYTYCZNE: NIE subskrybuj realtime bez restaurantId - to powoduje
+    // odbieranie eventów ze WSZYSTKICH restauracji i fałszywe dźwięki!
+    if (!restaurantId) {
+      console.warn("[realtime] Brak restaurantId - pomijam subskrypcję realtime");
+      return;
+    }
 
-    const filter = restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined;
+    const filter = `restaurant_id=eq.${restaurantId}`;
 
     const ch = supabase
-      .channel("orders-realtime")
+      .channel(`orders-realtime-employee-${restaurantId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "orders",
-          ...(filter ? { filter } : {}),
+          filter,
         },
         (payload: any) => {
           const ev = payload?.eventType; // 'INSERT' | 'UPDATE' | 'DELETE'
 const newStatus = String(payload?.new?.status ?? "");
 const oldStatus = String(payload?.old?.status ?? "");
 
+// Dodatkowa weryfikacja restaurant_id w payloadzie
+const payloadRestaurantId = payload?.new?.restaurant_id || payload?.old?.restaurant_id;
+if (payloadRestaurantId && payloadRestaurantId !== restaurantId) {
+  console.warn("[realtime] Ignoruję event z innej restauracji:", payloadRestaurantId);
+  return;
+}
+
 const isUnaccepted = (s: string) => ["new", "pending", "placed"].includes(s);
 
-// ding na nowe zamówienie
+// ding na nowe zamówienie - tylko dla tej restauracji
 if (ev === "INSERT" && isUnaccepted(newStatus)) dingOnce();
 
 // ding gdy zamówienie "wchodzi" w new/pending/placed przez UPDATE
 if (ev === "UPDATE" && !isUnaccepted(oldStatus) && isUnaccepted(newStatus)) dingOnce();
 
-          if (restaurantId) {
-            const ridNew = payload.new?.restaurant_id;
-            const ridOld = payload.old?.restaurant_id;
-            if (ridNew !== restaurantId && ridOld !== restaurantId) return;
-          }
           void fetchOrdersRef.current({ silent: true });
         }
       )

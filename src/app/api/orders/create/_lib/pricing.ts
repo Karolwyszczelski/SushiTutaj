@@ -338,7 +338,8 @@ export function computeAddonsCostBackend(
     }
 
     const isDbEncoded = rawLabel.startsWith("DBMOD|") || rawLabel.startsWith("DBVAR|");
-    otherCost += computeAddonPriceBackend(isDbEncoded ? rawLabel : displayName);
+    // Przekaż nazwę produktu żeby poprawnie policzyć cenę wersji pieczonej
+    otherCost += computeAddonPriceBackend(isDbEncoded ? rawLabel : displayName, itemName);
   }
 
   const rule = getSauceRuleForItemServer({

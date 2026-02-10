@@ -60,13 +60,35 @@ const EXTRA_PRICES: Record<string, number> = {
   "Ryba pieczona": 2,
 };
 
+/** Dopłata za wersję pieczoną całego zestawu – per zestaw (z menu) */
+const SET_BAKE_PRICES: Record<string, number> = {
+  "zestaw 2": 2,
+  "zestaw 5": 6,
+  "zestaw 7": 2,
+  "zestaw 10": 2,
+  "zestaw 11": 8,
+  "zestaw 12": 4,
+  "zestaw 13": 8,
+};
+
+/** Zwraca cenę za wersję pieczoną zestawu na podstawie nazwy produktu */
+export function getSetBakePriceByName(productName: string): number | null {
+  const name = (productName || "").toLowerCase();
+  for (const key of Object.keys(SET_BAKE_PRICES)) {
+    if (name.startsWith(key) || name.includes(key)) {
+      return SET_BAKE_PRICES[key];
+    }
+  }
+  return null;
+}
+
 const TARTAR_BASES = [
   "Podanie: na awokado",
   "Podanie: na ryżu",
   "Podanie: na chipsach krewetkowych",
 ];
 
-export function computeAddonPriceBackend(addon: string): number {
+export function computeAddonPriceBackend(addon: string, productName?: string): number {
 
   const dbm = parseDbModAddon(addon);
   if (dbm) return Math.max(0, dbm.priceCents) / 100;
@@ -86,9 +108,10 @@ export function computeAddonPriceBackend(addon: string): number {
   // Zestaw SUSHI SPECJAŁ – wybór proporcji pieczone/surowe, bez dopłaty
   if (addon.startsWith(SUSHI_SPECJAL_ADDON_PREFIX)) return 0;
 
-  // Wersja pieczona całego zestawu – fallback 5 zł (precyzyjniej liczy front)
+  // Wersja pieczona całego zestawu – cena zależy od konkretnego zestawu
   if (addon === RAW_SET_BAKE_ALL || addon === RAW_SET_BAKE_ALL_LEGACY) {
-    return 5;
+    const price = productName ? getSetBakePriceByName(productName) : null;
+    return typeof price === "number" ? price : 5; // fallback 5 zł
   }
 
   // Powiększenie zestawu – fallback 1 zł (front liczy dokładnie po opisie)

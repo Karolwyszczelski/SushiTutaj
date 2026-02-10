@@ -284,43 +284,78 @@ function AdminPanel() {
   // realtime kanał dla wybranego miasta
   useEffect(() => {
     if (!booted || city === "all") return;
-    const chan = supabase
-      .channel("orders-realtime-dashboard")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "orders" },
-        () => {
-          if (document.visibilityState === "visible") {
-            (async () => {
-              try {
-                const r = await fetch(
-                  `/api/orders/current?restaurant=${city}&limit=200&offset=0&t=${Date.now()}`,
-                  { cache: "no-store" }
-                );
-                const j = await r.json();
-                const arr: any[] = Array.isArray(j?.orders) ? j.orders : [];
-                const newOrders = arr.filter(
-                  (o) =>
-                    o.status === "new" ||
-                    o.status === "placed" ||
-                    o.status === "pending"
-                ).length;
-                const currentOrders = arr.filter(
-                  (o) => o.status === "accepted"
-                ).length;
-                setLive({
-                  newOrders,
-                  currentOrders,
-                  reservations: live.reservations,
-                });
-              } catch {}
-            })();
-          }
+    
+    // Potrzebujemy restaurant_id dla filtra realtime
+    let cancelled = false;
+    let chan: ReturnType<typeof supabase.channel> | null = null;
+    
+    (async () => {
+      // Pobierz restaurant_id dla tego miasta/slug
+      let restaurantId: string | null = null;
+      try {
+        const res = await fetch(`/api/restaurants/${city}`, { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          restaurantId = data?.id || null;
         }
-      )
-      .subscribe();
+      } catch {}
+      
+      if (cancelled) return;
+      
+      // KRYTYCZNE: Użyj filtra restaurant_id aby nie odbierać eventów z innych restauracji
+      const filter = restaurantId ? `restaurant_id=eq.${restaurantId}` : undefined;
+      
+      chan = supabase
+        .channel(`orders-realtime-dashboard-${city}`)
+        .on(
+          "postgres_changes",
+          { 
+            event: "*", 
+            schema: "public", 
+            table: "orders",
+            ...(filter ? { filter } : {}),
+          },
+          (payload: any) => {
+            // Dodatkowa weryfikacja - ignoruj eventy z innych restauracji
+            if (restaurantId) {
+              const payloadRid = payload?.new?.restaurant_id || payload?.old?.restaurant_id;
+              if (payloadRid && payloadRid !== restaurantId) return;
+            }
+            
+            if (document.visibilityState === "visible") {
+              (async () => {
+                try {
+                  const r = await fetch(
+                    `/api/orders/current?restaurant=${city}&limit=200&offset=0&t=${Date.now()}`,
+                    { cache: "no-store" }
+                  );
+                  const j = await r.json();
+                  const arr: any[] = Array.isArray(j?.orders) ? j.orders : [];
+                  const newOrders = arr.filter(
+                    (o) =>
+                      o.status === "new" ||
+                      o.status === "placed" ||
+                      o.status === "pending"
+                  ).length;
+                  const currentOrders = arr.filter(
+                    (o) => o.status === "accepted"
+                  ).length;
+                  setLive({
+                    newOrders,
+                    currentOrders,
+                    reservations: live.reservations,
+                  });
+                } catch {}
+              })();
+            }
+          }
+        )
+        .subscribe();
+    })();
+    
     return () => {
-      void supabase.removeChannel(chan);
+      cancelled = true;
+      if (chan) void supabase.removeChannel(chan);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [city, booted]);

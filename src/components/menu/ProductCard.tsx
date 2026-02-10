@@ -25,21 +25,33 @@ function parseIngredients(v: any): string[] {
 
 /** Rozdziela tekst na główny opis i informacje dodatkowe (zaczynające się od + lub "Wersja") */
 function splitDescription(text: string): { main: string; extras: string[] } {
-  // Szukamy wzorców: "+6x ...", "Wersja pieczona...", itp.
-  const extraPatterns = /(\+\d+x?\s+[^.]+(?:za\s+\d+\s*zł)?\.?|Wersja\s+[^.]+(?:\+\d+\s*zł)?\.?)/gi;
   const extras: string[] = [];
   let main = text;
   
-  const matches = text.match(extraPatterns);
-  if (matches) {
-    matches.forEach(match => {
-      main = main.replace(match, '').trim();
-      extras.push(match.trim());
+  // 1. Szukamy wzorca "Wersja pieczona +X zł" (może być z kropką lub bez, na końcu lub w środku)
+  const versionPattern = /\.?\s*Wersja\s+pieczona\s*\+?\s*\d*\s*z[łl]?\.?/gi;
+  const versionMatches = main.match(versionPattern);
+  if (versionMatches) {
+    versionMatches.forEach(match => {
+      main = main.replace(match, '');
+      // Czyścimy i normalizujemy
+      const cleaned = match.replace(/^\.?\s*/, '').replace(/\.?\s*$/, '').trim();
+      if (cleaned) extras.push(cleaned);
     });
   }
   
-  // Usuń podwójne spacje i przecinki na końcu
-  main = main.replace(/,\s*$/, '').replace(/\s+/g, ' ').trim();
+  // 2. Szukamy wzorców: "+6x ... za X zł" lub "+6x ... za X zł!"
+  const plusPattern = /(\+\d+x?\s+[^.+]+(?:za\s+\d+\s*z[łl]!?)?)/gi;
+  const plusMatches = main.match(plusPattern);
+  if (plusMatches) {
+    plusMatches.forEach(match => {
+      main = main.replace(match, '');
+      extras.unshift(match.trim()); // Na początek, przed "Wersja pieczona"
+    });
+  }
+  
+  // Usuń podwójne spacje, kropki i przecinki na końcu
+  main = main.replace(/[,.\s]+$/, '').replace(/\s+/g, ' ').trim();
   
   return { main, extras };
 }
