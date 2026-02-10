@@ -27,9 +27,9 @@ function parseIngredients(v: any): string[] {
 function splitDescription(text: string): { main: string; extras: string[] } {
   const extras: string[] = [];
   let main = text;
+  const versionPattern = /\.?\s*Wersja\s+pieczona\s*\+?\s*\d*\s*z[łl]?\.?/gi;
   
   // 1. Szukamy wzorca "Wersja pieczona +X zł" (może być z kropką lub bez, na końcu lub w środku)
-  const versionPattern = /\.?\s*Wersja\s+pieczona\s*\+?\s*\d*\s*z[łl]?\.?/gi;
   const versionMatches = main.match(versionPattern);
   if (versionMatches) {
     versionMatches.forEach(match => {
@@ -49,11 +49,34 @@ function splitDescription(text: string): { main: string; extras: string[] } {
       extras.unshift(match.trim()); // Na początek, przed "Wersja pieczona"
     });
   }
+
+  // 2b. Drugi przebieg dla "Wersja pieczona" (na wypadek, gdyby została po wycięciu +...)
+  const versionMatchesAfter = main.match(versionPattern);
+  if (versionMatchesAfter) {
+    versionMatchesAfter.forEach(match => {
+      main = main.replace(match, '');
+      const cleaned = match.replace(/^\.?\s*/, '').replace(/\.?\s*$/, '').trim();
+      if (cleaned) extras.push(cleaned);
+    });
+  }
   
   // Usuń podwójne spacje, kropki i przecinki na końcu
   main = main.replace(/[,.\s]+$/, '').replace(/\s+/g, ' ').trim();
   
-  return { main, extras };
+  const normalizedExtras: string[] = [];
+  extras.forEach(extra => {
+    const idx = extra.search(/wersja\s+pieczona/i);
+    if (idx >= 0) {
+      const before = extra.slice(0, idx).replace(/[,\.\s]+$/, '').trim();
+      const version = extra.slice(idx).replace(/^[,\.\s]+/, '').trim();
+      if (before) normalizedExtras.push(before);
+      if (version) normalizedExtras.push(version);
+    } else {
+      normalizedExtras.push(extra);
+    }
+  });
+
+  return { main, extras: normalizedExtras };
 }
 
 export default function ProductCard({ product, index }: ProductCardProps) {
