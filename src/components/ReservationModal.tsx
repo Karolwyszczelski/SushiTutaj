@@ -15,6 +15,15 @@ const nowPL = () => toZonedTime(new Date(), TZ);
 
 type Props = { isOpen: boolean; onClose: () => void; id?: string };
 
+/** Typ blokady z restaurant_blocked_times */
+type BlockedSlot = {
+  block_date: string; // YYYY-MM-DD
+  full_day: boolean;
+  from_time: string | null; // HH:mm:ss
+  to_time: string | null;
+  kind: "reservation" | "order" | "both";
+};
+
 /** Sloty 11:30–22:00 co 90 min, max 5 rezerwacji na slot */
 const SLOT_DURATION_MIN = 90;
 const START_HOUR = 12;
@@ -24,8 +33,43 @@ const SLOT_COUNT =
   Math.floor(((END_HOUR * 60) - (START_HOUR * 60 + START_MIN)) / SLOT_DURATION_MIN) + 1;
 const MAX_PER_SLOT = 5;
 
-/** Minimalny czas wyprzedzenia rezerwacji (w minutach) – żeby nie było „za 15 minut” */
+/** Minimalny czas wyprzedzenia rezerwacji (w minutach) – żeby nie było „za 15 minut" */
 const MIN_LEAD_MIN = 60;
+
+/** Sprawdza czy dany slot (HH:mm) jest zablokowany dla danego dnia */
+function isSlotBlocked(
+  dayKey: string,
+  slotHHMM: string,
+  blocks: BlockedSlot[]
+): boolean {
+  const [sh, sm] = slotHHMM.split(":").map(Number);
+  const slotMinutes = sh * 60 + sm;
+
+  return blocks.some((b) => {
+    if (b.block_date !== dayKey) return false;
+    // tylko blokady dla rezerwacji lub obu
+    if (b.kind !== "reservation" && b.kind !== "both") return false;
+
+    if (b.full_day) return true;
+
+    if (!b.from_time || !b.to_time) return false;
+    const [fh, fm] = b.from_time.split(":").map(Number);
+    const [th, tm] = b.to_time.split(":").map(Number);
+    const fromM = fh * 60 + fm;
+    const toM = th * 60 + tm;
+
+    return slotMinutes >= fromM && slotMinutes <= toM;
+  });
+}
+
+/** Sprawdza czy cały dzień jest zablokowany */
+function isDayFullyBlocked(dayKey: string, blocks: BlockedSlot[]): boolean {
+  return blocks.some((b) => {
+    if (b.block_date !== dayKey) return false;
+    if (b.kind !== "reservation" && b.kind !== "both") return false;
+    return b.full_day === true;
+  });
+}
 
 /* ===== helpers ===== */
 const getSlugFromPath = () => {
@@ -71,6 +115,9 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  /** Blokady z restaurant_blocked_times */
+  const [blockedSlots, setBlockedSlots] = useState<BlockedSlot[]>([]);
 
   /* ===== init: określ restaurację po slugu ===== */
   useEffect(() => {
@@ -131,6 +178,33 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
       stop = true;
     };
   }, [currentMonth, restaurantId]);
+
+  /* ===== pobierz blokady z publicznego API ===== */
+  useEffect(() => {
+    if (!restaurantSlug) {
+      setBlockedSlots([]);
+      return;
+    }
+    let stop = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/public/blocked-times?restaurant=${encodeURIComponent(restaurantSlug)}`,
+          { cache: "no-store" }
+        );
+        if (!res.ok) throw new Error("Błąd pobierania blokad");
+        const json = await res.json();
+        if (stop) return;
+        setBlockedSlots(json?.slots ?? []);
+      } catch (e: any) {
+        console.error("Błąd pobierania blokad:", e?.message || e);
+        if (!stop) setBlockedSlots([]);
+      }
+    })();
+    return () => {
+      stop = true;
+    };
+  }, [restaurantSlug]);
 
   /* ===== obłożenie slotów dnia per restauracja ===== */
   useEffect(() => {
@@ -208,7 +282,7 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
     return slots;
   };
 
-  /** Koloryzacja dni (pełny dzień = wszystkie sloty zajęte) */
+  /** Koloryzacja dni (pełny dzień = wszystkie sloty zajęte LUB zablokowany) */
   const modifiers = {
     past: (day: Date) =>
       format(day, "yyyy-MM-dd") <
@@ -217,11 +291,16 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
       const key = format(day, "yyyy-MM-dd");
       return (countsPerDay[key] || 0) >= MAX_PER_SLOT * SLOT_COUNT;
     },
+    blocked: (day: Date) => {
+      const key = format(day, "yyyy-MM-dd");
+      return isDayFullyBlocked(key, blockedSlots);
+    },
   } as const;
 
   const modifiersClassNames = {
     past: "opacity-40",
     full: "bg-red-200 text-red-700",
+    blocked: "bg-gray-300 text-gray-500 line-through cursor-not-allowed",
   } as const;
 
   // walidacje
@@ -368,9 +447,16 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
                 month={currentMonth}
                 onMonthChange={setCurrentMonth}
                 selected={selectedDate}
-                onSelect={setSelectedDate}
+                onSelect={(day) => {
+                  // nie pozwól wybrać zablokowanego dnia
+                  if (day && isDayFullyBlocked(format(day, "yyyy-MM-dd"), blockedSlots)) {
+                    return;
+                  }
+                  setSelectedDate(day);
+                }}
                 locale={pl}
                 fromDate={nowPL()}
+                disabled={(day) => isDayFullyBlocked(format(day, "yyyy-MM-dd"), blockedSlots)}
                 modifiers={modifiers as any}
                 modifiersClassNames={modifiersClassNames as any}
                 styles={{
@@ -401,13 +487,16 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
                 ) : (
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                     {generateSlots().map((slot) => {
+                      const dayKey = format(selectedDate, "yyyy-MM-dd");
                       const full = (countsPerSlot[slot] || 0) >= MAX_PER_SLOT;
+                      const blocked = isSlotBlocked(dayKey, slot, blockedSlots);
+                      const disabled = full || blocked;
                       const active = selectedTime === slot;
                       return (
                         <button
                           key={slot}
                           type="button"
-                          disabled={full}
+                          disabled={disabled}
                           onClick={() => setSelectedTime(slot)}
                           className={[
                             "h-11 rounded-full text-sm font-semibold transition",
@@ -415,13 +504,20 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
                             active
                               ? "text-white [background:linear-gradient(180deg,#b31217_0%,#7a0b0b_100%)] shadow-[0_10px_22px_rgba(0,0,0,.20),inset_0_1px_0_rgba(255,255,255,.15)]"
                               : "bg-white text-black hover:bg-black/5",
-                            full && "opacity-50 cursor-not-allowed",
+                            disabled && "opacity-50 cursor-not-allowed",
+                            blocked && "line-through bg-gray-100",
                           ].join(" ")}
-                          title={full ? "Ten termin jest już pełny" : slot}
+                          title={
+                            blocked
+                              ? "Ten termin jest zablokowany"
+                              : full
+                              ? "Ten termin jest już pełny"
+                              : slot
+                          }
                         >
                           {slot}
                           <span className="sr-only">
-                            {full ? " (pełny)" : ""}
+                            {blocked ? " (zablokowany)" : full ? " (pełny)" : ""}
                           </span>
                         </button>
                       );
