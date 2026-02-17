@@ -169,26 +169,53 @@ const extractSetNumber = (name: string | null | undefined): number | null => {
 };
 
 // START: lunch time helpers (Warsaw)
+// Lunche dostępne: pon-pt 12:00-16:00
+const LUNCH_START_MINUTES = 12 * 60; // 12:00
 const LUNCH_CUTOFF_MINUTES = 16 * 60; // 16:00
 
-const getWarsawMinutesNow = () => {
+const getWarsawTimeInfo = () => {
   try {
-    const parts = new Intl.DateTimeFormat("pl-PL", {
+    const now = new Date();
+    
+    // Pobierz dzień tygodnia w strefie Warsaw
+    const dayParts = new Intl.DateTimeFormat("pl-PL", {
+      timeZone: "Europe/Warsaw",
+      weekday: "short",
+    }).formatToParts(now);
+    
+    const timeParts = new Intl.DateTimeFormat("pl-PL", {
       timeZone: "Europe/Warsaw",
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
-    }).formatToParts(new Date());
+    }).formatToParts(now);
 
-    const hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
-    const mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+    const hh = Number(timeParts.find((p) => p.type === "hour")?.value ?? "0");
+    const mm = Number(timeParts.find((p) => p.type === "minute")?.value ?? "0");
+    const minutes = hh * 60 + mm;
+    
+    // Sprawdź dzień tygodnia (sob/ndz = weekend)
+    const weekday = dayParts.find((p) => p.type === "weekday")?.value ?? "";
+    const isWeekend = weekday === "sob" || weekday === "niedz" || weekday === "sob." || weekday === "niedz." || weekday === "so" || weekday === "nd";
 
-    return hh * 60 + mm;
+    return { minutes, isWeekend };
   } catch {
     // fallback: czas lokalny przeglądarki
     const d = new Date();
-    return d.getHours() * 60 + d.getMinutes();
+    const day = d.getDay();
+    const isWeekend = day === 0 || day === 6; // 0 = niedziela, 6 = sobota
+    return { 
+      minutes: d.getHours() * 60 + d.getMinutes(),
+      isWeekend 
+    };
   }
+};
+
+// Sprawdza czy lunche są obecnie NIEDOSTĘPNE
+const isLunchUnavailable = () => {
+  const { minutes, isWeekend } = getWarsawTimeInfo();
+  // Niedostępne gdy: weekend LUB poza godzinami 12:00-16:00
+  return isWeekend || minutes < LUNCH_START_MINUTES || minutes >= LUNCH_CUTOFF_MINUTES;
 };
 
 const isLunchProduct = (p: Product) => {
@@ -254,12 +281,12 @@ export default function MenuSection() {
   const isMobile = useIsMobile();
 
   // START: lunchClosed state (Warsaw time)
+  // Lunche dostępne tylko pon-pt 12:00-16:00
 const [lunchClosed, setLunchClosed] = useState(false);
 
 useEffect(() => {
   const tick = () => {
-    const mins = getWarsawMinutesNow();
-    setLunchClosed(mins >= LUNCH_CUTOFF_MINUTES);
+    setLunchClosed(isLunchUnavailable());
   };
 
   tick();
