@@ -24,8 +24,7 @@
         "VIBRATE",
         "RECEIVE_BOOT_COMPLETED",
         "WAKE_LOCK"
-      ],
-      "useNextNotificationsApi": true
+      ]
     },
     "ios": {
       "bundleIdentifier": "com.sushitutaj.admin",
