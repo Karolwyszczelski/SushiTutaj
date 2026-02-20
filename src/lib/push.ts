@@ -59,33 +59,33 @@ export async function sendPushForRestaurant(
   restaurantId: string,
   payload: PushPayload
 ): Promise<void> {
-  if (!HAS_VAPID) {
-    console.warn("[push] Pomijam - brak kluczy VAPID");
-    return;
-  }
-
   console.log("[push] Wysyłam dla restauracji:", restaurantId);
 
-  const { data, error } = await supabaseAdmin
-    .from("admin_push_subscriptions")
-    .select("id, endpoint, subscription")
-    .eq("restaurant_id", restaurantId)
-    .limit(500);
+  // =========================================================================
+  // WEB PUSH (VAPID)
+  // =========================================================================
+  let subs: AdminPushSubscriptionRow[] = [];
 
-  if (error) {
-    console.error("[push] błąd pobierania subskrypcji:", error.message);
-    return;
+  if (!HAS_VAPID) {
+    console.warn("[push] Pomijam web-push - brak kluczy VAPID");
+  } else {
+    const { data, error } = await supabaseAdmin
+      .from("admin_push_subscriptions")
+      .select("id, endpoint, subscription")
+      .eq("restaurant_id", restaurantId)
+      .limit(500);
+
+    if (error) {
+      console.error("[push] błąd pobierania subskrypcji:", error.message);
+    } else {
+      subs = (data as AdminPushSubscriptionRow[]) || [];
+    }
+
+    if (!subs.length) {
+      console.warn("[push] Brak web-push subskrypcji dla restauracji:", restaurantId);
+    }
   }
-
-  const subs = (data as AdminPushSubscriptionRow[]) || [];
   
-  if (!subs.length) {
-    console.warn("[push] Brak subskrypcji dla restauracji:", restaurantId);
-    return;
-  }
-  
-  console.log(`[push] Znaleziono ${subs.length} subskrypcji dla restauracji:`, restaurantId);
-
   // Generuj unikalne ID dla tego powiadomienia - gwarantuje że SW nie połączy go z innym
   const uniqueNotificationId = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   

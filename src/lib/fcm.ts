@@ -160,7 +160,7 @@ async function sendExpoPush(
   // Expo Push API — batch do 100
   const messages = tokens.map((token) => ({
     to: token,
-    sound: "new-order.wav",
+    sound: "new-order.mp3",
     title: payload.title || "Nowe zamówienie",
     body: payload.body || "Pojawiło się nowe zamówienie.",
     data: {

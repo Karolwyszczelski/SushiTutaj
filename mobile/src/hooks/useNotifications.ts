@@ -85,7 +85,7 @@ export function useNotifications(): UseNotificationsReturn {
         lockscreenVisibility:
           Notifications.AndroidNotificationVisibility.PUBLIC,
         bypassDnd: true, // Przebija tryb Nie Przeszkadzać
-        sound: "new-order.wav", // Niestandardowy dźwięk (z assets)
+        sound: "new-order.mp3", // Niestandardowy dźwięk (z assets)
         enableVibrate: true,
         enableLights: true,
       });
@@ -186,12 +186,7 @@ export function useNotifications(): UseNotificationsReturn {
               ? "expo"
               : "fcm",
             restaurant_slug: slug,
-            device_info: {
-              platform: Platform.OS,
-              model: Device.modelName,
-              os_version: Device.osVersion,
-              device_name: Device.deviceName,
-            },
+            device_info: `${Platform.OS} | ${Device.modelName || "unknown"} | ${Device.osVersion || "?"}`,
           }),
         });
 

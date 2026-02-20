@@ -403,6 +403,12 @@ export default function PushServiceWorkerManager() {
     mountedRef.current = true;
 
     const init = async () => {
+      // 0. Pomiń SW push w natywnej apce — FCM obsługuje push natywnie
+      if (typeof window !== "undefined" && (window as any).__NATIVE_FCM__) {
+        console.log("[PushSWManager] Natywna apka wykryta (__NATIVE_FCM__) — pomijam rejestrację SW push");
+        return;
+      }
+
       // 1. Rejestruj SW
       const registration = await registerServiceWorker();
       if (!mountedRef.current || !registration) return;

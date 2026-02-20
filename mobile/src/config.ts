@@ -11,7 +11,7 @@
 // URL panelu admina (Next.js) — WebView będzie to wyświetlać
 export const ADMIN_URL = __DEV__
   ? "http://192.168.1.100:3000"          // <-- Zmień na IP dev maszyny
-  : "https://twojadomena.pl";             // <-- Zmień na produkcyjny URL
+  : "https://www.sushitutaj.pl";         // Produkcyjny URL
 
 // Endpoint do rejestracji tokenu FCM na serwerze
 export const FCM_REGISTER_URL = `${ADMIN_URL}/api/admin/push/fcm-register`;
