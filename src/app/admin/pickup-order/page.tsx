@@ -1656,6 +1656,7 @@ const TimeQuickSet: React.FC<{
 }> = ({ order, mode, disabled, onApply }) => {
   // UWAGA: używamy konkretnych pól zamiast całego obiektu order,
   // żeby useMemo nie przeliczał się przy każdym pollingu (nowa referencja order)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const requested = useMemo(() => {
     const t = formatClientRequestedTime(order);
     return t !== "-" && t !== "Jak najszybciej" ? t : "";

@@ -2584,6 +2584,7 @@ const fetchOrders = useCallback(
       }
     }
   },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   [booted, page, perPage, restaurantSlug, urlSlug, sortOrder, dingOnce, supabase]
 );
 

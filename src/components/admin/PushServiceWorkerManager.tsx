@@ -79,8 +79,7 @@ export default function PushServiceWorkerManager() {
   const lastSyncedSlugRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
   const subscriptionCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const wakeLockRef = useRef<any>(null);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const consecutiveFailsRef = useRef(0);
 
   /**
