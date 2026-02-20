@@ -161,7 +161,7 @@ export default function PushServiceWorkerManager() {
         try {
           sub = await registrationRef.current.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as BufferSource,
           });
           console.log("[PushSWManager] ✅ Nowa subskrypcja utworzona");
         } catch (subErr) {
@@ -573,7 +573,7 @@ export default function PushServiceWorkerManager() {
         wakeLockRef.current = await (navigator as any).wakeLock.request("screen");
         console.log("[PushSWManager] 🔒 WakeLock aktywny - ekran nie zgaśnie");
 
-        wakeLockRef.current.addEventListener("release", () => {
+        wakeLockRef.current?.addEventListener("release", () => {
           console.log("[PushSWManager] WakeLock zwolniony");
           wakeLockRef.current = null;
           // Ponów po 2 sekundach jeśli strona jest wciąż widoczna
