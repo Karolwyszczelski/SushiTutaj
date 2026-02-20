@@ -85,7 +85,7 @@ export function useNotifications(): UseNotificationsReturn {
         lockscreenVisibility:
           Notifications.AndroidNotificationVisibility.PUBLIC,
         bypassDnd: true, // Przebija tryb Nie Przeszkadzać
-        sound: "new-order.mp3", // Niestandardowy dźwięk (z assets)
+        sound: "new_order.mp3", // Niestandardowy dźwięk (z assets)
         enableVibrate: true,
         enableLights: true,
       });

@@ -58,7 +58,7 @@ module.exports = {
         {
           icon: "./assets/notification-icon.png",
           color: "#000000",
-          sounds: ["./assets/new-order.mp3"],
+          sounds: ["./assets/new_order.mp3"],
           defaultChannel: "orders",
           enableBackgroundRemoteNotifications: true,
         },
