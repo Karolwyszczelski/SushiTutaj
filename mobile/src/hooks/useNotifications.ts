@@ -4,6 +4,7 @@ import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import { Platform, AppState, AppStateStatus } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
 import {
   FCM_REGISTER_URL,
   NOTIFICATION_CHANNEL_ID,
@@ -120,8 +121,15 @@ export function useNotifications(): UseNotificationsReturn {
 
     // Uzyskaj Expo Push Token (wrapper na FCM/APNs)
     try {
+      const easProjectId = Constants.expoConfig?.extra?.eas?.projectId;
+      if (!easProjectId) {
+        console.error("[FCM] Brak projectId w app.config.js → extra.eas.projectId");
+        setError("Brak konfiguracji push (projectId)");
+        return null;
+      }
+
       const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: undefined, // Expo automatycznie użyje projectId z app.json
+        projectId: easProjectId,
       });
 
       const token = tokenData.data;
