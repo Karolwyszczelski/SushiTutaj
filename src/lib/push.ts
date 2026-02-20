@@ -2,6 +2,7 @@
 import "server-only";
 import webpush from "web-push";
 import { createClient } from "@supabase/supabase-js";
+import { sendFcmForRestaurant } from "@/lib/fcm";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -231,5 +232,20 @@ export async function sendPushForRestaurant(
     if (delErr) {
       console.error("[push] cleanup delete error:", delErr.message);
     }
+  }
+
+  // =========================================================================
+  // FCM / Expo Push — wysyłaj równolegle do natywnych urządzeń
+  // Niezależne od web-push; błędy FCM nie blokują web-push i odwrotnie
+  // =========================================================================
+  try {
+    await sendFcmForRestaurant(restaurantId, {
+      type: basePayload.type,
+      title: basePayload.title,
+      body: basePayload.body,
+      url: basePayload.url,
+    });
+  } catch (fcmErr: any) {
+    console.error("[push] FCM send error (non-fatal):", fcmErr?.message || fcmErr);
   }
 }

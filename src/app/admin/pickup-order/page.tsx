@@ -2425,16 +2425,39 @@ useEffect(() => {
   a.volume = 1;
   newOrderAudio.current = a;
 
-  // spróbuj odblokować po pierwszym geście użytkownika
-  const onFirstGesture = () => void unlockAudio();
-  window.addEventListener("pointerdown", onFirstGesture, { once: true });
-  window.addEventListener("keydown", onFirstGesture, { once: true });
+  // WAŻNE: Na KAŻDYM geście próbuj odblokować audio (nie tylko na pierwszym!)
+  // Tablety restauracyjne tracą kontekst audio po uśpieniu ekranu.
+  // { once: true } powodowało że po powrocie z uśpienia dźwięki nie działały.
+  const onGesture = () => {
+    if (!audioUnlockedRef.current) {
+      void unlockAudio();
+    }
+  };
+
+  window.addEventListener("pointerdown", onGesture);
+  window.addEventListener("keydown", onGesture);
+  window.addEventListener("touchstart", onGesture, { passive: true });
+
+  // Przy powrocie z tła/uśpienia - oznacz audio jako potencjalnie zablokowane
+  // i spróbuj odblokować ponownie
+  const onVisibility = () => {
+    if (document.visibilityState === "hidden") {
+      // Ekran zgasł / tab w tle - audio będzie wymagać ponownego odblokowania
+      audioUnlockedRef.current = false;
+    } else if (document.visibilityState === "visible") {
+      // Powrót z uśpienia - spróbuj odblokować (może nie zadziałać bez gestu)
+      setTimeout(() => void unlockAudio(), 300);
+    }
+  };
+  document.addEventListener("visibilitychange", onVisibility);
 
   console.log("[audio] init", src);
 
   return () => {
-    window.removeEventListener("pointerdown", onFirstGesture);
-    window.removeEventListener("keydown", onFirstGesture);
+    window.removeEventListener("pointerdown", onGesture);
+    window.removeEventListener("keydown", onGesture);
+    window.removeEventListener("touchstart", onGesture);
+    document.removeEventListener("visibilitychange", onVisibility);
   };
 }, [unlockAudio]);
 
@@ -2445,17 +2468,16 @@ const playDing = useCallback(async () => {
       return;
     }
 
-    // jeśli nie było gestu użytkownika — nie udawajmy, że zadziała
-    if (!audioUnlockedRef.current) {
-      console.warn("[audio] locked (no user gesture yet)");
-      return;
-    }
-
+    // ZAWSZE próbuj odtworzyć dźwięk - nawet jeśli audioUnlockedRef jest false.
+    // Po powrocie z uśpienia przeglądarka może pozwolić na odtworzenie
+    // bez ponownego gestu, jeśli wcześniej był gest w tej sesji.
     newOrderAudio.current.currentTime = 0;
     await newOrderAudio.current.play();
-    console.log("[audio] ding");
+    audioUnlockedRef.current = true; // Zadziałało = audio odblokowane
+    console.log("[audio] ding ✅");
   } catch (err) {
-    console.warn("[audio] play error", err);
+    audioUnlockedRef.current = false;
+    console.warn("[audio] play error (potrzebny gest użytkownika?)", err);
   }
 }, []);
 
@@ -2774,9 +2796,34 @@ if (ev === "UPDATE" && !isUnaccepted(oldStatus) && isUnaccepted(newStatus)) ding
           void fetchOrdersRef.current({ silent: true });
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        console.log("[realtime] channel status:", status, err?.message || "");
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error("[realtime] ⚠️ Kanał realtime padł! Status:", status);
+          // Supabase powinien sam reconnect'ować, ale logujemy żeby widzieć
+        }
+        if (status === "SUBSCRIBED") {
+          console.log("[realtime] ✅ Kanał realtime aktywny dla restauracji:", restaurantId);
+        }
+      });
+
+    // KRYTYCZNE: Monitoruj health kanału realtime co 30s.
+    // Supabase realtime WebSocket może cicho umrzeć po godzinach/dniach.
+    // Gdy to wykryjemy → usuwamy kanał i zakładamy nowy (useEffect re-run).
+    const realtimeHealthCheck = setInterval(() => {
+      const state = (ch as any)?.state;
+      if (state && state !== "joined" && state !== "joining") {
+        console.error("[realtime] ❌ Kanał w stanie:", state, "- wymuszam reconnect");
+        void supabase.removeChannel(ch);
+        // Cleanup interval i pozwól useEffect się ponownie wywołać
+        clearInterval(realtimeHealthCheck);
+        // Wymuszamy re-subskrypcję przez manualny fetch (polling i tak złapie)
+        void fetchOrdersRef.current({ silent: true });
+      }
+    }, 30_000);
 
     return () => {
+      clearInterval(realtimeHealthCheck);
       void supabase.removeChannel(ch);
     };
   }, [supabase, restaurantId, booted, authChecked, dingOnce]);

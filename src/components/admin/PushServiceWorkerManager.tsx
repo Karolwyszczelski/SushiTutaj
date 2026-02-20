@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
+import { getSupabaseBrowser } from "@/lib/supabase-browser";
 
 /**
  * Komponent zarządzający Service Workerem dla push notifications.
@@ -19,9 +20,30 @@ import { useEffect, useRef, useCallback } from "react";
 
 const SW_PATH = "/sw.js";
 const SW_UPDATE_INTERVAL = 60 * 60 * 1000; // Sprawdzaj aktualizacje SW co 1 godzinę
-const PING_INTERVAL = 5 * 60 * 1000; // Ping SW co 5 minut żeby utrzymać go aktywnym
+const PING_INTERVAL = 4 * 60 * 1000; // Ping SW co 4 minuty żeby utrzymać go aktywnym
 const PERIODIC_SYNC_TAG = "push-keepalive";
 const PERIODIC_SYNC_MIN_INTERVAL = 12 * 60 * 60 * 1000; // 12 godzin (minimum dla periodic sync)
+
+// === KRYTYCZNE: Auto-odnowienie subskrypcji push ===
+// Subskrypcje FCM/Mozilla WYGASAJĄ cicho po kilku dniach.
+// Chrome NIE odpala 'pushsubscriptionchange' niezawodnie.
+// Ten interwał to GŁÓWNY mechanizm zapewniający niezawodność powiadomień.
+const SUBSCRIPTION_CHECK_INTERVAL = 2 * 60 * 1000; // Sprawdzaj subskrypcję co 2 minuty
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "";
+
+/**
+ * Konwersja klucza VAPID z base64url na Uint8Array
+ */
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 /**
  * Pobiera restaurant_slug z różnych źródeł (cookie, localStorage)
@@ -56,6 +78,10 @@ export default function PushServiceWorkerManager() {
   const slugSyncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastSyncedSlugRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const subscriptionCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const wakeLockRef = useRef<any>(null);
+  const consecutiveFailsRef = useRef(0);
 
   /**
    * Wysyła restaurant_slug do Service Workera (IndexedDB)
@@ -103,6 +129,117 @@ export default function PushServiceWorkerManager() {
       return false;
     }
   }, []);
+
+  /**
+   * KRYTYCZNE: Walidacja i automatyczne odnowienie subskrypcji push.
+   *
+   * To jest GŁÓWNY mechanizm zapewniający niezawodność powiadomień.
+   * Subskrypcje FCM/Mozilla mogą wygasać po kilku dniach bez powiadamiania klienta.
+   * Chrome NIE odpala 'pushsubscriptionchange' niezawodnie.
+   * Dlatego MUSIMY aktywnie sprawdzać i odnawiać subskrypcje co 2 minuty.
+   *
+   * Jak robią to profesjonalne systemy POS (Square, Toast, iZettle):
+   * - Aktywna walidacja subskrypcji w interwale
+   * - Automatyczne odnowienie bez interakcji użytkownika
+   * - Heartbeat do serwera potwierdzający że kanał push żyje
+   * - Fallback na polling gdy push jest nieosiągalny
+   */
+  const validateAndRenewSubscription = useCallback(async (): Promise<boolean> => {
+    if (!registrationRef.current) return false;
+    if (!VAPID_PUBLIC_KEY) return false;
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return false;
+
+    try {
+      // 1. Sprawdź czy subskrypcja istnieje
+      let sub = await registrationRef.current.pushManager.getSubscription();
+
+      if (!sub) {
+        consecutiveFailsRef.current++;
+        console.warn(
+          `[PushSWManager] ⚠️ Subskrypcja WYGASŁA/BRAK! Auto-odnowienie... (próba #${consecutiveFailsRef.current})`
+        );
+
+        try {
+          sub = await registrationRef.current.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+          });
+          console.log("[PushSWManager] ✅ Nowa subskrypcja utworzona");
+        } catch (subErr) {
+          console.error("[PushSWManager] ❌ Nie udało się utworzyć subskrypcji:", subErr);
+          return false;
+        }
+      } else {
+        if (consecutiveFailsRef.current > 0) {
+          console.log(
+            "[PushSWManager] ✅ Subskrypcja znów aktywna po",
+            consecutiveFailsRef.current,
+            "próbach"
+          );
+        }
+        consecutiveFailsRef.current = 0;
+      }
+
+      // 2. Synchronizuj z serwerem (działa też jako heartbeat - serwer aktualizuje created_at)
+      const slug = getRestaurantSlug();
+      if (!slug) {
+        // Brak slug = nie wiemy do której restauracji przypisać
+        return true; // subskrypcja jest OK ale nie możemy zsynchronizować
+      }
+
+      const payload =
+        typeof sub.toJSON === "function"
+          ? sub.toJSON()
+          : JSON.parse(JSON.stringify(sub));
+
+      const doPost = () =>
+        fetch("/api/admin/push/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          cache: "no-store",
+          body: JSON.stringify({
+            subscription: payload,
+            restaurant_slug: slug,
+          }),
+        });
+
+      let res = await doPost();
+
+      // KRYTYCZNE: Po nocy/uśpieniu sesja Supabase wygasa.
+      // Musimy automatycznie odświeżyć i spróbować ponownie.
+      if (res.status === 401) {
+        console.warn("[PushSWManager] 401 - odświeżam sesję Supabase...");
+        try {
+          const sb = getSupabaseBrowser();
+          const { data } = await sb.auth.refreshSession();
+          if (data?.session) {
+            console.log("[PushSWManager] ✅ Sesja odświeżona, ponawiam POST...");
+            res = await doPost();
+          } else {
+            console.error("[PushSWManager] ❌ Nie udało się odświeżyć sesji");
+            return false;
+          }
+        } catch (refreshErr) {
+          console.error("[PushSWManager] ❌ refreshSession error:", refreshErr);
+          return false;
+        }
+      }
+
+      if (!res.ok) {
+        console.error("[PushSWManager] Synchronizacja subskrypcji nieudana:", res.status);
+        return false;
+      }
+
+      // 3. Synchronizuj slug z SW
+      await syncRestaurantSlugToSW(false);
+
+      return true;
+    } catch (err) {
+      console.error("[PushSWManager] validateAndRenewSubscription error:", err);
+      return false;
+    }
+  }, [syncRestaurantSlugToSW]);
 
   /**
    * Rejestruje Service Worker z opcjami no-cache
@@ -171,7 +308,12 @@ export default function PushServiceWorkerManager() {
       return new Promise<void>((resolve) => {
         messageChannel.port1.onmessage = (event) => {
           if (event.data?.type === "PONG") {
-            console.log("[PushSWManager] SW pong received");
+            const { subscriptionActive, endpoint } = event.data;
+            if (subscriptionActive === false) {
+              console.warn("[PushSWManager] ⚠️ SW reports subscription INACTIVE");
+            } else {
+              console.log("[PushSWManager] SW pong ✅ endpoint:", endpoint || "?");
+            }
           }
           resolve();
         };
@@ -309,6 +451,14 @@ export default function PushServiceWorkerManager() {
         void syncRestaurantSlugToSW(false);
       }, 30000); // Co 30 sekund sprawdzaj czy slug się zmienił
 
+      // 10. KRYTYCZNE: Walidacja subskrypcji push co 2 minuty
+      // To jest GŁÓWNY mechanizm gwarantujący że push działa nawet po dniach/tygodniach.
+      // Bez tego subskrypcje wygasają cicho i powiadomienia przestają dochodzić.
+      await validateAndRenewSubscription();
+      subscriptionCheckIntervalRef.current = setInterval(() => {
+        void validateAndRenewSubscription();
+      }, SUBSCRIPTION_CHECK_INTERVAL);
+
       console.log("[PushSWManager] Initialization complete");
     };
 
@@ -331,6 +481,11 @@ export default function PushServiceWorkerManager() {
         clearInterval(slugSyncIntervalRef.current);
         slugSyncIntervalRef.current = null;
       }
+
+      if (subscriptionCheckIntervalRef.current) {
+        clearInterval(subscriptionCheckIntervalRef.current);
+        subscriptionCheckIntervalRef.current = null;
+      }
     };
   }, [
     registerServiceWorker,
@@ -340,17 +495,22 @@ export default function PushServiceWorkerManager() {
     checkForUpdates,
     pingServiceWorker,
     syncRestaurantSlugToSW,
+    validateAndRenewSubscription,
   ]);
 
   // Efekt - ping przy visibility change (gdy użytkownik wraca do karty)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        console.log("[PushSWManager] Tab became visible, pinging SW...");
+        console.log("[PushSWManager] Tab became visible, pinging SW and checking subscription...");
         void pingServiceWorker();
         void checkForUpdates();
         // Synchronizuj slug przy powrocie do karty (mogło się zmienić w innym tabie)
         void syncRestaurantSlugToSW(false);
+        // KRYTYCZNE: Sprawdź subskrypcję po powrocie z tła/uśpienia.
+        // To jest kluczowy moment - urządzenie mogło stracić subskrypcję w tle
+        // (szczególnie tablety restauracyjne które śpią przez noc)
+        void validateAndRenewSubscription();
       }
     };
 
@@ -359,7 +519,7 @@ export default function PushServiceWorkerManager() {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [pingServiceWorker, checkForUpdates, syncRestaurantSlugToSW]);
+  }, [pingServiceWorker, checkForUpdates, syncRestaurantSlugToSW, validateAndRenewSubscription]);
 
   // Efekt - ping przy online event (gdy przywrócono połączenie)
   useEffect(() => {
@@ -369,6 +529,9 @@ export default function PushServiceWorkerManager() {
       void pingServiceWorker();
       // Synchronizuj slug przy powrocie online
       void syncRestaurantSlugToSW(true);
+      // KRYTYCZNE: Sprawdź subskrypcję po powrocie online
+      // Połączenie mogło być zerwane wystarczająco długo żeby subskrypcja wygasła
+      void validateAndRenewSubscription();
     };
 
     window.addEventListener("online", handleOnline);
@@ -376,7 +539,66 @@ export default function PushServiceWorkerManager() {
     return () => {
       window.removeEventListener("online", handleOnline);
     };
-  }, [registerBackgroundSync, pingServiceWorker, syncRestaurantSlugToSW]);
+  }, [registerBackgroundSync, pingServiceWorker, syncRestaurantSlugToSW, validateAndRenewSubscription]);
+
+  // WakeLock - utrzymuje ekran tabletu restauracyjnego włączony
+  // Zapobiega wygaszaniu ekranu i uśpieniu urządzenia.
+  // Profesjonalne systemy POS (Square, Toast) robią to samo.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("wakeLock" in navigator)) {
+      console.log("[PushSWManager] WakeLock nie jest wspierany w tej przeglądarce");
+      return;
+    }
+
+    let active = true;
+
+    const requestWakeLock = async () => {
+      if (!active) return;
+      if (document.visibilityState !== "visible") return;
+
+      try {
+        // Zwolnij stary lock jeśli istnieje
+        if (wakeLockRef.current) {
+          try {
+            await wakeLockRef.current.release();
+          } catch {}
+          wakeLockRef.current = null;
+        }
+
+        wakeLockRef.current = await (navigator as any).wakeLock.request("screen");
+        console.log("[PushSWManager] 🔒 WakeLock aktywny - ekran nie zgaśnie");
+
+        wakeLockRef.current.addEventListener("release", () => {
+          console.log("[PushSWManager] WakeLock zwolniony");
+          wakeLockRef.current = null;
+          // Ponów po 2 sekundach jeśli strona jest wciąż widoczna
+          if (active && document.visibilityState === "visible") {
+            setTimeout(() => void requestWakeLock(), 2000);
+          }
+        });
+      } catch (err: any) {
+        console.warn("[PushSWManager] WakeLock error:", err?.message || err);
+      }
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void requestWakeLock();
+      }
+    };
+
+    void requestWakeLock();
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      active = false;
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().catch(() => {});
+        wakeLockRef.current = null;
+      }
+    };
+  }, []);
 
   // Ten komponent nie renderuje nic widocznego
   return null;

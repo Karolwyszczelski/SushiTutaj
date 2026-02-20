@@ -132,8 +132,28 @@ self.addEventListener("message", (event) => {
   
   switch (type) {
     case "PING":
-      // Keep-alive ping od klienta
-      event.ports[0]?.postMessage({ type: "PONG", timestamp: Date.now() });
+      // Keep-alive ping od klienta + weryfikacja subskrypcji push
+      (async () => {
+        try {
+          const sub = await self.registration.pushManager.getSubscription();
+          event.ports[0]?.postMessage({
+            type: "PONG",
+            timestamp: Date.now(),
+            subscriptionActive: !!sub,
+            endpoint: sub ? sub.endpoint.slice(-30) : null,
+          });
+          if (!sub) {
+            console.warn("[sw] PING: subscription is NULL - needs renewal!");
+          }
+        } catch (err) {
+          event.ports[0]?.postMessage({
+            type: "PONG",
+            timestamp: Date.now(),
+            subscriptionActive: false,
+            error: err.message,
+          });
+        }
+      })();
       break;
       
     case "SKIP_WAITING":

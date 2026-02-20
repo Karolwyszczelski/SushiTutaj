@@ -42,3 +42,13 @@ next-env.d.ts
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# Firebase service account keys (NIGDY nie commituj!)
+*-firebase-adminsdk-*.json
+serviceAccountKey*.json
+mobile/google-services.json
+
+# Mobile app build artifacts
+mobile/android/
+mobile/ios/
+mobile/.expo/
