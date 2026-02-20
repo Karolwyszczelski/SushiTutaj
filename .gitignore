@@ -46,8 +46,7 @@ next-env.d.ts
 # Firebase service account keys (NIGDY nie commituj!)
 *-firebase-adminsdk-*.json
 serviceAccountKey*.json
-# google-services.json jest bezpieczny do commitowania (Google potwierdza)
-# mobile/google-services.json
+mobile/google-services.json
 
 # Mobile app build artifacts
 mobile/android/
