@@ -4,8 +4,8 @@
 import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import useCartStore from "@/store/cartStore";
-import { useMobileNavStore } from "@/store/mobileNavStore";
-import MobileBottomNav, { type MobileTab } from "./MobileBottomNav";
+import { useMobileNavStore, type MobileTab } from "@/store/mobileNavStore";
+import MobileBottomNav, { type MobileTab as NavTab } from "./MobileBottomNav";
 import MobileBottomSheet from "./MobileBottomSheet";
 
 // Dynamiczny import widoków zakładek
@@ -81,7 +81,7 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
     [items]
   );
 
-  const handleTabChange = useCallback((tab: MobileTab) => {
+  const handleTabChange = useCallback((tab: NavTab) => {
     // Zamknij wszystkie otwarte modale/sheety przed zmianą
     setCartOpen(false);
     setAccountOpen(false);
@@ -180,7 +180,7 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
 
       {/* Bottom Navigation - zawsze widoczna */}
       <MobileBottomNav
-        activeTab={displayActiveTab as MobileTab}
+        activeTab={displayActiveTab as NavTab}
         onTabChange={handleTabChange}
         cartCount={cartCount}
       />
