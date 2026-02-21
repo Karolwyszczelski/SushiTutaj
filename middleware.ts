@@ -97,19 +97,53 @@ function carryCookies(from: NextResponse, to: NextResponse) {
 const isNativeApp = (req: NextRequest) =>
   (req.headers.get("user-agent") ?? "").includes("SushiTutajAdmin");
 
+/** Restrykcyjny CSP dla admina w przeglądarce (nie WebView) */
+const ADMIN_BROWSER_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://maps.googleapis.com https://www.googletagmanager.com https://www.google-analytics.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "img-src 'self' data: blob: https://*.supabase.co https://maps.googleapis.com https://maps.gstatic.com https://www.googletagmanager.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://maps.googleapis.com https://challenges.cloudflare.com https://www.google-analytics.com https://*.sentry.io",
+  "frame-src 'self' https://challenges.cloudflare.com https://www.google.com",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "upgrade-insecure-requests",
+].join("; ");
+
 /**
  * Dodaj headery anti-clickjacking do response TYLKO dla zwykłych przeglądarek.
  * Natywna appka (WebView) jest pomijana — te headery blokują rendering w WebView.
+ * Dodatkowo: dla natywnej appki USUWAMY restrykcyjny CSP, bo powoduje problemy
+ * z hydracją React w WebView (upgrade-insecure-requests, restrykcyjne connect-src).
  */
 function applyFrameHeaders(res: NextResponse, req: NextRequest) {
-  if (!isNativeApp(req)) {
+  const pathname = req.nextUrl.pathname;
+
+  if (isNativeApp(req)) {
+    // Dla WebView: bardzo permisywny CSP — WebView jest zamkniętym środowiskiem,
+    // nie potrzebuje restrykcji jak przeglądarka publiczna
+    res.headers.set(
+      "Content-Security-Policy",
+      "default-src * 'self' 'unsafe-inline' 'unsafe-eval' data: blob: wss:; img-src * data: blob:; font-src * data:;"
+    );
+    // Usuń X-Frame-Options (blokuje WebView)
+    res.headers.delete("X-Frame-Options");
+  } else {
     res.headers.set("X-Frame-Options", "DENY");
-    // Dodaj frame-ancestors do istniejącego CSP
-    const csp = res.headers.get("Content-Security-Policy");
-    if (csp && !csp.includes("frame-ancestors")) {
-      res.headers.set("Content-Security-Policy", csp + "; frame-ancestors 'none'");
-    } else if (!csp) {
-      res.headers.set("Content-Security-Policy", "frame-ancestors 'none'");
+    // Dla admin w przeglądarce: dodaj pełny CSP (bo next.config.ts go nie ustawia na /admin)
+    if (pathname.startsWith("/admin")) {
+      res.headers.set("Content-Security-Policy", ADMIN_BROWSER_CSP);
+    } else {
+      // Dla non-admin: dodaj frame-ancestors do CSP z next.config.ts
+      const csp = res.headers.get("Content-Security-Policy");
+      if (csp && !csp.includes("frame-ancestors")) {
+        res.headers.set("Content-Security-Policy", csp + "; frame-ancestors 'none'");
+      } else if (!csp) {
+        res.headers.set("Content-Security-Policy", "frame-ancestors 'none'");
+      }
     }
   }
   return res;

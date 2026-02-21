@@ -15,33 +15,43 @@ const nextConfig: NextConfig = {
   },
 
   async headers() {
+    const securityHeaders = [
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      { key: "Permissions-Policy", value: "geolocation=(self), microphone=()" },
+      // HSTS - wymusza HTTPS przez 1 rok, includeSubDomains
+      { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains; preload" },
+    ];
+
+    const cspValue = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://maps.googleapis.com https://www.googletagmanager.com https://www.google-analytics.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "img-src 'self' data: blob: https://*.supabase.co https://maps.googleapis.com https://maps.gstatic.com https://www.googletagmanager.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://maps.googleapis.com https://challenges.cloudflare.com https://www.google-analytics.com https://*.sentry.io",
+      "frame-src 'self' https://challenges.cloudflare.com https://www.google.com",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "upgrade-insecure-requests",
+    ].join("; ");
+
     return [
-      // Security headers for all routes
+      // Security headers + CSP for PUBLIC routes (non-admin)
+      // Admin routes get their CSP from middleware (permissive for WebView)
       {
-        source: "/:path*",
+        source: "/((?!admin).*)",
         headers: [
-          { key: "X-Content-Type-Options", value: "nosniff" },
-          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          { key: "Permissions-Policy", value: "geolocation=(self), microphone=()" },
-          // HSTS - wymusza HTTPS przez 1 rok, includeSubDomains
-          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains; preload" },
-          {
-            key: "Content-Security-Policy",
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://maps.googleapis.com https://www.googletagmanager.com https://www.google-analytics.com",
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              "img-src 'self' data: blob: https://*.supabase.co https://maps.googleapis.com https://maps.gstatic.com https://www.googletagmanager.com",
-              "font-src 'self' https://fonts.gstatic.com",
-              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://maps.googleapis.com https://challenges.cloudflare.com https://www.google-analytics.com https://*.sentry.io",
-              "frame-src 'self' https://challenges.cloudflare.com https://www.google.com",
-              "object-src 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-              "upgrade-insecure-requests",
-            ].join("; "),
-          },
+          ...securityHeaders,
+          { key: "Content-Security-Policy", value: cspValue },
         ],
+      },
+      // Admin routes: only basic security headers, NO CSP
+      // CSP for admin is handled by middleware (different for WebView vs browser)
+      {
+        source: "/admin/:path*",
+        headers: securityHeaders,
       },
       {
         source: "/sw.js",

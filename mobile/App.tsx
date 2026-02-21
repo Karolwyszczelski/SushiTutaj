@@ -42,6 +42,47 @@ try { SplashScreen.preventAutoHideAsync(); } catch {}
  */
 const INJECTED_JS = `
 (function() {
+  // --- 0. DEBUGGER: przechwytuj błędy JS i pokaż na ekranie ---
+  // To jest kluczowe dla diagnozy problemów z hydracją React w WebView
+  window.onerror = function(msg, source, line, col, error) {
+    try {
+      var div = document.getElementById('__webview_debug');
+      if (!div) {
+        div = document.createElement('div');
+        div.id = '__webview_debug';
+        div.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:red;color:white;padding:12px;font-size:12px;font-family:monospace;max-height:50vh;overflow:auto;white-space:pre-wrap;';
+        document.body.appendChild(div);
+      }
+      div.textContent += 'ERROR: ' + msg + '\\n  at ' + source + ':' + line + ':' + col + '\\n';
+      // Wyślij błąd do React Native
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'JS_ERROR',
+        message: String(msg),
+        source: String(source || ''),
+        line: line,
+      }));
+    } catch(e2) {}
+  };
+
+  // Przechwytuj nieobsłużone promisy
+  window.addEventListener('unhandledrejection', function(event) {
+    try {
+      var msg = event.reason ? (event.reason.message || String(event.reason)) : 'Unknown';
+      var div = document.getElementById('__webview_debug');
+      if (!div) {
+        div = document.createElement('div');
+        div.id = '__webview_debug';
+        div.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:red;color:white;padding:12px;font-size:12px;font-family:monospace;max-height:50vh;overflow:auto;white-space:pre-wrap;';
+        document.body.appendChild(div);
+      }
+      div.textContent += 'UNHANDLED PROMISE: ' + msg + '\\n';
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'JS_ERROR',
+        message: 'UnhandledPromise: ' + msg,
+      }));
+    } catch(e2) {}
+  });
+
   // --- 1. Wyślij cookies do React Native ---
   function sendCookies() {
     try {
@@ -234,6 +275,10 @@ export default function App() {
             }
             break;
 
+          case "JS_ERROR":
+            console.error("[WebView JS]", msg.message, msg.source, msg.line);
+            break;
+
           default:
             break;
         }
@@ -344,6 +389,27 @@ export default function App() {
         ref={webViewRef}
         source={{ uri: startUrl }}
         style={styles.webview}
+        // Wstrzyknij error handler PRZED załadowaniem strony
+        injectedJavaScriptBeforeContentLoaded={`
+          window.onerror = function(msg, source, line, col, error) {
+            try {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'JS_ERROR', message: String(msg), source: String(source||''), line: line
+              }));
+            } catch(e) {}
+          };
+          window.addEventListener('unhandledrejection', function(e) {
+            try {
+              var msg = e.reason ? (e.reason.message || String(e.reason)) : 'Unknown';
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'JS_ERROR', message: 'Promise: ' + msg
+              }));
+            } catch(e2) {}
+          });
+          window.__NATIVE_APP__ = true;
+          window.__NATIVE_FCM__ = true;
+          true;
+        `}
         // Wstrzyknij JS po załadowaniu
         injectedJavaScript={INJECTED_JS}
         // Obsługa wiadomości z WebView
@@ -393,8 +459,8 @@ export default function App() {
         applicationNameForUserAgent="SushiTutajAdmin/1.0"
         // Android: pozwól na file upload (zdjęcia menu)
         allowFileAccess={true}
-        // Debugowanie (wyłącz na produkcji)
-        webviewDebuggingEnabled={__DEV__}
+        // Debugowanie (tymczasowo włączone — do wyłączenia po naprawieniu)
+        webviewDebuggingEnabled={true}
       />
     </SafeAreaView>
   );
