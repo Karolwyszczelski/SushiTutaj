@@ -381,7 +381,10 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
     return (
       <div className="flex flex-col h-full text-white">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0">
+        <div 
+          className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0"
+          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+        >
           <h2 className="text-lg font-semibold">Twoje konto</h2>
           <button
             type="button"
@@ -394,7 +397,10 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div 
+          className="flex-1 overflow-y-auto overscroll-contain px-6 py-6"
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 100px)" }}
+        >
           {/* Hero section */}
           <div className="text-center mb-8">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/10 flex items-center justify-center">
@@ -453,7 +459,10 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
     return (
       <div className="flex flex-col h-full text-white">
         {/* Header with back button and close button */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0">
+        <div 
+          className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0"
+          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+        >
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -477,7 +486,10 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
         </div>
 
         {/* Form content */}
-        <div className="flex-1 overflow-y-auto px-6 py-6">
+        <div 
+          className="flex-1 overflow-y-auto overscroll-contain px-6 py-6"
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 100px)" }}
+        >
           {/* Messages */}
           {(err || msg) && (
             <div
@@ -655,7 +667,10 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
   return (
     <div className="flex flex-col h-full text-white">
       {/* User header */}
-      <div className="px-4 py-3 border-b border-white/10 shrink-0">
+      <div 
+        className="px-4 py-3 border-b border-white/10 shrink-0"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-[var(--accent-red)] flex items-center justify-center text-sm font-bold">
@@ -725,8 +740,8 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
 
       {/* Tab content */}
       <div 
-        className="flex-1 overflow-y-auto px-4 py-4"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
+        className="flex-1 overflow-y-auto overscroll-contain px-4 py-4"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 100px)" }}
       >
         {/* ORDERS TAB */}
         {userTab === "orders" && (

@@ -206,7 +206,10 @@ export default function MobileSetView() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center pb-20">
+      <div 
+        className="flex-1 flex items-center justify-center"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 16px) + 100px)" }}
+      >
         <div className="w-10 h-10 border-2 border-white/20 border-t-white/80 rounded-full animate-spin" />
       </div>
     );
@@ -214,7 +217,10 @@ export default function MobileSetView() {
 
   if (!title) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center pb-20 px-6 text-center">
+      <div 
+        className="flex-1 flex flex-col items-center justify-center px-6 text-center"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 16px) + 100px)" }}
+      >
         <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-4">
           <Sparkles className="w-10 h-10 text-white/30" />
         </div>
@@ -298,7 +304,10 @@ export default function MobileSetView() {
       </div>
 
       {/* Content - scrollable */}
-      <div className="flex-1 px-4 pt-5 pb-40">
+      <div 
+        className="flex-1 px-4 pt-5"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 16px) + 160px)" }}
+      >
         {/* What's included */}
         {parsedDesc.items.length > 0 && (
           <div>
@@ -323,7 +332,10 @@ export default function MobileSetView() {
       </div>
 
       {/* Sticky Bottom CTA */}
-      <div className="fixed inset-x-0 bottom-0 z-30 pb-[calc(env(safe-area-inset-bottom)+72px)] pointer-events-none">
+      <div 
+        className="fixed inset-x-0 bottom-0 z-30 pointer-events-none"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 8px) + 76px)" }}
+      >
         <div className="px-4 pb-4 pt-6 bg-gradient-to-t from-[#0b0b0b] via-[#0b0b0b] to-transparent pointer-events-auto">
           <button
             type="button"

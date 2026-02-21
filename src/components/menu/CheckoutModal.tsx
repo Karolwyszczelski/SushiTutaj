@@ -2125,7 +2125,7 @@ return (
 {/* MOBILE: fixed footer – przycisk na samym dole */}
 <div className="fixed inset-x-0 bottom-0 z-[70] lg:hidden">
   <div className="bg-gradient-to-t from-[#0b0b0b] via-[#0b0b0b] to-transparent pt-6">
-    <div className="mx-auto max-w-5xl px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom)+72px)]">
+    <div className="mx-auto max-w-5xl px-5 pb-[calc(1rem+env(safe-area-inset-bottom)+84px)]">
       <button
         onClick={nextStep}
         disabled={items.length === 0}
@@ -2295,7 +2295,7 @@ return (
                       {/* MOBILE: fixed footer – na sam dół (Pałeczki zostają na środku) */}
 <div className="fixed inset-x-0 bottom-0 z-[70] lg:hidden">
   <div className="bg-gradient-to-t from-[#0b0b0b] via-[#0b0b0b] to-transparent pt-6">
-    <div className="mx-auto max-w-5xl px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom)+72px)] space-y-3">
+    <div className="mx-auto max-w-5xl px-5 pb-[calc(1rem+env(safe-area-inset-bottom)+84px)] space-y-3">
       {/* Pałeczki */}
       <div className="flex items-center justify-center py-2">
         <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
@@ -2715,7 +2715,7 @@ return (
                       {isMobile && !shouldHideOrderActions && (
                         <div className="fixed inset-x-0 bottom-0 z-[70] lg:hidden">
                           <div className="bg-gradient-to-t from-[#0b0b0b] via-[#0b0b0b] to-transparent pt-6">
-                            <div className="mx-auto max-w-5xl px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom)+72px)]">
+                            <div className="mx-auto max-w-5xl px-5 pb-[calc(1rem+env(safe-area-inset-bottom)+84px)]">
                               <div className="flex items-center gap-3">
                                 <button
                                   type="button"

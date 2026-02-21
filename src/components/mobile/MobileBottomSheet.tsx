@@ -114,7 +114,7 @@ export default function MobileBottomSheet({
 
   const heightStyle =
     height === "full"
-      ? "95vh"
+      ? "calc(100dvh - env(safe-area-inset-top, 0px) - 20px)"
       : height === "half"
       ? "50vh"
       : height === "auto"
@@ -187,8 +187,7 @@ export default function MobileBottomSheet({
 
         {/* Content */}
         <div 
-          className="flex-1 overflow-y-auto overscroll-contain"
-          style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+          className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
         >
           {children}
         </div>

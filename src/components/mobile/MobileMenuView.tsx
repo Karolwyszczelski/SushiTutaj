@@ -507,7 +507,10 @@ export default function MobileMenuView() {
   return (
     <div className="flex flex-col min-h-full bg-[#0b0b0b]">
       {/* Sticky Header - Search + Categories */}
-      <div className="sticky top-0 z-20 bg-[#0b0b0b]/95 backdrop-blur-md border-b border-white/5">
+      <div 
+        className="sticky top-0 z-20 bg-[#0b0b0b]/95 backdrop-blur-md border-b border-white/5"
+        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+      >
         {/* Search */}
         <div className="px-4 pt-3 pb-2">
           <div className="relative">

@@ -116,7 +116,10 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
   return (
     <div className="md:hidden flex flex-col h-[100dvh] overflow-hidden bg-[#0b0b0b]">
       {/* Main content area - scrollable within bounds */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden pt-[72px]">
+      <main 
+        className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+      >
         {activeTab === "home" && <MobileHeroView onGoToMenu={goToMenu} />}
         {activeTab === "menu" && <MobileMenuView />}
         {activeTab === "set" && <MobileSetView />}

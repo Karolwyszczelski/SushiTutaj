@@ -63,7 +63,10 @@ export default function MobileCartContent({ onClose }: MobileCartContentProps) {
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 px-6 pb-24">
+      <div 
+        className="flex flex-col items-center justify-center px-6 min-h-[60vh]"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 16px) + 32px)" }}
+      >
         <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-4">
           <ShoppingBag className="w-10 h-10 text-white/30" />
         </div>
@@ -75,8 +78,15 @@ export default function MobileCartContent({ onClose }: MobileCartContentProps) {
         </p>
         <button
           type="button"
-          onClick={onClose}
-          className={`px-6 py-3 rounded-full text-white text-sm font-medium ${ACCENT}`}
+          onClick={() => {
+            onClose();
+            // Przejdź do zakładki menu
+            if (typeof window !== 'undefined') {
+              const { useMobileNavStore } = require('@/store/mobileNavStore');
+              useMobileNavStore.getState().setActiveTab('menu');
+            }
+          }}
+          className={`px-8 py-4 rounded-full text-white text-base font-semibold ${ACCENT} shadow-lg active:scale-[0.98] transition-transform`}
         >
           Przeglądaj menu
         </button>
@@ -85,10 +95,10 @@ export default function MobileCartContent({ onClose }: MobileCartContentProps) {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full max-h-full">
       {/* Items list */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        <div className="space-y-3">
+      <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4">
+        <div className="space-y-3 pb-4">
           {items.map((item) => {
             const price = typeof item.price === "number" 
               ? item.price 
@@ -152,7 +162,10 @@ export default function MobileCartContent({ onClose }: MobileCartContentProps) {
       </div>
 
       {/* Footer with total and checkout button */}
-      <div className="border-t border-white/10 p-4 bg-[#0b0b0b]">
+      <div 
+        className="border-t border-white/10 p-4 bg-[#0b0b0b] shrink-0"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 16px) + 16px)" }}
+      >
         <div className="flex items-center justify-between mb-4">
           <div>
             <p className="text-xs text-white/60">Razem ({itemCount} {itemCount === 1 ? 'pozycja' : itemCount < 5 ? 'pozycje' : 'pozycji'})</p>
@@ -163,7 +176,7 @@ export default function MobileCartContent({ onClose }: MobileCartContentProps) {
         <button
           type="button"
           onClick={handleCheckout}
-          className={`w-full py-3.5 rounded-full text-white text-sm font-semibold ${ACCENT} shadow-lg`}
+          className={`w-full py-4 rounded-full text-white text-base font-semibold ${ACCENT} shadow-lg active:scale-[0.98] transition-transform`}
         >
           Przejdź do zamówienia
         </button>

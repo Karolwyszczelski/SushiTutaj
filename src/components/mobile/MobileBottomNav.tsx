@@ -30,10 +30,10 @@ export default function MobileBottomNav({
     <nav
       className="md:hidden fixed inset-x-0 bottom-0 z-[70] bg-[#0b0b0b]/95 backdrop-blur-md border-t border-white/10"
       style={{
-        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+        paddingBottom: "env(safe-area-inset-bottom, 8px)",
       }}
     >
-      <div className="flex items-center justify-around h-16">
+      <div className="flex items-center justify-around h-[68px]">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;

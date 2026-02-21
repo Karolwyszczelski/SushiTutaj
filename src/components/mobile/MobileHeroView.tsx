@@ -69,9 +69,9 @@ export default function MobileHeroView({ onGoToMenu }: MobileHeroViewProps) {
       </div>
 
       {/* Górny blok: logo + tytuł */}
-      <div className="relative z-10 flex flex-col items-center px-6 text-center pt-8">
+      <div className="relative z-10 flex flex-col items-center px-6 text-center pt-4">
         <Image src="/assets/logo.png" alt="Logo" width={84} height={84} priority />
-        <h1 className="mt-8 text-xl leading-tight font-normal text-white max-w-[280px]">
+        <h1 className="mt-6 text-xl leading-tight font-normal text-white max-w-[280px]">
           {copy.title}
         </h1>
         {copy.subtitle && (
@@ -82,7 +82,10 @@ export default function MobileHeroView({ onGoToMenu }: MobileHeroViewProps) {
       </div>
 
       {/* Dolny blok: przyciski - pozycjonowane nad bottom nav */}
-      <div className="relative z-10 mt-auto flex flex-col items-center gap-3 px-6 pb-[calc(env(safe-area-inset-bottom)+100px)]">
+      <div 
+        className="relative z-10 mt-auto flex flex-col items-center gap-3 px-6"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 16px) + 90px)" }}
+      >
         <button
           type="button"
           onClick={onGoToMenu}
