@@ -32,10 +32,10 @@ export default function AdminLogin() {
             cache: "no-store",
           });
           if (res.ok) {
-            router.replace(returnPath);
+            router.replace(returnPath as "/admin/AdminPanel");
           }
         } catch {
-          router.replace(returnPath);
+          router.replace(returnPath as "/admin/AdminPanel");
         }
       }
     });
@@ -82,7 +82,7 @@ export default function AdminLogin() {
     }
 
     setLoading(false);
-    router.replace(returnPath);
+    router.replace(returnPath as "/admin/AdminPanel");
   }
 
   return (
