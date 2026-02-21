@@ -46,7 +46,7 @@ function AuthGuard({ children }: { children: ReactNode }) {
         setState("ok");
       } else {
         // Brak sesji → przekieruj na login z "return" URL
-        router.replace(`/admin/login?r=${encodeURIComponent(pathname)}`);
+        router.replace(`/admin/login?r=${encodeURIComponent(pathname)}` as "/admin/login");
         setState("redirect");
       }
     });
