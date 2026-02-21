@@ -141,6 +141,22 @@ export default function App() {
   const [restaurantSlug, setRestaurantSlug] = useState<string | null>(null);
 
   // ------------------------------------------------------------------
+  // SAFETY: ukryj splash po max 5s nawet jeśli WebView nie załaduje
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      try {
+        await SplashScreen.hideAsync();
+      } catch {}
+      if (!isReady) {
+        console.warn("[App] Splash timeout — wymuszam ukrycie");
+        setIsReady(true);
+      }
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // ------------------------------------------------------------------
   // Android: fizyczny przycisk "wstecz" → cofnij w WebView
   // ------------------------------------------------------------------
   useEffect(() => {
@@ -335,12 +351,19 @@ export default function App() {
         onLoadEnd={onLoadEnd}
         onError={(syntheticEvent) => {
           const { nativeEvent } = syntheticEvent;
+          console.error("[App] WebView error:", nativeEvent.description);
           setLoadError(nativeEvent.description || "Nie udało się załadować");
+          // Ukryj splash żeby error overlay był widoczny
+          SplashScreen.hideAsync().catch(() => {});
+          setIsReady(true);
         }}
         onHttpError={(syntheticEvent) => {
           const { nativeEvent } = syntheticEvent;
+          console.error("[App] HTTP error:", nativeEvent.statusCode);
           if (nativeEvent.statusCode >= 500) {
             setLoadError(`Błąd serwera (${nativeEvent.statusCode})`);
+            SplashScreen.hideAsync().catch(() => {});
+            setIsReady(true);
           }
         }}
         // Ustawienia WebView
