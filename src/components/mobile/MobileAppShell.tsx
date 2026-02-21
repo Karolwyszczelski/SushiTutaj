@@ -82,6 +82,11 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
   );
 
   const handleTabChange = useCallback((tab: MobileTab) => {
+    // Zamknij wszystkie otwarte modale/sheety przed zmianą
+    setCartOpen(false);
+    setAccountOpen(false);
+    setReservationOpen(false);
+    
     if (tab === "cart") {
       setCartOpen(true);
     } else if (tab === "account") {

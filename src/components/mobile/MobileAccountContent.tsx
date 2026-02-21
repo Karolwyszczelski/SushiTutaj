@@ -379,12 +379,16 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
   // RENDER: Initial view (wybór logowania/rejestracji)
   if (viewState === "initial") {
     return (
-      <div className="flex flex-col px-6 py-6 text-white relative">
+      <div 
+        className="flex flex-col px-6 py-6 text-white relative"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 24px)" }}
+      >
         {/* Close button */}
         <button
           type="button"
           onClick={onClose}
           className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
+          style={{ top: "calc(env(safe-area-inset-top, 0px) + 16px)" }}
           aria-label="Zamknij"
         >
           <X className="w-5 h-5" />
@@ -448,7 +452,10 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
     return (
       <div className="flex flex-col h-full text-white">
         {/* Header with back button and close button */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+        <div 
+          className="flex items-center justify-between px-4 py-3 border-b border-white/10"
+          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+        >
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -650,7 +657,10 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
   return (
     <div className="flex flex-col h-full text-white">
       {/* User header */}
-      <div className="px-6 py-4 border-b border-white/10">
+      <div 
+        className="px-6 py-4 border-b border-white/10"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-[var(--accent-red)] flex items-center justify-center text-sm font-bold">

@@ -63,7 +63,7 @@ export default function MobileCartContent({ onClose }: MobileCartContentProps) {
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 px-6">
+      <div className="flex flex-col items-center justify-center py-16 px-6 pb-24">
         <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-4">
           <ShoppingBag className="w-10 h-10 text-white/30" />
         </div>

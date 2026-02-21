@@ -708,7 +708,7 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
 
         {/* Sticky CTA */}
         <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-[#111111] via-[#111111] to-transparent pt-12"
-             style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 16px) + 80px)" }}>
+             style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}>
           <button
             type="submit"
             onClick={handleSubmit}
