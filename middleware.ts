@@ -93,6 +93,28 @@ function carryCookies(from: NextResponse, to: NextResponse) {
   return to;
 }
 
+/** Wykryj natywną appkę mobilną po User-Agent */
+const isNativeApp = (req: NextRequest) =>
+  (req.headers.get("user-agent") ?? "").includes("SushiTutajAdmin");
+
+/**
+ * Dodaj headery anti-clickjacking do response TYLKO dla zwykłych przeglądarek.
+ * Natywna appka (WebView) jest pomijana — te headery blokują rendering w WebView.
+ */
+function applyFrameHeaders(res: NextResponse, req: NextRequest) {
+  if (!isNativeApp(req)) {
+    res.headers.set("X-Frame-Options", "DENY");
+    // Dodaj frame-ancestors do istniejącego CSP
+    const csp = res.headers.get("Content-Security-Policy");
+    if (csp && !csp.includes("frame-ancestors")) {
+      res.headers.set("Content-Security-Policy", csp + "; frame-ancestors 'none'");
+    } else if (!csp) {
+      res.headers.set("Content-Security-Policy", "frame-ancestors 'none'");
+    }
+  }
+  return res;
+}
+
 export async function middleware(req: NextRequest) {
   const host = req.headers.get("host") ?? "";
   const isPreview =
@@ -112,7 +134,7 @@ export async function middleware(req: NextRequest) {
   const pathname = normalizePath(req.nextUrl.pathname);
 
   // /gone zostawiamy w spokoju
-  if (pathname === "/gone") return NextResponse.next();
+  if (pathname === "/gone") return applyFrameHeaders(NextResponse.next(), req);
 
   // spam / stare ścieżki WP
   if (isSpamPath(pathname, req)) {
@@ -122,7 +144,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // Interesuje nas auth tylko dla /admin*
-  if (!pathname.startsWith("/admin")) return NextResponse.next();
+  if (!pathname.startsWith("/admin")) return applyFrameHeaders(NextResponse.next(), req);
 
   // Najpierw przygotuj res i supabase (żeby móc odświeżać cookies sesji)
   let res = NextResponse.next({
@@ -163,9 +185,9 @@ export async function middleware(req: NextRequest) {
 
     if (user) {
       const url = new URL("/admin", req.nextUrl.origin);
-      return carryCookies(res, NextResponse.redirect(url));
+      return applyFrameHeaders(carryCookies(res, NextResponse.redirect(url)), req);
     }
-    return res;
+    return applyFrameHeaders(res, req);
   }
 
   // /admin* wymaga sesji - używamy getUser() bo jest bardziej niezawodny
@@ -187,12 +209,12 @@ export async function middleware(req: NextRequest) {
         status: 401,
         headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
       });
-      return carryCookies(res, out);
+      return applyFrameHeaders(carryCookies(res, out), req);
     }
 
     const url = new URL("/admin/login", req.nextUrl.origin);
     url.searchParams.set("r", pathname);
-    return carryCookies(res, NextResponse.redirect(url));
+    return applyFrameHeaders(carryCookies(res, NextResponse.redirect(url)), req);
   }
 
   // W Edge Runtime nie mamy dostępu do SUPABASE_SERVICE_ROLE_KEY,
@@ -202,10 +224,10 @@ export async function middleware(req: NextRequest) {
   
   // routing /admin → odpowiedni panel (domyślnie AdminPanel, sidebar ustali szczegóły)
   if (pathname === "/admin") {
-    return carryCookies(res, NextResponse.redirect(new URL("/admin/AdminPanel", req.nextUrl.origin)));
+    return applyFrameHeaders(carryCookies(res, NextResponse.redirect(new URL("/admin/AdminPanel", req.nextUrl.origin))), req);
   }
 
-  return res;
+  return applyFrameHeaders(res, req);
 }
 
 export const config = {
