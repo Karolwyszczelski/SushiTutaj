@@ -164,7 +164,7 @@ export default function IntroOverlay({
       <div className={`sushi-trail ${rollPhase !== "rolling" ? "trail-visible" : ""}`} />
 
       {/* Główny kontener animacji */}
-      <div className="relative flex flex-col items-center justify-center">
+      <div className="relative flex flex-col items-center justify-center w-full max-w-full px-4 sm:px-0">
         
         {/* Tocząca się rolka sushi */}
         <div className={`sushi-roll-container ${rollPhase === "rolling" ? "rolling" : rollPhase === "stopped" ? "stopped" : "reveal"}`}>
@@ -271,7 +271,7 @@ export default function IntroOverlay({
 
         @keyframes rollIn {
           0% {
-            transform: translateX(-300px) rotate(-720deg);
+            transform: translateX(-150px) rotate(-720deg);
             opacity: 0;
           }
           20% {
@@ -283,6 +283,22 @@ export default function IntroOverlay({
           }
         }
 
+        @media (min-width: 640px) {
+          @keyframes rollIn {
+            0% {
+              transform: translateX(-300px) rotate(-720deg);
+              opacity: 0;
+            }
+            20% {
+              opacity: 1;
+            }
+            100% {
+              transform: translateX(0) rotate(0deg);
+              opacity: 1;
+            }
+          }
+        }
+
         @keyframes floatUp {
           to {
             transform: translateY(-60px) scale(0.9);
@@ -291,11 +307,19 @@ export default function IntroOverlay({
 
         /* Rolka sushi - 3D wygląd */
         .sushi-roll {
-          width: 120px;
-          height: 120px;
+          width: 80px;
+          height: 80px;
           position: relative;
           animation: gentleSpin 0.8s linear;
         }
+        
+        @media (min-width: 640px) {
+          .sushi-roll {
+            width: 120px;
+            height: 120px;
+          }
+        }
+        
         .sushi-roll-container.stopped .sushi-roll,
         .sushi-roll-container.reveal .sushi-roll {
           animation: gentleBounce 2s ease-in-out infinite;
@@ -412,13 +436,21 @@ export default function IntroOverlay({
 
         .sushi-shadow {
           position: absolute;
-          bottom: -15px;
+          bottom: -12px;
           left: 50%;
           transform: translateX(-50%);
-          width: 100px;
-          height: 20px;
+          width: 70px;
+          height: 15px;
           background: radial-gradient(ellipse, rgba(0,0,0,0.4) 0%, transparent 70%);
           border-radius: 50%;
+        }
+        
+        @media (min-width: 640px) {
+          .sushi-shadow {
+            bottom: -15px;
+            width: 100px;
+            height: 20px;
+          }
         }
 
         /* Tekst */
@@ -444,19 +476,21 @@ export default function IntroOverlay({
         }
 
         .intro-main-text {
-          font-size: 3rem;
+          font-size: clamp(1.8rem, 8vw, 3rem);
           font-weight: 800;
-          letter-spacing: 0.15em;
+          letter-spacing: 0.08em;
           white-space: nowrap;
           display: flex;
           justify-content: center;
           gap: 2px;
+          padding: 0 1rem;
         }
 
         @media (min-width: 640px) {
           .intro-main-text {
             font-size: 4rem;
             letter-spacing: 0.2em;
+            padding: 0;
           }
         }
 
@@ -472,7 +506,13 @@ export default function IntroOverlay({
         }
 
         .text-char-space {
-          width: 0.5em;
+          width: 0.3em;
+        }
+        
+        @media (min-width: 640px) {
+          .text-char-space {
+            width: 0.5em;
+          }
         }
 
         .text-accent {
@@ -489,12 +529,14 @@ export default function IntroOverlay({
 
         .intro-tagline {
           margin-top: 1rem;
-          font-size: 0.9rem;
+          font-size: 0.7rem;
           font-weight: 400;
-          letter-spacing: 0.3em;
+          letter-spacing: 0.15em;
           text-transform: uppercase;
           color: rgba(255,255,255,0.6);
           opacity: 0;
+          padding: 0 1rem;
+          text-align: center;
         }
         .text-visible .intro-tagline {
           animation: taglineIn 0.6s ease forwards 0.7s;
@@ -503,6 +545,8 @@ export default function IntroOverlay({
         @media (min-width: 640px) {
           .intro-tagline {
             font-size: 1rem;
+            letter-spacing: 0.3em;
+            padding: 0;
           }
         }
 

@@ -402,7 +402,7 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
 
   const modalContent = (
     <div
-      className="fixed inset-x-0 top-0 bottom-[72px] md:bottom-0 md:inset-0 z-[60] flex items-end lg:items-center justify-center"
+      className="fixed inset-0 z-[90] flex items-end lg:items-center justify-center"
       role="dialog"
       aria-modal="true"
       id={id || "reservation-modal"}
@@ -416,7 +416,7 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
 
       {/* Modal */}
       <div
-        className="relative z-[61] w-full h-full lg:h-auto lg:max-w-md lg:max-h-[90vh] bg-[#111111] lg:bg-white text-white lg:text-black
+        className="relative z-[91] w-full h-full lg:h-auto lg:max-w-md lg:max-h-[90vh] bg-[#111111] lg:bg-white text-white lg:text-black
                    rounded-t-3xl lg:rounded-3xl overflow-hidden flex flex-col"
         onMouseDown={(e) => e.stopPropagation()}
       >
