@@ -48,23 +48,23 @@ export default function CookieBanner() {
 
   return (
     <>
-      {/* ============ MOBILE - Minimalist Bottom Sheet ============ */}
+      {/* ============ MOBILE - Bottom Sheet (jak koszyk) ============ */}
       <div className="md:hidden fixed inset-0 z-[100]">
         {/* Backdrop */}
         <div
           className={`
-            absolute inset-0 bg-black/80
+            absolute inset-0 bg-black/70
             transition-opacity duration-200 ease-out
             ${isVisible && !isClosing ? "opacity-100" : "opacity-0"}
           `}
           aria-hidden
         />
 
-        {/* Sheet */}
+        {/* Sheet - identyczny styl jak MobileBottomSheet */}
         <div
           className={`
             absolute inset-x-0 bottom-0
-            bg-[#0a0a0a] rounded-t-[28px]
+            bg-[#0b0b0b] rounded-t-[20px]
             flex flex-col
             transform-gpu transition-transform duration-200 ease-out
           `}
@@ -78,120 +78,98 @@ export default function CookieBanner() {
           aria-modal="true"
           aria-label="Zgoda na pliki cookie"
         >
-          {/* Handle */}
-          <div className="flex justify-center pt-3 pb-2">
-            <div className="w-9 h-1 bg-white/20 rounded-full" />
+          {/* Handle - jak w koszyku */}
+          <div className="flex justify-center pt-3 pb-4">
+            <div className="w-10 h-1 bg-white/20 rounded-full" />
           </div>
 
-          {/* Header - Minimalist */}
-          <div className="px-6 pt-2 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#a61b1b] flex items-center justify-center">
-                <Cookie className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h2 className="text-[17px] font-semibold text-white tracking-tight">Cookies</h2>
-                <p className="text-[13px] text-white/40">Twoje preferencje</p>
+          {/* Content */}
+          <div className="px-4 pb-4">
+            {/* Info card - jak produkty w koszyku */}
+            <div className="bg-white/5 rounded-xl p-4 mb-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+                  <Cookie className="w-5 h-5 text-white/80" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-base font-semibold text-white mb-1">
+                    Ta strona używa cookies
+                  </h2>
+                  <p className="text-sm text-white/60 leading-relaxed">
+                    Używamy plików cookie, aby strona działała poprawnie i lepiej dopasowywała treści.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Content - Clean */}
-          <div className="px-6 pb-5">
-            <p className="text-[14px] text-white/60 leading-relaxed mb-5">
-              Używamy plików cookie dla poprawnego działania strony i lepszego dopasowania treści.
-            </p>
-
-            {/* Cookie Categories - Compact */}
-            <div className="space-y-2.5 mb-5">
-              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.04]">
-                <div className="flex items-center gap-3">
-                  <Shield className="w-4 h-4 text-emerald-400" />
-                  <span className="text-[14px] font-medium text-white">Niezbędne</span>
+            {/* Cookie types - compact list */}
+            <div className="space-y-2 mb-4">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-green-400" />
+                  <span className="text-sm text-white">Niezbędne</span>
                 </div>
-                <span className="text-[12px] text-emerald-400/80 font-medium">Aktywne</span>
+                <span className="text-xs text-green-400">Zawsze włączone</span>
               </div>
-
-              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.04]">
-                <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-white/40" />
-                  <span className="text-[14px] text-white/70">Analityczne</span>
+                  <span className="text-sm text-white/60">Analityczne</span>
                 </div>
-                <span className="text-[12px] text-white/30">Opcjonalne</span>
+                <span className="text-xs text-white/40">Opcjonalne</span>
               </div>
-
-              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.04]">
-                <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
                   <Megaphone className="w-4 h-4 text-white/40" />
-                  <span className="text-[14px] text-white/70">Marketingowe</span>
+                  <span className="text-sm text-white/60">Marketingowe</span>
                 </div>
-                <span className="text-[12px] text-white/30">Opcjonalne</span>
+                <span className="text-xs text-white/40">Opcjonalne</span>
               </div>
             </div>
 
-            {/* Links - Minimal */}
-            <div className="flex items-center justify-center gap-3 mb-5">
+            {/* Links */}
+            <div className="flex items-center justify-center gap-4 mb-4">
               <a
                 href="/polityka-prywatnosci"
-                className="text-[12px] text-white/40 active:text-white/60"
+                className="text-xs text-white/40 underline underline-offset-2"
               >
                 Polityka prywatności
               </a>
-              <span className="text-white/10">·</span>
               <a
                 href="/regulamin"
-                className="text-[12px] text-white/40 active:text-white/60"
+                className="text-xs text-white/40 underline underline-offset-2"
               >
                 Regulamin
               </a>
             </div>
           </div>
 
-          {/* Actions - Professional */}
+          {/* Footer - identyczny jak w koszyku */}
           <div 
-            className="px-6 pt-4 border-t border-white/[0.06]"
-            style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 20px) + 20px)" }}
+            className="border-t border-white/10 p-4 bg-[#0b0b0b] shrink-0"
+            style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}
           >
-            {/* Primary CTA */}
+            {/* Main button - gradient jak "Przejdź do zamówienia" */}
             <button
               onClick={() => save({ necessary: true, analytics: true, marketing: true })}
-              className="
-                w-full h-[52px] rounded-2xl mb-3
-                bg-[#a61b1b] text-white
-                font-semibold text-[15px]
-                active:bg-[#8a1515] active:scale-[0.98]
-                transition-all duration-150
-              "
+              className="w-full py-4 rounded-full text-white text-base font-semibold [background:linear-gradient(180deg,#b31217_0%,#7a0b0b_100%)] shadow-lg active:scale-[0.98] transition-transform mb-3"
             >
               Akceptuj wszystkie
             </button>
 
-            {/* Secondary options */}
-            <div className="flex gap-2.5">
+            {/* Secondary buttons */}
+            <div className="flex gap-2">
               <button
                 onClick={() => save({ necessary: true, analytics: true, marketing: false })}
-                className="
-                  flex-1 h-[46px] rounded-xl
-                  bg-white/[0.06] text-white/80
-                  font-medium text-[14px]
-                  active:bg-white/10 active:scale-[0.98]
-                  transition-all duration-150
-                "
+                className="flex-1 py-3 rounded-full bg-white/10 text-white text-sm font-medium active:bg-white/15 transition-colors"
               >
-                + Analityka
+                Tylko analityka
               </button>
-
               <button
                 onClick={() => save({ necessary: true, analytics: false, marketing: false })}
-                className="
-                  flex-1 h-[46px] rounded-xl
-                  bg-white/[0.03] text-white/50
-                  font-medium text-[14px]
-                  active:bg-white/[0.06] active:scale-[0.98]
-                  transition-all duration-150
-                "
+                className="flex-1 py-3 rounded-full bg-white/5 text-white/70 text-sm font-medium active:bg-white/10 transition-colors"
               >
-                Tylko niezbędne
+                Niezbędne
               </button>
             </div>
           </div>
