@@ -28,7 +28,7 @@ export default function MobileBottomNav({
 }: MobileBottomNavProps) {
   return (
     <nav
-      className="md:hidden fixed inset-x-0 bottom-0 z-[70] bg-[#0b0b0b]/95 backdrop-blur-md border-t border-white/10"
+      className="md:hidden fixed inset-x-0 bottom-0 z-[70] bg-[#0b0b0b] border-t border-white/10"
       style={{
         paddingBottom: "env(safe-area-inset-bottom, 8px)",
       }}

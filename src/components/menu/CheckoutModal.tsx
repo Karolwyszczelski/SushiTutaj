@@ -1156,7 +1156,8 @@ useEffect(() => {
     cost = Number(zone.cost ?? zone.cost_fixed ?? 0);
   }
 
-  if (zone.free_over != null && subtotal >= zone.free_over) cost = 0;
+  // Darmowa dostawa wyłączona - zawsze naliczaj koszt dostawy
+  // (usunięto logikę free_over)
 
   const minOk = subtotal >= (zone.min_order_value || 0);
   setDeliveryMinOk(minOk);

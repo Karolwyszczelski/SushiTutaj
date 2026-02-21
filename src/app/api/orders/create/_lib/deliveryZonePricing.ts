@@ -120,10 +120,8 @@ export async function enforceDeliveryZonePricing(
       ? flatCostRaw + perKmRateRaw * distance_km 
       : flatCostRaw;
 
-  // Darmowa dostawa powyżej progu – próg liczony od produktów + opakowanie
-  if (zone.free_over != null && baseWithoutDelivery >= Number(zone.free_over)) {
-    serverCost = 0;
-  }
+  // Darmowa dostawa wyłączona - zawsze naliczaj koszt dostawy
+  // (usunięto logikę free_over)
 
   n.delivery_cost = roundUpToStep(Math.max(0, serverCost), 0.5);
   return null;

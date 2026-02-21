@@ -39,9 +39,8 @@ export default function MobileBottomSheet({
   // Animacja wejścia
   useEffect(() => {
     if (isOpen) {
-      // Małe opóźnienie żeby animacja zadziałała
-      const timer = setTimeout(() => setIsVisible(true), 10);
-      return () => clearTimeout(timer);
+      // Minimalne opóźnienie dla animacji
+      requestAnimationFrame(() => setIsVisible(true));
     } else {
       setIsVisible(false);
     }
@@ -93,7 +92,7 @@ export default function MobileBottomSheet({
     if (translateY > 100) {
       // Zamknij jeśli przeciągnięto > 100px
       setIsClosing(true);
-      setTimeout(onClose, 300);
+      setTimeout(onClose, 200);
     } else {
       setTranslateY(0);
     }
@@ -102,12 +101,12 @@ export default function MobileBottomSheet({
 
   const handleBackdropClick = useCallback(() => {
     setIsClosing(true);
-    setTimeout(onClose, 300);
+    setTimeout(onClose, 200);
   }, [onClose]);
 
   const handleCloseClick = useCallback(() => {
     setIsClosing(true);
-    setTimeout(onClose, 300);
+    setTimeout(onClose, 200);
   }, [onClose]);
 
   if (!isOpen) return null;
@@ -126,7 +125,7 @@ export default function MobileBottomSheet({
       {/* Backdrop */}
       <div
         className={clsx(
-          "absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ease-out",
+          "absolute inset-0 bg-black/70 transition-opacity duration-200",
           isVisible && !isClosing ? "opacity-100" : "opacity-0"
         )}
         onClick={handleBackdropClick}
@@ -139,14 +138,14 @@ export default function MobileBottomSheet({
         className={clsx(
           "absolute inset-x-0 bottom-0 bg-[#0b0b0b] rounded-t-3xl shadow-2xl flex flex-col",
           "transform-gpu",
-          touchStartY === null && "transition-transform duration-300 ease-out"
+          touchStartY === null && "transition-transform duration-200"
         )}
         style={{
           maxHeight: heightStyle,
           transform: isVisible && !isClosing 
             ? `translateY(${translateY}px)` 
             : "translateY(100%)",
-          willChange: touchStartY !== null ? "transform" : "auto",
+          willChange: "transform",
         }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}

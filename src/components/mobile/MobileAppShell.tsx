@@ -139,7 +139,7 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
         title="Twój koszyk"
         height="full"
       >
-        <MobileCartContent onClose={closeCart} />
+        {cartOpen && <MobileCartContent onClose={closeCart} />}
       </MobileBottomSheet>
 
       {/* Account Bottom Sheet */}
@@ -149,7 +149,7 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
         showHeader={false}
         height="full"
       >
-        <MobileAccountContent onClose={closeAccount} />
+        {accountOpen && <MobileAccountContent onClose={closeAccount} />}
       </MobileBottomSheet>
 
       {/* Reservation Modal */}
