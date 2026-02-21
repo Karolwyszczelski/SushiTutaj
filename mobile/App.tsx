@@ -15,6 +15,7 @@ import {
   BackHandler,
   Platform,
   Linking,
+  TouchableOpacity,
 } from "react-native";
 import { WebView, WebViewNavigation } from "react-native-webview";
 import * as SplashScreen from "expo-splash-screen";
@@ -26,7 +27,7 @@ import {
 } from "./src/hooks/useNotifications";
 
 // Nie ukrywaj splash screena automatycznie
-SplashScreen.preventAutoHideAsync();
+try { SplashScreen.preventAutoHideAsync(); } catch {}
 
 // =============================================================================
 // JavaScript wstrzykiwany do WebView
@@ -141,20 +142,25 @@ export default function App() {
   const [restaurantSlug, setRestaurantSlug] = useState<string | null>(null);
 
   // ------------------------------------------------------------------
-  // SAFETY: ukryj splash po max 5s nawet jeśli WebView nie załaduje
+  // Ukryj NATYWNY splash od razu → nasz loading overlay przejmuje
+  // Bez tego natywny splash (czarny) blokuje CAŁY React Native UI
   // ------------------------------------------------------------------
   useEffect(() => {
-    const timer = setTimeout(async () => {
-      try {
-        await SplashScreen.hideAsync();
-      } catch {}
-      if (!isReady) {
-        console.warn("[App] Splash timeout — wymuszam ukrycie");
-        setIsReady(true);
-      }
-    }, 5000);
-    return () => clearTimeout(timer);
+    SplashScreen.hideAsync().catch(() => {});
   }, []);
+
+  // ------------------------------------------------------------------
+  // Timeout: jeśli strona nie załaduje się w 20s → pokaż błąd
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    if (isReady) return; // już załadowane
+    const timer = setTimeout(() => {
+      console.warn("[App] Timeout — strona nie załadowała się w 20s");
+      setLoadError("Strona nie odpowiada. Sprawdź połączenie z internetem.");
+      setIsReady(true);
+    }, 20000);
+    return () => clearTimeout(timer);
+  }, [isReady]);
 
   // ------------------------------------------------------------------
   // Android: fizyczny przycisk "wstecz" → cofnij w WebView
@@ -255,7 +261,6 @@ export default function App() {
   const onLoadEnd = useCallback(() => {
     if (!isReady) {
       setIsReady(true);
-      SplashScreen.hideAsync();
     }
     setLoadError(null);
   }, [isReady]);
@@ -267,22 +272,16 @@ export default function App() {
     (event: { url: string }) => {
       const { url } = event;
 
-      // Pozwól na nawigację wewnątrz domeny
-      if (url.startsWith(ADMIN_URL) || url.startsWith("about:")) {
-        return true;
-      }
-
-      // Otwórz zewnętrzne linki w przeglądarce systemowej
-      if (
-        url.startsWith("tel:") ||
-        url.startsWith("mailto:") ||
-        url.startsWith("https://") ||
-        url.startsWith("http://")
-      ) {
-        Linking.openURL(url);
+      // Telefon / email → otwórz systemową apkę
+      if (url.startsWith("tel:") || url.startsWith("mailto:")) {
+        Linking.openURL(url).catch(() => {});
         return false;
       }
 
+      // Wszystko inne (https, http, about:, data:) → ładuj w WebView
+      // KRYTYCZNE: NIE blokuj zewnętrznych URL-i!
+      // Strona ładuje zasoby z wielu domen (Supabase, CDN, fonts, analytics)
+      // i blokowanie ich powoduje biały/czarny ekran.
       return true;
     },
     []
@@ -310,28 +309,33 @@ export default function App() {
         </View>
       )}
 
-      {/* Loading overlay */}
-      {!isReady && (
+      {/* Loading overlay — widoczny (nie czarny!) */}
+      {!isReady && !loadError && (
         <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#ffffff" />
+          <Text style={styles.loadingEmoji}>🍣</Text>
+          <Text style={styles.loadingTitle}>Sushi Tutaj</Text>
+          <ActivityIndicator size="large" color="#f97316" style={{ marginTop: 24 }} />
           <Text style={styles.loadingText}>Ładowanie panelu...</Text>
         </View>
       )}
 
-      {/* Błąd ładowania */}
+      {/* Błąd ładowania — wyraźnie widoczny */}
       {loadError && (
         <View style={styles.errorOverlay}>
-          <Text style={styles.errorTitle}>Brak połączenia</Text>
+          <Text style={styles.errorEmoji}>⚠️</Text>
+          <Text style={styles.errorTitle}>Problem z połączeniem</Text>
           <Text style={styles.errorDesc}>{loadError}</Text>
-          <Text
-            style={styles.retryButton}
+          <TouchableOpacity
+            style={styles.retryBtn}
+            activeOpacity={0.7}
             onPress={() => {
               setLoadError(null);
+              setIsReady(false); // pokaż loading ponownie
               webViewRef.current?.reload();
             }}
           >
-            Spróbuj ponownie
-          </Text>
+            <Text style={styles.retryBtnText}>Spróbuj ponownie</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -352,19 +356,23 @@ export default function App() {
         onError={(syntheticEvent) => {
           const { nativeEvent } = syntheticEvent;
           console.error("[App] WebView error:", nativeEvent.description);
-          setLoadError(nativeEvent.description || "Nie udało się załadować");
-          // Ukryj splash żeby error overlay był widoczny
-          SplashScreen.hideAsync().catch(() => {});
+          setLoadError(nativeEvent.description || "Nie udało się załadować strony");
           setIsReady(true);
         }}
         onHttpError={(syntheticEvent) => {
           const { nativeEvent } = syntheticEvent;
           console.error("[App] HTTP error:", nativeEvent.statusCode);
-          if (nativeEvent.statusCode >= 500) {
+          if (nativeEvent.statusCode >= 400) {
             setLoadError(`Błąd serwera (${nativeEvent.statusCode})`);
-            SplashScreen.hideAsync().catch(() => {});
             setIsReady(true);
           }
+        }}
+        // Android: odzyskaj po crashu renderera WebView
+        onRenderProcessGone={(syntheticEvent) => {
+          const { nativeEvent } = syntheticEvent;
+          console.error("[App] WebView renderer crashed:", nativeEvent.didCrash);
+          setLoadError("Panel wymaga ponownego załadowania.");
+          setIsReady(true);
         }}
         // Ustawienia WebView
         javaScriptEnabled={true}
@@ -407,45 +415,59 @@ const styles = StyleSheet.create({
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#000000",
+    backgroundColor: "#0a0a0a",
     justifyContent: "center",
     alignItems: "center",
     zIndex: 10,
   },
-  loadingText: {
+  loadingEmoji: {
+    fontSize: 64,
+    marginBottom: 12,
+  },
+  loadingTitle: {
     color: "#ffffff",
+    fontSize: 22,
+    fontWeight: "bold",
+  },
+  loadingText: {
+    color: "#888888",
     marginTop: 16,
-    fontSize: 16,
+    fontSize: 14,
   },
   errorOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#000000",
+    backgroundColor: "#0a0a0a",
     justifyContent: "center",
     alignItems: "center",
     padding: 32,
     zIndex: 20,
   },
+  errorEmoji: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
   errorTitle: {
     color: "#ffffff",
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "bold",
     marginBottom: 12,
   },
   errorDesc: {
-    color: "#aaaaaa",
+    color: "#999999",
     fontSize: 14,
     textAlign: "center",
-    marginBottom: 24,
+    marginBottom: 32,
   },
-  retryButton: {
-    color: "#000000",
-    backgroundColor: "#ffffff",
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 8,
+  retryBtn: {
+    backgroundColor: "#f97316",
+    paddingHorizontal: 36,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  retryBtnText: {
+    color: "#ffffff",
     fontSize: 16,
     fontWeight: "bold",
-    overflow: "hidden",
   },
   errorBar: {
     backgroundColor: "#dc2626",
