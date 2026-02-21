@@ -2,12 +2,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import type { Database } from "@/types/supabase";
 
 export default function AdminLogin() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnPath = searchParams?.get("r") || "/admin/AdminPanel";
   const supabase = createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -30,10 +32,10 @@ export default function AdminLogin() {
             cache: "no-store",
           });
           if (res.ok) {
-            router.replace("/admin/AdminPanel");
+            router.replace(returnPath);
           }
         } catch {
-          router.replace("/admin/AdminPanel");
+          router.replace(returnPath);
         }
       }
     });
@@ -80,7 +82,7 @@ export default function AdminLogin() {
     }
 
     setLoading(false);
-    router.replace("/admin/AdminPanel");
+    router.replace(returnPath);
   }
 
   return (

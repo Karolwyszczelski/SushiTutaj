@@ -17,7 +17,11 @@ export const ADMIN_URL = __DEV__
 export const FCM_REGISTER_URL = `${ADMIN_URL}/api/admin/push/fcm-register`;
 
 // Domyślna strona startowa w WebView
-export const START_PATH = "/admin/pickup-order";
+// WAŻNE: Startujemy od /admin/login — strona logowania ZAWSZE działa
+// (nie wymaga sesji). Po zalogowaniu klient JS automatycznie
+// przekieruje na /admin/AdminPanel. Unikamy pustego ekranu gdy
+// middleware/CDN cache nie przekieruje na login.
+export const START_PATH = "/admin/login";
 
 // Kanał powiadomień Android (musi odpowiadać temu w app.json)
 export const NOTIFICATION_CHANNEL_ID = "orders";

@@ -294,7 +294,7 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#000000" />
+      <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
 
       {/* Push status bar (pokazuje się tylko gdy jest problem) */}
       {registrationState === "error" && pushError && (
@@ -407,15 +407,15 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: "#f8fafc",  // bg-slate-50 — pasuje do admin panelu
   },
   webview: {
     flex: 1,
-    backgroundColor: "#000000",
+    backgroundColor: "#f8fafc",  // bg-slate-50
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#0a0a0a",
+    backgroundColor: "#f8fafc",  // bg-slate-50 — jasne tło jak admin
     justifyContent: "center",
     alignItems: "center",
     zIndex: 10,
@@ -425,18 +425,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   loadingTitle: {
-    color: "#ffffff",
+    color: "#0f172a",  // slate-900 — ciemny tekst na jasnym tle
     fontSize: 22,
     fontWeight: "bold",
   },
   loadingText: {
-    color: "#888888",
+    color: "#64748b",  // slate-500
     marginTop: 16,
     fontSize: 14,
   },
   errorOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "#0a0a0a",
+    backgroundColor: "#f8fafc",  // bg-slate-50 — jasne tło
     justifyContent: "center",
     alignItems: "center",
     padding: 32,
@@ -447,13 +447,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   errorTitle: {
-    color: "#ffffff",
+    color: "#0f172a",  // slate-900
     fontSize: 22,
     fontWeight: "bold",
     marginBottom: 12,
   },
   errorDesc: {
-    color: "#999999",
+    color: "#64748b",  // slate-500
     fontSize: 14,
     textAlign: "center",
     marginBottom: 32,
