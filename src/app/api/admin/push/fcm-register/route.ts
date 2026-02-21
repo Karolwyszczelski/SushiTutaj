@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { pushLogger } from "@/lib/logger";
+import { getUserIdFromRequest } from "@/app/api/_auth";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,63 +26,11 @@ function makeRes(body: any, status = 200) {
 
 export async function POST(req: NextRequest) {
   try {
-    // 1) Autoryzacja — bearer token lub cookie-based session
-    const authHeader = req.headers.get("authorization") || "";
-    const bearerToken = authHeader.startsWith("Bearer ")
-      ? authHeader.slice(7).trim()
-      : null;
-
-    let userId: string | null = null;
-
-    if (bearerToken) {
-      // Token-based auth (natywna app wysyła access_token z Supabase)
-      const { data, error } = await supabaseAdmin.auth.getUser(bearerToken);
-      if (error || !data.user) {
-        pushLogger.error("[fcm-register] Invalid bearer token", {
-          error: error?.message,
-        });
-        return makeRes({ error: "Unauthorized" }, 401);
-      }
-      userId = data.user.id;
-    } else {
-      // Cookie-based auth (z WebView — ciasteczka lecą automatycznie)
-      // Spróbujmy wyciągnąć sesję z cookie
-      const cookieHeader = req.headers.get("cookie") || "";
-
-      // Znajdź supabase auth token z cookies
-      const match = cookieHeader.match(
-        /sb-[^-]+-auth-token(?:\.0)?=([^;]+)/
-      );
-      if (match?.[1]) {
-        try {
-          // Cookie może zawierać zakodowany JSON z access_token
-          const decoded = decodeURIComponent(match[1]);
-          let accessToken = decoded;
-
-          // Jeśli to base64-encoded JSON (nowy format Supabase)
-          try {
-            const parsed = JSON.parse(decoded);
-            if (parsed?.access_token) accessToken = parsed.access_token;
-            else if (Array.isArray(parsed) && parsed[0])
-              accessToken = parsed[0];
-          } catch {
-            // Nie JSON — użyj jako-is
-          }
-
-          const { data, error } = await supabaseAdmin.auth.getUser(
-            accessToken
-          );
-          if (!error && data.user) {
-            userId = data.user.id;
-          }
-        } catch {
-          // cookie parse failed
-        }
-      }
-
-      if (!userId) {
-        return makeRes({ error: "Unauthorized" }, 401);
-      }
+    // 1) Autoryzacja — bearer token lub cookie-based session (obsługuje chunked cookies)
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      pushLogger.error("[fcm-register] Unauthorized — no valid session");
+      return makeRes({ error: "Unauthorized" }, 401);
     }
 
     // 2) Parse body
