@@ -138,15 +138,15 @@ export default function MobileBottomSheet({
         ref={sheetRef}
         className={clsx(
           "absolute inset-x-0 bottom-0 bg-[#0b0b0b] rounded-t-3xl shadow-2xl flex flex-col",
-          "transition-transform duration-300 ease-out"
+          "transform-gpu",
+          touchStartY === null && "transition-transform duration-300 ease-out"
         )}
         style={{
           maxHeight: heightStyle,
           transform: isVisible && !isClosing 
             ? `translateY(${translateY}px)` 
             : "translateY(100%)",
-          transition: touchStartY !== null ? "none" : "transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)",
-          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 72px)",
+          willChange: touchStartY !== null ? "transform" : "auto",
         }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -186,7 +186,10 @@ export default function MobileBottomSheet({
         )}
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto overscroll-contain">
+        <div 
+          className="flex-1 overflow-y-auto overscroll-contain"
+          style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+        >
           {children}
         </div>
       </div>
