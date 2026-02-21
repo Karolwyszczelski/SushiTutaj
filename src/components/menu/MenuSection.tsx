@@ -146,7 +146,7 @@ const normalizeDisplay = (s: string) =>
  * Mapuje kolejność produktów zestawowych na numery Zestaw 1-N.
  * Używa cache globalnego żeby zachować spójność numeracji.
  */
-let setDisplayCache: Map<string, string> | null = null;
+const setDisplayCache: Map<string, string> | null = null;
 
 const buildDisplayName = (p: Product): string => {
   const base = p.name || "";
