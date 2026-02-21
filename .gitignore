@@ -52,3 +52,4 @@ mobile/google-services.json
 mobile/android/
 mobile/ios/
 mobile/.expo/
+.env*.local

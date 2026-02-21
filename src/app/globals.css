@@ -75,8 +75,24 @@ html,body{ touch-action:manipulation; }
   100%{ transform:rotate(360deg); }
 }
 .plate-spin{ animation:plate-spin 1.8s ease-in-out both; }
+
+/* Card slide in animation */
+@keyframes cardSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.restaurant-card {
+  animation: cardSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
 @media (prefers-reduced-motion:reduce){
-  .plate-spin{ animation:none !important; }
+  .plate-spin, .restaurant-card { animation:none !important; }
 }
 
 /* Utilsy layoutu i fade krawędzi */
@@ -93,13 +109,13 @@ html,body{ touch-action:manipulation; }
 
   /* przyciski */
   .btn-primary{
-    @apply rounded-full px-6 py-3 text-sm font-medium
+    @apply rounded-full px-6 py-3 text-sm font-medium text-white
            bg-gradient-to-r from-[var(--accent-red-dark)]
            via-[var(--accent-red)] to-[var(--accent-red-dark-2)]
            hover:opacity-95;
   }
   .btn-ghost{
-    @apply rounded-full px-6 py-3 text-sm font-medium
+    @apply rounded-full px-6 py-3 text-sm font-medium text-white
            border border-white/20 hover:bg-white/10;
   }
 }
@@ -181,5 +197,215 @@ html,body{ touch-action:manipulation; }
 
   .prose :where(strong):not(:where(.not-prose, .not-prose *)) {
     color: #fff;
+  }
+}
+
+/* ================================
+   MOBILE APP SHELL STYLES
+   ================================ */
+
+/* Ukryj scrollbar w mobile shell */
+.mobile-shell-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.mobile-shell-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* Safe area padding dla bottom nav */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .mobile-safe-bottom {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Animacja dla bottom sheet */
+@keyframes sheet-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheet-slide-down {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+.sheet-enter {
+  animation: sheet-slide-up 0.25s ease-out forwards;
+}
+
+.sheet-exit {
+  animation: sheet-slide-down 0.2s ease-in forwards;
+}
+
+/* Animacja fade dla przełączania zakładek */
+@keyframes tab-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tab-content-enter {
+  animation: tab-fade-in 0.2s ease-out forwards;
+}
+
+/* Blokada scrollowania body gdy sheet jest otwarty */
+body.sheet-open {
+  overflow: hidden;
+  position: fixed;
+  inset: 0;
+}
+
+/* ================================
+   CHECKOUT MODAL - MOBILE DARK THEME
+   ================================ */
+
+/* Input fields - dark on mobile, light on desktop */
+.checkout-input {
+  @apply w-full px-4 py-3.5 rounded-2xl transition-all text-base;
+  @apply border border-white/10 bg-white/[0.03] text-white placeholder:text-white/40;
+  @apply focus:border-[#a61b1b]/50 focus:bg-white/[0.06] focus:outline-none;
+  @apply disabled:bg-white/10 disabled:text-white/50 disabled:cursor-not-allowed;
+}
+@media (min-width: 1024px) {
+  .checkout-input {
+    @apply border-black/15 bg-white text-black placeholder:text-black/40;
+    @apply focus:border-black/30 focus:bg-gray-50;
+    @apply disabled:bg-gray-100 disabled:text-black/50;
+  }
+}
+
+/* Textarea fields */
+.checkout-textarea {
+  @apply w-full text-sm rounded-xl px-3 py-2.5 transition-all resize-none;
+  @apply border border-white/10 bg-white/[0.03] text-white placeholder:text-white/40;
+  @apply focus:border-[#a61b1b]/50 focus:bg-white/[0.06] focus:outline-none;
+}
+@media (min-width: 1024px) {
+  .checkout-textarea {
+    @apply border-black/15 bg-white text-black placeholder:text-black/40;
+    @apply focus:border-black/30 focus:bg-gray-50;
+  }
+}
+
+/* Cards/sections - dark on mobile, light on desktop */
+.checkout-card {
+  @apply rounded-2xl p-5 transition-colors;
+  @apply border border-white/5 bg-white/[0.03];
+}
+@media (min-width: 1024px) {
+  .checkout-card {
+    @apply border-black/10 bg-white shadow-sm;
+  }
+}
+
+/* Secondary card (bg-gray on desktop) */
+.checkout-card-secondary {
+  @apply rounded-2xl p-5 transition-colors;
+  @apply border border-white/5 bg-white/[0.05];
+}
+@media (min-width: 1024px) {
+  .checkout-card-secondary {
+    @apply border-black/10 bg-gray-50;
+  }
+}
+
+/* Info card (yellow on desktop) */
+.checkout-card-info {
+  @apply rounded-xl p-3.5 text-sm transition-colors font-medium;
+  @apply border border-amber-500/20 bg-amber-500/10 text-amber-200;
+}
+@media (min-width: 1024px) {
+  .checkout-card-info {
+    @apply border-amber-200 bg-amber-50 text-amber-800;
+  }
+}
+
+/* Muted text */
+.checkout-muted {
+  @apply text-white/50;
+}
+@media (min-width: 1024px) {
+  .checkout-muted {
+    @apply text-black/50;
+  }
+}
+
+/* Secondary text */
+.checkout-text-secondary {
+  @apply text-white/60;
+}
+@media (min-width: 1024px) {
+  .checkout-text-secondary {
+    @apply text-black/60;
+  }
+}
+
+/* Option buttons (delivery/takeaway) - Premium style */
+.checkout-option-btn {
+  @apply flex flex-col items-center justify-center border px-4 py-5 rounded-2xl transition-all;
+  @apply border-white/10 bg-white/[0.03] text-white;
+  @apply hover:bg-white/[0.08] hover:border-white/20 active:scale-[0.98];
+}
+.checkout-option-btn.selected {
+  @apply border-[#a61b1b] bg-gradient-to-br from-[#a61b1b]/20 to-[#a61b1b]/5 text-white;
+  box-shadow: 0 0 0 1px rgba(166, 27, 27, 0.3), 0 4px 20px rgba(166, 27, 27, 0.15);
+}
+.checkout-option-btn:disabled {
+  @apply opacity-40 cursor-not-allowed;
+}
+@media (min-width: 1024px) {
+  .checkout-option-btn {
+    @apply border-black/10 bg-gray-50 text-black hover:bg-gray-100;
+  }
+  .checkout-option-btn.selected {
+    @apply border-[#a61b1b] bg-[#a61b1b]/10 text-black;
+  }
+}
+
+/* Ghost button (back, secondary actions) */
+.checkout-btn-ghost {
+  @apply px-4 py-2.5 rounded-xl transition-all font-medium;
+  @apply border border-white/10 text-white/80 hover:bg-white/10 hover:text-white active:scale-[0.98];
+}
+@media (min-width: 1024px) {
+  .checkout-btn-ghost {
+    @apply border-black/15 text-black/80 hover:bg-gray-100 hover:text-black;
+  }
+}
+
+/* Link button (phone, etc) */
+.checkout-link-btn {
+  @apply inline-flex items-center justify-center rounded-full px-4 py-1.5 font-semibold text-sm transition-all;
+  @apply border border-white/15 text-white hover:bg-white/10 active:scale-[0.98];
+}
+@media (min-width: 1024px) {
+  .checkout-link-btn {
+    @apply border-black/15 text-black hover:bg-gray-100;
+  }
+}
+
+/* Border dividers */
+.checkout-divider {
+  @apply border-white/10;
+}
+@media (min-width: 1024px) {
+  .checkout-divider {
+    @apply border-black/10;
   }
 }

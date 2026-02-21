@@ -22,7 +22,7 @@ export function LegalConsent({
 }: LegalConsentProps) {
   return (
     <div className="space-y-3">
-      <label className="flex items-start gap-2 text-xs leading-5 text-black">
+      <label className="flex items-start gap-2 text-xs leading-5 text-white lg:text-black">
         <input
           type="checkbox"
           checked={legalAccepted}
@@ -52,7 +52,7 @@ export function LegalConsent({
         </span>
       </label>
 
-      <label className="flex items-start gap-2 text-xs leading-5 text-black">
+      <label className="flex items-start gap-2 text-xs leading-5 text-white lg:text-black">
         <input
           type="checkbox"
           checked={confirmCityOk}
@@ -65,7 +65,7 @@ export function LegalConsent({
         </span>
       </label>
 
-      <p className="text-[11px] text-black/60">
+      <p className="text-[11px] text-white/60 lg:text-black/60">
         Dzisiejsze godziny w {restaurantCityLabel}: {openHoursLabel}
       </p>
     </div>

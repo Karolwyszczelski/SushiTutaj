@@ -64,7 +64,7 @@ export function DeliveryTimeSelector({
 
         {deliveryTimeOption === "schedule" && canSchedule && (
           <select
-            className="border border-black/15 rounded-xl px-2 py-1 bg-white"
+            className="border border-white/20 lg:border-black/15 rounded-xl px-2 py-1 bg-white/5 lg:bg-white text-white lg:text-black"
             value={scheduledTime}
             onChange={(e) => onScheduledTimeChange(e.target.value)}
           >
@@ -82,7 +82,7 @@ export function DeliveryTimeSelector({
           </span>
         )}
       </div>
-      <p className="text-xs text-black/60">
+      <p className="text-xs text-white/60 lg:text-black/60">
         Dzisiejsze godziny w {restaurantCityLabel}: {openHoursLabel}
       </p>
     </div>

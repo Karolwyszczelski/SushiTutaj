@@ -669,57 +669,85 @@ const showSauces = !isDrink && !isDessert;
     return withCategoryPrefix(singleCurrentName, productSubcat);
   }, [isSet, isSpec, prod.name, singleCurrentName, productSubcat]);
 
+  // State dla rozwiniętych rolek w zestawie (mobile-friendly tap-to-expand)
+  const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
+  const toggleRowExpanded = (idx: number) => {
+    setExpandedRows(prev => ({ ...prev, [idx]: !prev[idx] }));
+  };
+
   return (
-    <div className="border border-black/10 bg-white p-3">
-     <div className="flex items-center justify-between gap-2 font-semibold mb-2 min-w-0">
-  <span className="text-black min-w-0 flex-1 truncate">
-    {displayTitle} x{prod.quantity || 1}
-  </span>
-  <span className="text-black shrink-0">
+    <div className="checkout-card p-4">
+     <div className="flex items-center justify-between gap-3 mb-3 min-w-0">
+  <div className="min-w-0 flex-1">
+    <span className="font-semibold text-white lg:text-black text-[15px] block truncate">
+      {displayTitle}
+    </span>
+    <span className="text-xs text-white/50 lg:text-black/50">
+      Ilość: {prod.quantity || 1}
+    </span>
+  </div>
+  <span className="font-bold text-lg text-white lg:text-black shrink-0">
     {lineTotal.toFixed(2).replace(".", ",")} zł
   </span>
 </div>
 
-      <div className="text-xs text-black/80 space-y-3">
+      <div className="text-xs space-y-4">
       {/* === SEKCJA DYNAMICZNYCH OPCJI Z BAZY (Najwyższy priorytet) === */}
         {optionGroups.length > 0 && (
-           <div className="space-y-3 mb-2 pt-1 border-b border-dashed border-gray-200 pb-3">
-              {/* Dopisałem typ: (group: DbOptionGroup) */}
-{optionGroups.map((group: DbOptionGroup) => (
-  <div key={group.id}>
-                      <div className="font-semibold mb-1 text-black">{group.name}</div>
-                      <div className="flex flex-wrap gap-2">
-    {/* Dopisałem typ: (option: DbOption) */}
-    {group.options.map((option: DbOption) => {
-        const selected = isOptionSelected(option.name);
-                              // Wyświetl cenę tylko jeśli jest większa niż 0
-                              const priceTxt = option.price_modifier > 0 
-                                   ? ` (+${(option.price_modifier/100).toFixed(2)} zł)` 
-                                   : '';
-                              
-                              return (
-                                  <button
-                                      key={option.id}
-                                      onClick={() => handleOptionToggle(group, option)}
-                                      className={clsx(
-                                          "px-2 py-1.5 rounded text-[11px] border transition-colors",
-                                          selected 
-                                              ? "bg-black text-white border-black" 
-                                              : "bg-white text-black hover:bg-gray-50 border-gray-200"
-                                      )}
-                                  >
-                                      {selected ? "✓ " : ""}{option.name}{priceTxt}
-                                  </button>
-                              )
-                          })}
-                      </div>
+           <div className="space-y-4 mb-2 pt-1 border-b border-dashed border-white/10 lg:border-gray-200 pb-4">
+              {optionGroups.map((group: DbOptionGroup) => (
+                <div key={group.id} className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center">
+                      <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <div className="font-semibold text-sm text-white lg:text-black">{group.name}</div>
                   </div>
+                  <div className="flex flex-wrap gap-2">
+                    {group.options.map((option: DbOption) => {
+                      const selected = isOptionSelected(option.name);
+                      const priceTxt = option.price_modifier > 0 
+                        ? ` (+${(option.price_modifier/100).toFixed(2)} zł)` 
+                        : '';
+                              
+                      return (
+                        <button
+                          key={option.id}
+                          onClick={() => handleOptionToggle(group, option)}
+                          className={clsx(
+                            "px-3 py-2 rounded-lg text-[11px] border transition-all font-medium",
+                            selected 
+                              ? "bg-[#a61b1b] text-white border-[#a61b1b]" 
+                              : "bg-white/5 lg:bg-white text-white/80 lg:text-black/80 hover:bg-white/10 lg:hover:bg-gray-100 border-white/15 lg:border-black/10"
+                          )}
+                        >
+                          {selected ? "✓ " : ""}{option.name}{priceTxt}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               ))}
            </div>
         )}
         {isSet && setRows.length > 0 && (
-          <div className="space-y-2">
-            <div className="font-semibold">Skład zestawu</div>
+          <div className="space-y-3">
+            {/* Nagłówek sekcji składu */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                  </svg>
+                </div>
+                <span className="font-semibold text-white lg:text-black text-sm">Skład zestawu</span>
+              </div>
+              <span className="text-[10px] text-white/40 lg:text-black/40 px-2 py-1 rounded-full bg-white/5 lg:bg-black/5">
+                Dotknij aby edytować
+              </span>
+            </div>
 
 {setRows.map((row, i) => {
   const catKey = normalize(row.cat);
@@ -879,217 +907,324 @@ if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
 
   const optionLabelShort = (n: string) => stripKnownPrefix(withCategoryPrefix(n, row.cat));
 
+  // Sprawdzenie czy rolka ma modyfikacje
+  const hasSwapped = normalizePlain(currentPrefixed) !== normalizePlain(withCategoryPrefix(row.from, row.cat));
+  const hasModifications = hasSwapped || rollBaked || EXTRAS.some(ex => (prod.addons ?? []).includes(extraKey(ex)));
+  const isExpanded = expandedRows[i] ?? false;
+
+  // Czy można edytować tę rolkę
+  const canEditRow = !isSetMonth && (pool.length > 1 || (rawRow && rowBakePossible) || EXTRAS.some(ex => canUseExtraForRow(ex)));
+
   return (
-    <div
-      key={i}
-      className="rounded-2xl border border-black/10 bg-white p-3 space-y-3"
-    >
-      {/* 1) Skład rolki w zestawie */}
-      <div className="text-sm font-semibold text-black leading-snug">
-  {row.qty}x {currentPrefixed}
-</div>
+    <div key={i} className="mb-2">
+      {/* Główna karta rolki - tap to expand */}
+      <button
+        type="button"
+        onClick={canEditRow ? () => toggleRowExpanded(i) : undefined}
+        disabled={!canEditRow}
+        className={clsx(
+          "w-full p-3 rounded-xl text-left transition-all",
+          isExpanded 
+            ? "border-2 border-[#a61b1b]/50 lg:border-[#a61b1b]/30" 
+            : hasModifications
+              ? "bg-emerald-500/10 lg:bg-emerald-50 border border-emerald-500/30 lg:border-emerald-200"
+              : "bg-white/[0.03] lg:bg-gray-50 border border-white/10 lg:border-black/5",
+          canEditRow && !isExpanded && "hover:bg-white/10 lg:hover:bg-gray-100 active:scale-[0.99]"
+        )}
+      >
+        <div className="flex items-center gap-3">
+          {/* Ilość - badge */}
+          <div className={clsx(
+            "w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0",
+            hasModifications 
+              ? "bg-emerald-500 text-white" 
+              : "bg-white/10 lg:bg-white text-white lg:text-black"
+          )}>
+            {row.qty}×
+          </div>
+          
+          {/* Nazwa i kategoria */}
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium truncate text-white lg:text-black">
+              {stripKnownPrefix(currentPrefixed)}
+            </div>
+            <div className="text-xs text-white/40 lg:text-black/40 flex items-center gap-1.5">
+              <span>{row.cat}</span>
+              {hasModifications && (
+                <span className="inline-flex items-center gap-0.5 text-emerald-400 lg:text-emerald-600">
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Zmienione
+                </span>
+              )}
+            </div>
+          </div>
 
-{normalizePlain(currentPrefixed) !== normalizePlain(withCategoryPrefix(row.from, row.cat)) && (
-  <div className="text-[11px] text-black/50">
-    W zestawie było: {withCategoryPrefix(row.from, row.cat)}
-  </div>
-)}
-
-      {/* 2) Zamiana */}
-{isSetMonth ? (
-  <div className="rounded-xl bg-gray-50 border border-black/10 p-2 text-[11px] text-black/70">
-    Zamiany niedostępne dla „Zestawu miesiąca”.
-  </div>
-) : (
-  <div className="space-y-1">
-    <div className="text-[11px] font-semibold text-black/70">Zamień na</div>
-    <select
-      className="border border-black/15 rounded-xl px-3 py-2 bg-white w-full"
-      value={current}
-      onChange={(e) => {
-        const next = e.target.value;
-
-        // jeśli była dopłata za pieczenie, a nowa WYBRANA rolka jest już pieczona / w tempurze → zdejmij dopłatę
-        const nextPref = withCategoryPrefix(next, row.cat);
-        const nextProd = byName.get(next) || byName.get(nextPref) || null;
-        const nextText = `${nextProd?.name || nextPref} ${nextProd?.description || ""}`;
-
-        if ((prod.addons ?? []).includes(rollAddonLabel) && isAlreadyBakedOrTempura(nextText)) {
-          removeAddon(prod.name, rollAddonLabel);
-        }
-
-        // POPRAWKA: Przy zamianie rolki ZAWSZE usuwamy dodatki (Tempura / Płatek / Tamago / Ryba pieczona)
-        // przypisane do tej rolki, bo klient zmienił rolkę więc jego wybór dodatku powinien być zresetowany.
-        // Wcześniej usuwaliśmy tylko gdy !allowedAfter, co powodowało "osierocone" addony.
-        for (const ex of EXTRAS) {
-          const k = extraKey(ex);
-          const onExtra = (prod.addons ?? []).includes(k);
-          if (onExtra) removeAddon(prod.name, k);
-        }
-
-
-        doSetSwap(rowKeyBase, row.from, next);
-      }}
-      aria-label={`Zamiana: ${row.qty}x ${row.cat} ${row.from}`}
-    >
-      {selectOptions.map((n) => {
-        const short = optionLabelShort(n);
-        return (
-          <option key={n} value={n}>
-            {n === row.from ? `Skład zestawu — ${short}` : short}
-          </option>
-        );
-      })}
-    </select>
-  </div>
-)}
-
-      {/* 3) Pieczenie tej rolki (jeśli dotyczy) */}
-      {rawRow && (
-        <button
-          type="button"
-          onClick={toggleRowBake}
-          disabled={isWholeSetBaked || !rowBakePossible}
-          className={clsx(
-            "w-full px-3 py-2 rounded-xl text-[11px] border",
-            (isWholeSetBaked || !rowBakePossible)
-              ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
-              : rollBaked
-              ? "bg-black text-white border-black"
-              : "bg-white text-black hover:bg-gray-50 border-gray-200"
+          {/* Ikona edycji */}
+          {canEditRow && (
+            <div className={clsx(
+              "w-8 h-8 rounded-lg flex items-center justify-center transition-all shrink-0",
+              isExpanded 
+                ? "bg-[#a61b1b] text-white rotate-180" 
+                : "bg-white/10 lg:bg-white text-white/50 lg:text-black/40"
+            )}>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           )}
-        >
-          {rollBaked
-  ? "✓ Ta rolka pieczona (+2 zł)"
-  : rowBakePossible
-  ? "+ Zamień tę rolkę na pieczoną (+2 zł)"
-  : "Ta rolka jest już pieczona lub w tempurze"}
-        </button>
-      )}
-
-      {/* 4) Dodatki do tej rolki */}
-      <div className="space-y-2">
-        <div className="text-[11px] font-semibold text-black/70">
-          Dodatki do tej rolki
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {EXTRAS.map((ex) => {
-            const key = extraKey(ex);
-            const allowed = canUseExtraForRow(ex);
-            const on = (prod.addons ?? []).includes(key);
+        {/* Info o oryginalnej rolce jeśli zmieniona */}
+        {hasSwapped && (
+          <div className="mt-2 pt-2 border-t border-white/10 lg:border-black/10 flex items-center gap-2 text-xs">
+            <span className="text-white/40 lg:text-black/40">Było:</span>
+            <span className="text-white/50 lg:text-black/50 line-through">{stripKnownPrefix(withCategoryPrefix(row.from, row.cat))}</span>
+          </div>
+        )}
+      </button>
 
-            return (
-              <button
-                key={ex}
-                type="button"
-                  disabled={!allowed && !on}
-                onClick={() => {
-  // jeśli jest już włączone, pozwól ZAWSZE zdjąć
-  if (on) {
-    removeAddon(prod.name, key);
-    return;
-  }
+      {/* Panel edycji - rozwinięty */}
+      {isExpanded && (
+        <div className="mt-2 p-4 rounded-xl border border-white/10 lg:border-black/10 space-y-4">
+          
+          {/* Zamiana rolki */}
+          {!isSetMonth && pool.length > 1 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-xs font-medium text-white/70 lg:text-black/70">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+                Zamień na inną
+              </div>
+              <div className="grid grid-cols-2 gap-1.5 max-h-[180px] overflow-y-auto pr-1">
+                {selectOptions.map((n) => {
+                  const short = optionLabelShort(n);
+                  const isSelected = current === n;
+                  const isOriginal = n === row.from;
+                  
+                  return (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => {
+                        if (isSelected) return;
+                        
+                        const nextPref = withCategoryPrefix(n, row.cat);
+                        const nextProd = byName.get(n) || byName.get(nextPref) || null;
+                        const nextText = `${nextProd?.name || nextPref} ${nextProd?.description || ""}`;
 
-  // jeśli nie jest włączone, a jest niedozwolone — nie dodawaj
-  if (!allowed) return;
+                        if ((prod.addons ?? []).includes(rollAddonLabel) && isAlreadyBakedOrTempura(nextText)) {
+                          removeAddon(prod.name, rollAddonLabel);
+                        }
 
-  // radio-like w obrębie tej rolki
-  EXTRAS.forEach((ex2) => {
-    const k2 = extraKey(ex2);
-    if ((prod.addons ?? []).includes(k2)) removeAddon(prod.name, k2);
-  });
+                        for (const ex of EXTRAS) {
+                          const k = extraKey(ex);
+                          const onExtra = (prod.addons ?? []).includes(k);
+                          if (onExtra) removeAddon(prod.name, k);
+                        }
 
-  addAddon(prod.name, key);
-}}
+                        doSetSwap(rowKeyBase, row.from, n);
+                      }}
+                      className={clsx(
+                        "px-3 py-2.5 rounded-lg text-[11px] text-left transition-all border",
+                        isSelected
+                          ? "bg-[#a61b1b] text-white border-[#a61b1b] font-medium"
+                          : "bg-white/5 lg:bg-white text-white/80 lg:text-black/80 border-white/10 lg:border-black/10 hover:bg-white/10 lg:hover:bg-gray-100"
+                      )}
+                    >
+                      <div className="flex items-start gap-2">
+                        {isSelected && (
+                          <svg className="w-3.5 h-3.5 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                        <span className="break-words leading-tight">{isOriginal ? `${short} (oryginał)` : short}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
-                className={clsx(
-                  "px-2 py-1 rounded text-[11px] border",
-                  !allowed
-                    ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
-                    : on
-                    ? "bg-black text-white border-black"
-                    : "bg-white text-black hover:bg-gray-50 border-gray-200"
+          {isSetMonth && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 lg:bg-amber-50 border border-amber-500/20 lg:border-amber-200 text-xs text-amber-300 lg:text-amber-700">
+              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              Zamiany niedostępne dla &ldquo;Zestawu miesiąca&rdquo;
+            </div>
+          )}
+
+          {/* Modyfikacje - pieczenie i dodatki */}
+          {(rawRow || EXTRAS.some(ex => canUseExtraForRow(ex) || (prod.addons ?? []).includes(extraKey(ex)))) && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-xs font-medium text-white/70 lg:text-black/70">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Modyfikacje
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {/* Pieczenie */}
+                {rawRow && rowBakePossible && (
+                  <button
+                    type="button"
+                    onClick={toggleRowBake}
+                    disabled={isWholeSetBaked}
+                    className={clsx(
+                      "px-3 py-2 rounded-lg text-[11px] border transition-all font-medium",
+                      isWholeSetBaked
+                        ? "opacity-40 cursor-not-allowed bg-white/5 lg:bg-gray-50 border-white/10 lg:border-gray-200 text-white/40 lg:text-black/40"
+                        : rollBaked
+                          ? "bg-emerald-500 text-white border-emerald-500"
+                          : "bg-white/5 lg:bg-white hover:bg-white/10 lg:hover:bg-gray-100 border-white/15 lg:border-black/10 text-white/80 lg:text-black/80"
+                    )}
+                  >
+                    {rollBaked ? "✓ Pieczona (+2 zł)" : "+ Pieczona (+2 zł)"}
+                  </button>
                 )}
-              >
-                {on ? `✓ ${ex}` : `+ ${ex}`}
-              </button>
-            );
-          })}
+
+                {/* Dodatki */}
+                {EXTRAS.filter(ex => canUseExtraForRow(ex) || (prod.addons ?? []).includes(extraKey(ex))).map((ex) => {
+                  const key = extraKey(ex);
+                  const on = (prod.addons ?? []).includes(key);
+
+                  return (
+                    <button
+                      key={ex}
+                      type="button"
+                      onClick={() => {
+                        if (on) {
+                          removeAddon(prod.name, key);
+                          return;
+                        }
+                        EXTRAS.forEach((ex2) => {
+                          const k2 = extraKey(ex2);
+                          if ((prod.addons ?? []).includes(k2)) removeAddon(prod.name, k2);
+                        });
+                        addAddon(prod.name, key);
+                      }}
+                      className={clsx(
+                        "px-3 py-2 rounded-lg text-[11px] border transition-all font-medium",
+                        on
+                          ? "bg-emerald-500 text-white border-emerald-500"
+                          : "bg-white/5 lg:bg-white hover:bg-white/10 lg:hover:bg-gray-100 border-white/15 lg:border-black/10 text-white/80 lg:text-black/80"
+                      )}
+                    >
+                      {on ? `✓ ${ex}` : `+ ${ex}`}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Przycisk zamknięcia */}
+          <button
+            type="button"
+            onClick={() => toggleRowExpanded(i)}
+            className="w-full py-2.5 rounded-lg bg-white/5 lg:bg-white border border-white/10 lg:border-black/10 text-xs font-medium text-white/70 lg:text-black/70 hover:bg-white/10 lg:hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+            Gotowe
+          </button>
         </div>
-      </div>
+      )}
     </div>
   );
 })}
 
             {/* Rozmiar zestawu: standard vs powiększony (+szt za 1–2 zł) */}
             {setUpgradeInfo && (
-              <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-2 space-y-1">
-                <div className="font-semibold text-[11px]">
-                  Rozmiar zestawu:
+              <div className="mt-4 p-4 rounded-xl bg-white/5 lg:bg-emerald-50 border border-white/10 lg:border-emerald-200 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500 flex items-center justify-center">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                  </div>
+                  <span className="font-semibold text-sm text-white lg:text-black">Rozmiar zestawu</span>
                 </div>
-                <div className="flex flex-wrap gap-2 text-[11px]">
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
                   <button
                     type="button"
                     onClick={() => setSetSize(false)}
                     className={clsx(
-                      "px-2 py-1 rounded border",
+                      "p-3 rounded-lg border-2 transition-all text-left",
                       !isSetUpgraded
-                        ? "bg-black text-white border-black"
-                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                        ? "bg-[#a61b1b]/10 lg:bg-[#a61b1b]/5 border-[#a61b1b] text-white lg:text-black"
+                        : "bg-white/5 lg:bg-white border-white/10 lg:border-black/10 text-white/70 lg:text-black/70 hover:bg-white/10 lg:hover:bg-gray-50"
                     )}
                   >
-                    Standard – {setUpgradeInfo.basePieces} szt
+                    <div className="font-semibold mb-0.5">Standard</div>
+                    <div className="text-white/50 lg:text-black/50">{setUpgradeInfo.basePieces} szt</div>
                   </button>
                   <button
                     type="button"
                     onClick={() => setSetSize(true)}
                     className={clsx(
-                      "px-2 py-1 rounded border",
+                      "p-3 rounded-lg border-2 transition-all text-left",
                       isSetUpgraded
-                        ? "bg-black text-white border-black"
-                        : "bg-white text-black hover:bg-gray-50 border-gray-200"
+                        ? "bg-emerald-500/10 lg:bg-emerald-50 border-emerald-500 text-white lg:text-black"
+                        : "bg-white/5 lg:bg-white border-white/10 lg:border-black/10 text-white/70 lg:text-black/70 hover:bg-white/10 lg:hover:bg-gray-50"
                     )}
                   >
-                    Powiększony – {setUpgradeInfo.totalPieces} szt (
-                    +{setUpgradeInfo.extraPieces} szt za{" "}
-                    {setUpgradeInfo.price} zł)
+                    <div className="font-semibold mb-0.5">Powiększony</div>
+                    <div className="text-white/50 lg:text-black/50">+{setUpgradeInfo.extraPieces} szt za {setUpgradeInfo.price} zł</div>
                   </button>
                 </div>
               </div>
             )}
 
             {!isSetMonth && (
-  <p className="text-[11px] text-black/60">
-    Zamiany tylko w obrębie tej samej kategorii (Futomaki ↔ Futomaki,
-    Hosomaki ↔ Hosomaki, California ↔ California itd.). California
-    może być zamieniana tylko na inne rolki California z tej samej
-    „klasy” (obłożone ↔ obłożone, klasyczne ↔ klasyczne). Bez
-    specjałów. Dodajemy pozycję „{SWAP_FEE_NAME}”.
-  </p>
-)}
-
+              <p className="text-[10px] text-white/40 lg:text-black/40 mt-3 px-1">
+                Zamiany tylko w obrębie tej samej kategorii. Dodajemy pozycję &ldquo;{SWAP_FEE_NAME}&rdquo;.
+              </p>
+            )}
 
             {isSet && setBakePrice != null && (
-              <div className="mt-2 rounded-md border border-orange-200 bg-orange-50 px-2 py-2 space-y-1">
-                <div className="font-semibold text-[11px]">
-                  Wersja pieczona całego zestawu:
+              <div className="mt-4 p-4 rounded-xl bg-white/5 lg:bg-orange-50 border border-white/10 lg:border-orange-200 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+                    </svg>
+                  </div>
+                  <span className="font-semibold text-sm text-white lg:text-black">Wersja pieczona</span>
                 </div>
-                <label className="flex items-center gap-2 text-[11px]">
-                  <input
-                    type="checkbox"
-                    checked={isWholeSetBaked}
-                    onChange={toggleWholeSetBake}
-                  />
-                  <span>
-                    Zamień cały zestaw na pieczony (+{setBakePrice} zł)
-                  </span>
-                </label>
+                <button
+                  type="button"
+                  onClick={toggleWholeSetBake}
+                  className={clsx(
+                    "w-full p-3 rounded-lg border-2 transition-all flex items-center gap-3",
+                    isWholeSetBaked
+                      ? "bg-orange-500/10 lg:bg-orange-100 border-orange-500 text-white lg:text-black"
+                      : "bg-white/5 lg:bg-white border-white/10 lg:border-black/10 text-white/70 lg:text-black/70 hover:bg-white/10 lg:hover:bg-gray-50"
+                  )}
+                >
+                  <div className={clsx(
+                    "w-5 h-5 rounded-md flex items-center justify-center shrink-0",
+                    isWholeSetBaked ? "bg-orange-500 text-white" : "bg-white/10 lg:bg-gray-200"
+                  )}>
+                    {isWholeSetBaked && (
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="text-left flex-1 text-[12px]">
+                    <div className="font-medium">Zamień cały zestaw na pieczony</div>
+                    <div className="text-white/50 lg:text-black/50 text-[11px]">+{setBakePrice} zł</div>
+                  </div>
+                </button>
                 {isWholeSetBaked && (
-                  <p className="text-[10px] text-black/60">
-                    Dla całego zestawu naliczana jest jedna dopłata +
-                    {setBakePrice} zł. Indywidualne pieczenie pojedynczych
-                    rolek w tym wariancie jest wyłączone.
+                  <p className="text-[10px] text-white/40 lg:text-orange-600 px-1">
+                    Indywidualne pieczenie pojedynczych rolek jest wyłączone.
                   </p>
                 )}
               </div>
@@ -1098,94 +1233,112 @@ if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
         )}
 
         {showSauces && (
-  <div className="mt-2">
-    <div className="font-semibold mb-2">Sosy</div>
-    {/* info o sosach (przeniesione nad listę) */}
-<p className="text-[11px] text-black/60 -mt-1 mb-2">
-  {sauceHint ? `${sauceHint} ` : ""}
-  Dodatkowe porcje liczymy wg cennika sosów (obecnie 2 zł / porcja).
-</p>
-        {shouldAutoPrefillFreeSauces && freeSaucesTotal > 0 && (
-      <div className="mb-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2">
-        <div className="text-[11px] font-semibold text-black">
-          W cenie masz {freeSaucesTotal} {pluralizeSos(freeSaucesTotal)} gratis.
-        </div>
-        {defaultFreeSaucesSummary ? (
-          <div className="text-[11px] text-black/70">
-            Domyślnie wybieramy: {defaultFreeSaucesSummary}. Możesz zmienić ilości poniżej.
-          </div>
-        ) : null}
-      </div>
-    )}
-
-
-    <div className="overflow-hidden rounded-2xl border border-black/10 bg-white">
-      <div className="grid grid-cols-[1fr_120px] items-center px-3 py-2 bg-gray-50 text-[11px] font-semibold text-black/70">
-        <span>Sos</span>
-        <span className="text-right">Ilość</span>
-      </div>
-
-      <div className="divide-y divide-black/5">
-        {saucesForProduct.map((s) => {
-          const qty = getSauceQty(s);
-
-          return (
-            <div
-              key={s}
-              className={clsx(
-                "grid grid-cols-[1fr_120px] items-center gap-2 px-3 py-2",
-                qty > 0 ? "bg-white" : "bg-white"
-              )}
-            >
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-black leading-snug break-words">
-                  {s}
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-yellow-400 to-amber-500 flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                </svg>
+              </div>
+              <span className="font-semibold text-sm text-white lg:text-black">Sosy</span>
+            </div>
+            
+            <p className="text-[10px] text-white/40 lg:text-black/40 px-1">
+              {sauceHint ? `${sauceHint} ` : ""}
+              Dodatkowe porcje: 2 zł / porcja.
+            </p>
+            
+            {shouldAutoPrefillFreeSauces && freeSaucesTotal > 0 && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 lg:bg-emerald-50 border border-emerald-500/20 lg:border-emerald-200">
+                <div className="text-xs font-semibold text-emerald-300 lg:text-emerald-700">
+                  ✓ W cenie masz {freeSaucesTotal} {pluralizeSos(freeSaucesTotal)} gratis
                 </div>
-                <div className="text-[11px] text-black/60">
-                  2,00 zł / porcja
-                </div>
+                {defaultFreeSaucesSummary && (
+                  <div className="text-[10px] text-emerald-300/70 lg:text-emerald-600 mt-0.5">
+                    Domyślnie: {defaultFreeSaucesSummary}
+                  </div>
+                )}
+              </div>
+            )}
+
+
+            <div className="overflow-hidden rounded-xl border border-white/10 lg:border-black/10 bg-white/5 lg:bg-white">
+              <div className="grid grid-cols-[1fr_120px] items-center px-3 py-2 bg-white/5 lg:bg-gray-50 text-[10px] font-medium text-white/50 lg:text-black/50 uppercase tracking-wider">
+                <span>Sos</span>
+                <span className="text-right">Ilość</span>
               </div>
 
-              <div className="flex items-center justify-end gap-1 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => decSauce(s)}
-                  disabled={qty === 0}
-                  className={clsx(
-                    "h-9 w-9 rounded-xl border text-base leading-none flex items-center justify-center",
-                    qty === 0
-                      ? "opacity-40 cursor-not-allowed border-gray-200 bg-white"
-                      : "border-gray-300 hover:bg-gray-50 bg-white"
-                  )}
-                  aria-label={`Usuń porcję: ${s}`}
-                >
-                  –
-                </button>
+              <div className="divide-y divide-white/5 lg:divide-black/5">
+                {saucesForProduct.map((s) => {
+                  const qty = getSauceQty(s);
 
-                <span className="w-8 text-center text-sm font-semibold text-black/70 tabular-nums">
-                  {qty}
-                </span>
+                  return (
+                    <div
+                      key={s}
+                      className={clsx(
+                        "grid grid-cols-[1fr_120px] items-center gap-2 px-3 py-2.5 transition-colors",
+                        qty > 0 ? "bg-white/5 lg:bg-emerald-50/50" : "bg-transparent"
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-white lg:text-black leading-snug break-words">
+                          {s}
+                        </div>
+                        <div className="text-[10px] text-white/40 lg:text-black/50">
+                          2,00 zł / porcja
+                        </div>
+                      </div>
 
-                <button
-                  type="button"
-                  onClick={() => incSauce(s)}
-                  className="h-9 w-9 rounded-xl border border-black bg-black text-white text-base leading-none flex items-center justify-center hover:opacity-90"
-                  aria-label={`Dodaj porcję: ${s}`}
-                >
-                  +
-                </button>
+                      <div className="flex items-center justify-end gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => decSauce(s)}
+                          disabled={qty === 0}
+                          className={clsx(
+                            "h-8 w-8 rounded-lg border text-sm flex items-center justify-center transition-all",
+                            qty === 0
+                              ? "opacity-30 cursor-not-allowed border-white/10 lg:border-gray-200 bg-white/5 lg:bg-white text-white/30 lg:text-black/30"
+                              : "border-white/20 lg:border-gray-300 hover:bg-white/10 lg:hover:bg-gray-50 bg-white/5 lg:bg-white text-white lg:text-black"
+                          )}
+                          aria-label={`Usuń porcję: ${s}`}
+                        >
+                          −
+                        </button>
+
+                        <span className={clsx(
+                          "w-8 text-center text-sm font-bold tabular-nums",
+                          qty > 0 ? "text-white lg:text-black" : "text-white/40 lg:text-black/40"
+                        )}>
+                          {qty}
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() => incSauce(s)}
+                          className="h-8 w-8 rounded-lg border-2 border-[#a61b1b] bg-[#a61b1b] text-white text-sm flex items-center justify-center hover:bg-[#8a1414] transition-colors"
+                          aria-label={`Dodaj porcję: ${s}`}
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
-          );
-        })}
-      </div>
-    </div>
-  </div>
-)}
+          </div>
+        )}
 
         {!isSet && !isDrink && !isDessert && (
-          <div>
-            <div className="font-semibold mb-1">Dodatki:</div>
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-400 to-indigo-500 flex items-center justify-center">
+                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+              </div>
+              <span className="font-semibold text-sm text-white lg:text-black">Dodatki</span>
+            </div>
             <div className="flex flex-wrap gap-2">
               {EXTRAS.map((ex) => {
                 const allowed = canUseExtra(ex);
@@ -1195,14 +1348,13 @@ if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
                     key={ex}
                     onClick={() => allowed && toggleAddon(ex)}
                     className={clsx(
-  "px-2 py-1 rounded text-[11px] border",
-  on
-    ? "bg-black text-white border-black"
-    : !allowed
-    ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
-    : "bg-white text-black hover:bg-gray-50 border-gray-200"
-)}
-
+                      "px-3 py-2 rounded-lg text-[11px] border transition-all font-medium",
+                      on
+                        ? "bg-emerald-500 text-white border-emerald-500"
+                        : !allowed
+                          ? "opacity-30 cursor-not-allowed bg-white/5 lg:bg-gray-50 border-white/10 lg:border-gray-200 text-white/40 lg:text-black/40"
+                          : "bg-white/5 lg:bg-white hover:bg-white/10 lg:hover:bg-gray-100 border-white/15 lg:border-black/10 text-white/80 lg:text-black/80"
+                    )}
                   >
                     {on ? `✓ ${ex}` : `+ ${ex}`}
                   </button>
@@ -1211,7 +1363,7 @@ if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
             </div>
 
             {subcat === "california" && (
-              <p className="text-[11px] text-black/60 mt-1">
+              <p className="text-[11px] text-white/50 lg:text-black/60 mt-1">
                 California = rolki z ryżem na zewnątrz. Standardowo nie dodajemy
                 do nich dodatków – wyjątek stanowią wybrane pozycje z surowym
                 łososiem, paluszkiem krabowym i/lub krewetką obłożoną łososiem.
@@ -1221,7 +1373,7 @@ if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
             )}
 
             {subcat === "hosomaki" && (
-              <p className="text-[11px] text-black/60 mt-1">
+              <p className="text-[11px] text-white/50 lg:text-black/60 mt-1">
                 Hosomaki (Hoso) = cienkie rolki z jednym składnikiem. Można
                 dodać jedynie Tempurę, a przy zamianach wybierasz wyłącznie inne
                 Hosomaki.
@@ -1229,7 +1381,7 @@ if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
             )}
 
             {subcat === "futomaki" && (
-              <p className="text-[11px] text-black/60 mt-1">
+              <p className="text-[11px] text-white/50 lg:text-black/60 mt-1">
                 Futomaki (Futo) = grubsze rolki z kilkoma składnikami. Dostępne
                 dodatki: Tempura, Płatek sojowy, Tamago, a przy rolkach surowych
                 także „Ryba pieczona”.
@@ -1237,7 +1389,7 @@ if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
             )}
 
             {isSet && (
-              <p className="text-[11px] text-black/60 mt-1">
+              <p className="text-[11px] text-white/50 lg:text-black/60 mt-1">
                 W zestawach zamieniasz rolki tylko w obrębie tej samej kategorii
                 (Futomaki ↔ Futomaki, Hosomaki ↔ Hosomaki, California ↔
                 California, Nigiri ↔ Nigiri). Jeśli w zestawie są Futomaki,
@@ -1249,16 +1401,17 @@ if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
         )}
       </div>
 
-      <div className="flex justify-end items-center mt-2 gap-2 flex-wrap text-[15px]">
+      {/* Przyciski usuwania */}
+      <div className="flex justify-end items-center mt-4 pt-3 border-t border-white/10 lg:border-black/5 gap-3 text-xs">
         <button
           onClick={() => removeItem(prod.name)}
-          className="text-red-600 underline"
+          className="px-3 py-2 rounded-lg text-red-400 lg:text-red-600 hover:bg-red-500/10 lg:hover:bg-red-50 transition-colors"
         >
           Usuń 1 szt.
         </button>
         <button
           onClick={() => removeWholeItem(prod.name)}
-          className="text-red-600 underline"
+          className="px-3 py-2 rounded-lg bg-red-500/10 lg:bg-red-50 text-red-400 lg:text-red-600 hover:bg-red-500/20 lg:hover:bg-red-100 transition-colors font-medium"
         >
           Usuń produkt
         </button>

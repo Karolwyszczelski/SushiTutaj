@@ -11,7 +11,7 @@ export const TurnstileWidget = forwardRef<HTMLDivElement, TurnstileWidgetProps>(
   function TurnstileWidget({ turnstileEnabled, turnstileError }, ref) {
     if (!turnstileEnabled) {
       return (
-        <p className="text-[11px] text-black/60">
+        <p className="text-[11px] text-white/60 lg:text-black/60">
           Weryfikacja Turnstile wyłączona (brak klucza).
         </p>
       );
@@ -27,7 +27,7 @@ export const TurnstileWidget = forwardRef<HTMLDivElement, TurnstileWidgetProps>(
         ) : (
           <>
             <div ref={ref} />
-            <p className="text-[11px] text-black/60 mt-1">
+            <p className="text-[11px] text-white/60 lg:text-black/60 mt-1">
               Chronimy formularz przed botami.
             </p>
           </>

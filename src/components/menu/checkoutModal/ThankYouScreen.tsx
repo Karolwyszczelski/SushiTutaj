@@ -12,17 +12,17 @@ interface ThankYouScreenProps {
 export function ThankYouScreen({ googleReviewUrl, onClose }: ThankYouScreenProps) {
   return (
     <div className="min-h-[320px] flex flex-col items-center justify-center text-center space-y-5 px-4">
-      <div className="bg-white p-4 rounded-2xl shadow flex flex-col items-center gap-2">
+      <div className="bg-white/10 lg:bg-white p-4 rounded-2xl shadow flex flex-col items-center gap-2">
         <div className="bg-white p-3 rounded-xl">
           <QRCode value={googleReviewUrl} size={170} />
         </div>
-        <p className="text-xs text-black/60 max-w-xs">
+        <p className="text-xs text-white/60 lg:text-black/60 max-w-xs">
           Zeskanuj kod lub kliknij poniższy przycisk, aby ocenić lokal w Google.
         </p>
       </div>
 
       <h3 className="text-2xl font-bold">Dziękujemy za zamówienie!</h3>
-      <p className="text-black/70">
+      <p className="text-white/70 lg:text-black/70">
         Potwierdzenie i link do śledzenia wysłaliśmy na Twój adres e-mail.
       </p>
 
@@ -37,7 +37,7 @@ export function ThankYouScreen({ googleReviewUrl, onClose }: ThankYouScreenProps
         </a>
         <button
           onClick={onClose}
-          className="px-4 py-2 rounded-xl border border-black/15"
+          className="px-4 py-2 rounded-xl border border-white/20 lg:border-black/15 text-white lg:text-black"
         >
           Zamknij
         </button>

@@ -182,9 +182,29 @@ interface Order {
   reservation_id?: string | null;
   reservation_date?: string | null;
   reservation_time?: string | null;
+  reservation_status?: "new" | "accepted" | "cancelled" | null;
 
   // liczba pałeczek – tylko do odczytu
   chopsticks?: number | null;
+}
+
+/* ========= Typ Reservation – osobne rezerwacje (bez zamówienia) ========= */
+interface Reservation {
+  id: string;
+  restaurant_id: string | null;
+  reservation_date: string; // YYYY-MM-DD
+  reservation_time: string; // HH:MM:SS
+  guests: number | null;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  note: string | null;
+  status: "new" | "accepted" | "cancelled" | null;
+  confirmed_at?: string | null;
+  admin_note?: string | null;
+  table_ref?: string | null;
+  table_label?: string | null;
+  table_id?: string | null;
 }
 
 /* mapowanie płatności */
@@ -1505,6 +1525,280 @@ const NetworkStatusIndicator: React.FC<{ isOnline: boolean; lastSuccess: number 
   );
 };
 
+/* ========= Reservation Acceptance Bar ========= */
+const ReservationAcceptanceBar: React.FC<{
+  order: Order;
+  onStatusChange?: () => void;
+}> = ({ order, onStatusChange }) => {
+  const [busy, setBusy] = useState(false);
+  const [localStatus, setLocalStatus] = useState<"new" | "accepted" | "cancelled" | null>(
+    order.reservation_status ?? null
+  );
+
+  // Aktualizuj lokalny stan gdy zmieni się z zewnątrz (polling)
+  useEffect(() => {
+    setLocalStatus(order.reservation_status ?? null);
+  }, [order.reservation_status]);
+
+  if (!order.reservation_id) return null;
+
+  const handleAction = async (action: "accept" | "cancel") => {
+    if (busy) return;
+    setBusy(true);
+
+    try {
+      const res = await fetch("/api/reservations/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: order.reservation_id,
+          action,
+        }),
+      });
+
+      if (res.ok) {
+        setLocalStatus(action === "accept" ? "accepted" : "cancelled");
+        onStatusChange?.();
+      }
+    } catch (e) {
+      console.error("[ReservationAcceptanceBar] error:", e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const statusLabel =
+    localStatus === "accepted"
+      ? "Potwierdzona"
+      : localStatus === "cancelled"
+      ? "Anulowana"
+      : "Oczekuje";
+
+  const statusTone =
+    localStatus === "accepted"
+      ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+      : localStatus === "cancelled"
+      ? "bg-rose-100 text-rose-800 border-rose-200"
+      : "bg-amber-100 text-amber-800 border-amber-200";
+
+  const timeInfo = order.reservation_time
+    ? formatTimeLabel(order.reservation_time)
+    : order.reservation_date
+    ? order.reservation_date
+    : null;
+
+  return (
+    <div className={`mt-3 rounded-xl border px-4 py-3 ${statusTone}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/60">
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+              />
+            </svg>
+          </div>
+          <div>
+            <div className="text-sm font-semibold">
+              Rezerwacja{timeInfo ? ` · ${timeInfo}` : ""}
+            </div>
+            <div className="text-xs opacity-80">
+              Status: <span className="font-medium">{statusLabel}</span>
+            </div>
+          </div>
+        </div>
+
+        {localStatus !== "cancelled" && (
+          <div className="flex gap-2">
+            {localStatus !== "accepted" && (
+              <button
+                onClick={() => handleAction("accept")}
+                disabled={busy}
+                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white shadow hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {busy ? "..." : "Potwierdź rezerwację"}
+              </button>
+            )}
+            <button
+              onClick={() => handleAction("cancel")}
+              disabled={busy}
+              className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white shadow hover:bg-rose-700 disabled:opacity-50"
+            >
+              {busy ? "..." : "Anuluj rezerwację"}
+            </button>
+          </div>
+        )}
+
+        {localStatus === "cancelled" && (
+          <span className="text-xs font-medium">Rezerwacja została anulowana</span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ========= ReservationCard – karta rezerwacji bez zamówienia ========= */
+const ReservationCard: React.FC<{
+  reservation: Reservation;
+  onStatusChange: () => void;
+}> = ({ reservation, onStatusChange }) => {
+  const [busy, setBusy] = useState(false);
+  const r = reservation;
+
+  const handleAction = async (action: "accept" | "cancel") => {
+    if (busy) return;
+    setBusy(true);
+
+    try {
+      const res = await fetch("/api/reservations/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: r.id,
+          action,
+        }),
+      });
+
+      if (res.ok) {
+        onStatusChange();
+      } else {
+        const j = await res.json().catch(() => ({}));
+        alert(j?.error || "Błąd operacji");
+      }
+    } catch (e) {
+      console.error("[ReservationCard] error:", e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const statusLabel =
+    r.status === "accepted"
+      ? "Potwierdzona"
+      : r.status === "cancelled"
+      ? "Anulowana"
+      : "Oczekuje";
+
+  const statusTone =
+    r.status === "accepted"
+      ? "ring-emerald-200 border-emerald-100"
+      : r.status === "cancelled"
+      ? "ring-rose-200 border-rose-100"
+      : "ring-amber-200 border-amber-100";
+
+  const timeStr = r.reservation_time ? r.reservation_time.slice(0, 5) : "--:--";
+  const dateObj = r.reservation_date ? new Date(r.reservation_date + "T00:00:00") : null;
+  const dateStr = dateObj
+    ? dateObj.toLocaleDateString("pl-PL", { weekday: "short", day: "numeric", month: "short" })
+    : r.reservation_date;
+
+  return (
+    <article
+      className={`rounded-2xl border bg-white p-5 shadow-sm ring-1 ${statusTone} text-slate-900`}
+    >
+      <header className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100">
+              <svg
+                className="h-5 w-5 text-emerald-700"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-lg font-bold tracking-tight">
+                Rezerwacja · {timeStr}
+              </h3>
+              <p className="text-sm text-slate-600">{dateStr}</p>
+            </div>
+            <Badge
+              tone={
+                r.status === "accepted"
+                  ? "green"
+                  : r.status === "cancelled"
+                  ? "rose"
+                  : "amber"
+              }
+            >
+              {statusLabel.toUpperCase()}
+            </Badge>
+          </div>
+        </div>
+        <div className="text-xs text-slate-500">
+          #{r.id.slice(0, 8)}
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 gap-3 text-sm text-slate-800 sm:grid-cols-2">
+        <div>
+          <b>Gość:</b> {r.name || "—"}
+        </div>
+        <div>
+          <b>Osoby:</b> {r.guests ?? 1}
+        </div>
+        {r.phone && (
+          <div>
+            <b>Telefon:</b> {r.phone}
+          </div>
+        )}
+        {r.email && (
+          <div>
+            <b>Email:</b> {r.email}
+          </div>
+        )}
+        {r.note && (
+          <div className="sm:col-span-2">
+            <b>Notatka:</b> {r.note}
+          </div>
+        )}
+      </div>
+
+      <footer className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
+        {r.status !== "accepted" && r.status !== "cancelled" && (
+          <button
+            onClick={() => handleAction("accept")}
+            disabled={busy}
+            className="h-10 rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white shadow hover:bg-emerald-500 disabled:opacity-50"
+          >
+            {busy ? "..." : "Potwierdź rezerwację"}
+          </button>
+        )}
+        {r.status !== "cancelled" && (
+          <button
+            onClick={() => handleAction("cancel")}
+            disabled={busy}
+            className="h-10 rounded-md bg-rose-600 px-4 text-sm font-semibold text-white shadow hover:bg-rose-500 disabled:opacity-50"
+          >
+            {busy ? "..." : "Anuluj"}
+          </button>
+        )}
+        {r.status === "accepted" && (
+          <span className="text-sm text-emerald-700 font-medium">
+            ✓ Rezerwacja potwierdzona
+          </span>
+        )}
+      </footer>
+    </article>
+  );
+};
+
 /* --------- Live Clock – aktualny czas --------- */
 const LiveClock: React.FC = () => {
   const [now, setNow] = useState(() => new Date());
@@ -1970,6 +2264,10 @@ const ensureRestaurantContext = useCallback(
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
+
+  // Rezerwacje (bez powiązanego zamówienia)
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [reservationsLoading, setReservationsLoading] = useState(false);
 
   // Status połączenia sieciowego
   const [isOnline, setIsOnline] = useState(true);
@@ -2668,6 +2966,7 @@ const fetchOrders = useCallback(
           reservation_id: o.reservation_id ?? null,
           reservation_date: o.reservation_date ?? null,
           reservation_time: o.reservation_time ?? null,
+          reservation_status: o.reservation_status ?? null,
 
           chopsticks: chopsticksRaw ?? 0,
         };
@@ -2733,6 +3032,60 @@ const fetchOrders = useCallback(
 useEffect(() => {
   fetchOrdersRef.current = (opts) => void fetchOrders(opts);
 }, [fetchOrders]);
+
+/* ========= Pobieranie rezerwacji (bez powiązanego zamówienia) ========= */
+const fetchReservations = useCallback(async () => {
+  if (!restaurantId) return;
+  
+  setReservationsLoading(true);
+  try {
+    // Pobierz dzisiejsze i przyszłe rezerwacje
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    
+    const { data, error } = await supabase
+      .from("reservations")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .gte("reservation_date", todayStr)
+      .neq("status", "cancelled")
+      .order("reservation_date", { ascending: true })
+      .order("reservation_time", { ascending: true })
+      .limit(50);
+    
+    if (error) throw error;
+    
+    // Filtruj rezerwacje które NIE mają powiązanego zamówienia
+    // (table_ref !== 'orders' lub brak table_id)
+    const standalone = (data ?? []).filter((r: any) => {
+      const hasOrder = r.table_ref === "orders" && r.table_id;
+      return !hasOrder;
+    }) as Reservation[];
+    
+    setReservations(standalone);
+  } catch (e) {
+    console.error("[fetchReservations] error:", e);
+  } finally {
+    setReservationsLoading(false);
+  }
+}, [restaurantId, supabase]);
+
+// Pobierz rezerwacje przy starcie i przy zmianie restaurantId
+useEffect(() => {
+  if (!authChecked || !restaurantId) return;
+  void fetchReservations();
+}, [authChecked, restaurantId, fetchReservations]);
+
+// Polling rezerwacji co 15 sekund
+useEffect(() => {
+  if (!authChecked || !restaurantId) return;
+  
+  const iv = setInterval(() => {
+    void fetchReservations();
+  }, 15000);
+  
+  return () => clearInterval(iv);
+}, [authChecked, restaurantId, fetchReservations]);
 
 
   useEffect(() => {
@@ -3888,6 +4241,14 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
           </div>
         </header>
 
+        {/* Pasek akceptacji rezerwacji */}
+        {o.reservation_id && (
+          <ReservationAcceptanceBar
+            order={o}
+            onStatusChange={() => fetchOrders({ silent: true })}
+          />
+        )}
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="space-y-3 text-sm text-slate-800">
             <div>
@@ -4343,6 +4704,40 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
           </button>
         </div>
       </div>
+
+      {/* ========= SEKCJA REZERWACJI (bez zamówienia) ========= */}
+      <section className="mb-8 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold text-slate-900">
+            📅 Rezerwacje {reservations.length > 0 && `(${reservations.length})`}
+          </h2>
+          <button
+            onClick={() => fetchReservations()}
+            disabled={reservationsLoading}
+            className="text-xs text-slate-500 hover:text-slate-800 disabled:opacity-50"
+          >
+            {reservationsLoading ? "Ładowanie..." : "Odśwież"}
+          </button>
+        </div>
+        <p className="text-sm text-slate-600">
+          Rezerwacje stolików na dziś i w przyszłości (bez powiązanego zamówienia).
+        </p>
+        {reservations.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-600">
+            Brak rezerwacji do wyświetlenia.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4">
+            {reservations.map((r) => (
+              <ReservationCard
+                key={r.id}
+                reservation={r}
+                onStatusChange={() => fetchReservations()}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
       <ProductList list={newList} title="Nowe zamówienia" />
       <div className="mt-8" />

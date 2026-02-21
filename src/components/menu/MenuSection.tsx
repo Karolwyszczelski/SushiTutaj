@@ -142,10 +142,44 @@ const normalizeDisplay = (s: string) =>
     .toLowerCase()
     .replace(/\s+/g, " ");
 
+/**
+ * Mapuje kolejność produktów zestawowych na numery Zestaw 1-N.
+ * Używa cache globalnego żeby zachować spójność numeracji.
+ */
+let setDisplayCache: Map<string, string> | null = null;
 
 const buildDisplayName = (p: Product): string => {
   const base = p.name || "";
   const sub = (p.subcategory || "").toLowerCase();
+  const baseLower = normalizeDisplay(base);
+  
+  // Sprawdź czy to zestaw (set w nazwie lub kategorii)
+  const isSet = /zestaw|set/.test(sub) || /zestaw|set/i.test(baseLower);
+  
+  if (isSet) {
+    // Jeśli już zaczyna się od "Zestaw" - zostaw
+    if (/^zestaw\s+\d+/i.test(base)) {
+      return base;
+    }
+    
+    // Wyciągnij numer z nazwy
+    const num = extractSetNumber(base);
+    if (num !== null) {
+      return `Zestaw ${num}`;
+    }
+    
+    // Jeśli nie ma numeru, użyj nazwy z "Zestaw" prefix
+    // np. "Nigiri set" -> "Zestaw Nigiri"
+    const cleanName = base
+      .replace(/\bset\b/gi, "")
+      .replace(/\bzestaw\b/gi, "")
+      .replace(/\bvege\b/gi, "Vege")
+      .replace(/\s+/g, " ")
+      .trim();
+    return cleanName ? `Zestaw ${cleanName}` : base;
+  }
+  
+  // Standardowa logika dla nie-zestawów
   const prefix = SUBCAT_PREFIX[sub];
   if (!prefix) return base;
 
@@ -469,12 +503,24 @@ useEffect(() => {
             if (!isSetInner) return null;
 
             const isVege = n.includes("vege") || n.includes("wege");
-
-            let group = 2; // inne sety
-            if (isVege) group = 1; // Vege sety
-            else if (n.startsWith("zestaw ")) group = 0; // Zestaw 1–13
-
+            const isNigiri = n.includes("nigiri");
             const num = extractSetNumber(p.name);
+            
+            // Priorytet sortowania:
+            // 0: "Zestaw X" (bez vege/nigiri, z numerem) - np. "Zestaw 1", "Zestaw 2"
+            // 1: Vege sety - np. "Vege set 1"
+            // 2: Nigiri set
+            // 3: Inne sety bez numeru
+            let group = 3;
+            
+            if (!isVege && !isNigiri && num !== null) {
+              group = 0; // Zwykłe zestawy z numerem (Zestaw 1-13)
+            } else if (isVege) {
+              group = 1; // Vege sety
+            } else if (isNigiri) {
+              group = 2; // Nigiri set
+            }
+
             const order = num !== null ? num : Number.POSITIVE_INFINITY;
 
             return { group, order };
@@ -636,29 +682,29 @@ useEffect(() => {
       <article
         key={p.id}
         tabIndex={0}
-        className="group relative bg-transparent outline-none"
+        className="group relative bg-white/[0.02] rounded-2xl overflow-hidden border border-white/5 hover:border-white/10 transition-all"
       >
-        <div className="relative aspect-square bg-black">
+        <div className="relative aspect-square bg-black/50 overflow-hidden">
           <ProductImg p={p} sizes="50vw" />
           {lunchBlocked && (
-  <div className="absolute top-2 left-2 px-2 py-0.5 text-[10px] font-medium bg-white/10 text-white">
-    Lunch do 16:00
-  </div>
-)}
+            <div className="absolute top-2 left-2 px-2 py-1 text-[10px] font-medium bg-black/60 backdrop-blur-sm text-white rounded-lg">
+              Lunch do 16:00
+            </div>
+          )}
           {p.available === false && (
-            <div className="absolute top-2 right-2 px-2 py-0.5 text-[10px] font-medium bg-[var(--accent,#de1d13)] text-white">
+            <div className="absolute top-2 right-2 px-2 py-1 text-[10px] font-medium bg-[#a61b1b] text-white rounded-lg">
               Niedostępne
             </div>
           )}
         </div>
 
         <div className="p-3">
-          <h4 className="text-sm font-medium leading-snug text-white">
+          <h4 className="text-[13px] font-semibold leading-snug text-white">
             {displayName}
           </h4>
 
           {p.description && (
-            <div className="mt-1 text-xs font-light text-white/70">
+            <div className="mt-1.5 text-[11px] font-light text-white/50 leading-relaxed">
               {(() => {
                 const lines = formatSetDescription(p.description);
                 const showAll = expanded || lines.length <= 4;
@@ -669,12 +715,12 @@ useEffect(() => {
                       {displayLines.map((line, i) => (
                         <li key={i}>{line}</li>
                       ))}
-                      {!showAll && <li>…</li>}
+                      {!showAll && <li className="text-white/30">…</li>}
                     </ul>
                     {lines.length > 4 && (
                       <button
                         type="button"
-                        className="mt-1 underline text-xs"
+                        className="mt-1.5 text-[10px] text-white/40 hover:text-white/60 transition-colors"
                         onClick={(e) => {
                           e.stopPropagation();
                           setExpandedDesc((s) => ({
@@ -684,7 +730,7 @@ useEffect(() => {
                         }}
                         aria-expanded={expanded}
                       >
-                        {expanded ? "Pokaż mniej" : "Pokaż cały opis"}
+                        {expanded ? "Pokaż mniej ↑" : "Pokaż więcej ↓"}
                       </button>
                     )}
                   </>
@@ -694,7 +740,7 @@ useEffect(() => {
           )}
 
           <div className="mt-3 flex items-center justify-between">
-            <span className="text-sm font-medium text:white text-white">
+            <span className="text-sm font-bold text-white">
               {priceLabel(p)}
             </span>
 
@@ -706,9 +752,9 @@ useEffect(() => {
               }}
               disabled={p.available === false || lunchBlocked}
               aria-label={`Dodaj ${displayName}`}
-              className={`h-9 w-9 shrink-0 rounded-full text-white ${ACCENT}
-                ring-1 ring-black/30 shadow-[0_10px_22px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)]
-                hover:[filter:brightness(1.06)] active:[filter:brightness(0.96)]
+              className={`h-10 w-10 shrink-0 rounded-full text-white ${ACCENT}
+                shadow-[0_6px_20px_rgba(166,27,27,0.4)]
+                hover:[filter:brightness(1.08)] active:scale-95 transition-all
                 disabled:opacity-40 disabled:cursor-not-allowed`}
             >
               <ShoppingCart className="h-4 w-4 mx-auto my-auto" />
@@ -716,7 +762,11 @@ useEffect(() => {
           </div>
 
           {isAdded && (
-            <span className="absolute -top-1.5 -right-1.5 h-3 w-3 rounded-full bg-[var(--accent,#de1d13)] ring-2 ring-white" />
+            <span className="absolute top-2 right-2 h-4 w-4 rounded-full bg-emerald-500 ring-2 ring-black flex items-center justify-center">
+              <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            </span>
           )}
         </div>
       </article>
@@ -734,30 +784,29 @@ useEffect(() => {
         key={p.id}
         tabIndex={0}
         onClick={() => !lunchBlocked && handleAdd(p)}
-        className="group relative bg-transparent transition hover:bg:white/5 hover:bg-white/5 focus:bg-white/5 outline-none cursor-pointer"
+        className="group relative bg-white/[0.02] rounded-2xl overflow-hidden border border-white/5 hover:border-white/15 transition-all cursor-pointer"
       >
-        <div className="relative aspect-square bg-black">
+        <div className="relative aspect-square bg-black/50 overflow-hidden">
           <ProductImg p={p} sizes="33vw" />
-            {lunchBlocked && (
-    <div className="absolute top-3 left-3 px-3 py-1 text-xs font-medium bg-white/10 text-white">
-      Lunch do 16:00
-    </div>
-  )}
-
+          {lunchBlocked && (
+            <div className="absolute top-3 left-3 px-3 py-1.5 text-xs font-medium bg-black/60 backdrop-blur-sm text-white rounded-lg">
+              Lunch do 16:00
+            </div>
+          )}
           {p.available === false && (
-            <div className="absolute top-3 right-3 px-3 py-1 text-xs font-medium bg-[var(--accent,#de1d13)] text-white">
+            <div className="absolute top-3 right-3 px-3 py-1.5 text-xs font-medium bg-[#a61b1b] text-white rounded-lg">
               Niedostępne
             </div>
           )}
         </div>
 
         <div className="p-4">
-          <h4 className="text-base font-medium leading-snug text-white">
+          <h4 className="text-base font-semibold leading-snug text-white">
             {displayName}
           </h4>
 
           {p.description && (
-            <div className="mt-1 text-sm font-light text-white/70">
+            <div className="mt-2 text-sm font-light text-white/50 leading-relaxed">
               {(() => {
                 const lines = formatSetDescription(p.description);
                 const showAll = expanded || lines.length <= 5;
@@ -768,12 +817,12 @@ useEffect(() => {
                       {displayLines.map((line, i) => (
                         <li key={i}>{line}</li>
                       ))}
-                      {!showAll && <li>…</li>}
+                      {!showAll && <li className="text-white/30">…</li>}
                     </ul>
                     {lines.length > 5 && (
                       <button
                         type="button"
-                        className="mt-1 underline text-xs"
+                        className="mt-2 text-xs text-white/40 hover:text-white/60 transition-colors"
                         onClick={(e) => {
                           e.stopPropagation();
                           setExpandedDesc((s) => ({
@@ -783,7 +832,7 @@ useEffect(() => {
                         }}
                         aria-expanded={expanded}
                       >
-                        {expanded ? "Pokaż mniej" : "Pokaż cały opis"}
+                        {expanded ? "Pokaż mniej ↑" : "Pokaż więcej ↓"}
                       </button>
                     )}
                   </>
@@ -793,7 +842,7 @@ useEffect(() => {
           )}
 
           <div className="mt-4 flex items-center justify-between">
-            <span className="text-sm font-medium text-white">
+            <span className="text-base font-bold text-white">
               {priceLabel(p)}
             </span>
 
@@ -805,9 +854,9 @@ useEffect(() => {
               }}
               disabled={p.available === false || lunchBlocked}
               aria-label={`Dodaj ${displayName}`}
-              className={`h-10 w-10 shrink-0 rounded-full text-white ${ACCENT}
-                ring-1 ring-black/30 shadow-[0_10px_22px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)]
-                hover:[filter:brightness(1.06)] active:[filter:brightness(0.96)]
+              className={`h-11 w-11 shrink-0 rounded-full text-white ${ACCENT}
+                shadow-[0_8px_24px_rgba(166,27,27,0.4)]
+                hover:[filter:brightness(1.08)] active:scale-95 transition-all
                 disabled:opacity-40 disabled:cursor-not-allowed`}
             >
               <ShoppingCart className="h-5 w-5 mx-auto my-auto" />
@@ -815,7 +864,11 @@ useEffect(() => {
           </div>
 
           {isAdded && (
-            <span className="absolute -top-2 -right-2 h-3 w-3 rounded-full bg-[var(--accent,#de1d13)] ring-2 ring-white" />
+            <span className="absolute top-3 right-3 h-4 w-4 rounded-full bg-emerald-500 ring-2 ring-black flex items-center justify-center">
+              <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            </span>
           )}
         </div>
       </article>
@@ -943,10 +996,10 @@ useEffect(() => {
                   type="button"
                   onClick={() => setActiveCat(c)}
                   aria-pressed={c === activeCat}
-                  className={`px-3 py-2 text-sm rounded-full border ${
+                  className={`px-4 py-2 text-sm font-medium rounded-full border transition-all ${
                     c === activeCat
-                      ? `${ACCENT} text-white ring-1 ring-black/30`
-                      : "border-white/15 bg-white/5 text-white/80"
+                      ? "bg-[#a61b1b] text-white border-[#a61b1b] shadow-[0_4px_12px_rgba(166,27,27,0.4)]"
+                      : "border-white/15 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white"
                   }`}
                 >
                   {c}
@@ -1022,11 +1075,11 @@ useEffect(() => {
                   <button
                     key={c}
                     type="button"
-                    className={`w-full text-left px-3 py-2 text-sm font-light rounded-none transition
+                    className={`w-full text-left px-4 py-2.5 text-sm font-medium rounded-lg transition-all
                       ${
                         c === activeCat
-                          ? `text-white ${ACCENT} shadow-[0_10px_22px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)] ring-1 ring-black/30`
-                          : "text-white/80 hover:text-white hover:bg-white/5"
+                          ? "bg-[#a61b1b] text-white shadow-[0_4px_12px_rgba(166,27,27,0.4)]"
+                          : "text-white/70 hover:text-white hover:bg-white/10"
                       }`}
                     aria-pressed={c === activeCat}
                     onClick={() => setActiveCat(c)}

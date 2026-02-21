@@ -29,20 +29,20 @@ export function LoyaltyBanner({
 
   if (loyaltyLoading) {
     return (
-      <p className="text-[11px] text-black/60">Sprawdzamy Twoje naklejki...</p>
+      <p className="text-[11px] text-white/60 lg:text-black/60">Sprawdzamy Twoje naklejki...</p>
     );
   }
 
   if (typeof loyaltyStickers !== "number") return null;
 
   return (
-    <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs space-y-2">
+    <div className="rounded-xl bg-emerald-50/10 lg:bg-emerald-50 border border-emerald-500/30 lg:border-emerald-200 p-3 text-xs space-y-2">
       <div className={compact ? "text-center" : ""}>
         Masz <b>{loyaltyStickers}</b> naklejek w programie lojalnościowym.
       </div>
 
       {canUseLoyalty4 && (
-        <div className="rounded-lg bg-emerald-100 border border-emerald-300 p-2 text-emerald-800 space-y-2">
+        <div className="rounded-lg bg-emerald-100/20 lg:bg-emerald-100 border border-emerald-500/40 lg:border-emerald-300 p-2 text-emerald-400 lg:text-emerald-800 space-y-2">
           <div
             className={`font-semibold text-sm flex items-center gap-2 ${
               compact ? "justify-center" : ""
@@ -52,7 +52,7 @@ export function LoyaltyBanner({
             <span>Wybierz darmowe Futomaki!</span>
           </div>
           <p
-            className={`text-[11px] text-emerald-700 ${
+            className={`text-[11px] text-emerald-400 lg:text-emerald-700 ${
               compact ? "text-center" : ""
             }`}
           >
@@ -76,7 +76,7 @@ export function LoyaltyBanner({
       )}
 
       {loyalty4AlreadyClaimed && (
-        <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs">
+        <div className="rounded-xl bg-amber-50/10 lg:bg-amber-50 border border-amber-500/30 lg:border-amber-200 p-3 text-xs">
           Masz 4–7 naklejek, ale darmowa rolka została już wykorzystana. Zbieraj
           dalej do 8 naklejek.
         </div>

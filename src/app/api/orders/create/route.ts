@@ -438,6 +438,26 @@ loyalty_applied: n.loyalty_applied ?? false,
       { url: `/admin/pickup-order?restaurant=${restaurantSlug}` }
     );
 
+    // NOWE: Jeśli zamówienie ma reservation_id, zaktualizuj rezerwację z powiązaniem
+    if (n.reservation_id) {
+      try {
+        await supabaseAdmin
+          .from("reservations")
+          .update({
+            table_ref: "orders",
+            table_id: String(newOrderId),
+            table_label: `Zamówienie #${String(newOrderId).slice(0, 8)}`,
+          })
+          .eq("id", n.reservation_id);
+        orderLogger.info("reservation linked to order", {
+          reservation_id: n.reservation_id,
+          order_id: newOrderId,
+        });
+      } catch (e: any) {
+        orderLogger.warn("reservation link failed", { error: e?.message });
+      }
+    }
+
     // 7) order_items
     if (Array.isArray(n.itemsArray) && n.itemsArray.length > 0) {
       try {

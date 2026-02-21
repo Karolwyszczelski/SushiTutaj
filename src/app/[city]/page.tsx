@@ -7,6 +7,7 @@ import ContactSection from "@/components/ContactSection";
 import { getRestaurantBySlug } from "@/lib/tenant";
 import PromoModal from "@/components/PromoModal";
 import { getActivePopupsByRestaurantId } from "@/lib/popups";
+import MobileDesktopSwitch from "@/components/mobile/MobileDesktopSwitch";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_URL || "https://www.sushitutaj.pl";
 
@@ -96,24 +97,26 @@ export default async function Home({ params }: CityPageProps) {
   };
 
   return (
-    <main>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
+    <MobileDesktopSwitch>
+      <main>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
 
-      {/* POP-UPY (Slider) */}
-      <PromoModal
-        restaurantId={r?.id ?? null}
-        restaurantPhone={r?.phone ?? null}
-        popups={r?.id ? await getActivePopupsByRestaurantId(r.id) : []}
-      />
+        {/* POP-UPY (Slider) */}
+        <PromoModal
+          restaurantId={r?.id ?? null}
+          restaurantPhone={r?.phone ?? null}
+          popups={r?.id ? await getActivePopupsByRestaurantId(r.id) : []}
+        />
 
-      <Hero />
-      <ZestawMiesiaca />
-      <MenuSection />
-      <OnasSection />
-      <ContactSection />
-    </main>
+        <Hero />
+        <ZestawMiesiaca />
+        <MenuSection />
+        <OnasSection />
+        <ContactSection />
+      </main>
+    </MobileDesktopSwitch>
   );
 }

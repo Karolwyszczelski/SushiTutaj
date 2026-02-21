@@ -9,6 +9,7 @@ import { Menu, X, ChevronDown } from "lucide-react";
 import clsx from "clsx";
 import type { UrlObject } from "url";
 import type { Route } from "next";
+import { useMobileNavStore } from "@/store/mobileNavStore";
 
 const CITIES = [
   { slug: "ciechanow", label: "Ciechanów" },
@@ -286,56 +287,145 @@ export default function Header() {
       </div>
 
       {/* Mobile FULLSCREEN modal */}
-      {open && (
-        <div
-          className="md:hidden fixed inset-0 z-[70]"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="absolute inset-0 bg-[#0b0b0b] z-0" />
+      <MobileMenu 
+        open={open} 
+        onClose={() => setOpen(false)} 
+        city={city}
+        links={links}
+      />
+    </header>
+  );
+}
+
+/** Mobile fullscreen menu - używa globalnego store do nawigacji */
+function MobileMenu({ 
+  open, 
+  onClose, 
+  city,
+  links 
+}: { 
+  open: boolean; 
+  onClose: () => void;
+  city: string;
+  links: readonly { label: string; path: string }[];
+}) {
+  const setActiveTab = useMobileNavStore((s) => s.setActiveTab);
+  const setReservationOpen = useMobileNavStore((s) => s.setReservationOpen);
+  const setAccountOpen = useMobileNavStore((s) => s.setAccountOpen);
+  const setCartOpen = useMobileNavStore((s) => s.setCartOpen);
+  const router = useRouter();
+
+  if (!open) return null;
+
+  const handleNavClick = (path: string) => {
+    onClose();
+    
+    // Mapowanie linków na zakładki mobile
+    if (path === "menu") {
+      setActiveTab("menu");
+    } else if (path === "kontakt" || path === "regulamin" || path === "polityka-prywatnosci") {
+      // Te strony otwieramy jako normalne linki (przeglądarkowa nawigacja)
+      router.push(city ? `/${city}/${path}` : `/${path}`);
+    }
+  };
+
+  return (
+    <div
+      className="md:hidden fixed inset-0 z-[70]"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="absolute inset-0 bg-[#0b0b0b] z-0" />
+      <button
+        type="button"
+        aria-label="Zamknij menu"
+        onClick={onClose}
+        className="absolute top-5 right-5 h-12 w-12 rounded-full bg-gradient-to-b from-[#b31217] to-[#7a0b0b] text-white shadow-[0_10px_22px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)] ring-1 ring-black/30 z-20 flex items-center justify-center"
+      >
+        <X className="h-6 w-6" />
+      </button>
+
+      <div className="relative z-10 h-full w-full flex flex-col items-center justify-center gap-8 px-8">
+        <Image
+          src="/assets/logo.png"
+          alt="Logo"
+          width={100}
+          height={100}
+          priority
+        />
+
+        <nav className="flex flex-col items-center gap-5 text-xl text-white/80">
+          {/* Główne linki */}
           <button
-            type="button"
-            aria-label="Zamknij menu"
-            onClick={() => setOpen(false)}
-            className={`absolute top-5 right-5 h-12 w-12 rounded-full ${ACCENT_BTN} z-20 flex items-center justify-center`}
+            onClick={() => handleNavClick("menu")}
+            className="tracking-wide hover:text-white transition-colors"
           >
-            <X className="h-6 w-6" />
+            MENU
+          </button>
+          
+          <button
+            onClick={() => {
+              onClose();
+              setReservationOpen(true);
+            }}
+            className="tracking-wide hover:text-white transition-colors"
+          >
+            REZERWACJA
           </button>
 
-          <div className="relative z-10 h-full w-full flex flex-col items-center justify-center gap-10 px-8">
-            <Link
-              href={mkHref(city)}
-              onClick={() => setOpen(false)}
-              aria-label="Strona główna"
-            >
-              <Image
-                src="/assets/logo.png"
-                alt="Logo"
-                width={110}
-                height={110}
-                priority
-              />
-            </Link>
+          <button
+            onClick={() => {
+              onClose();
+              setActiveTab("set");
+            }}
+            className="tracking-wide hover:text-white transition-colors"
+          >
+            ZESTAW MIESIĄCA
+          </button>
 
-            <nav className="flex flex-col items-center gap-6 text-2xl text-white/80">
-              {links.map((l) => (
-                <Link
-                  key={l.path}
-                  href={
-                    l.path === "menu"
-                      ? mkMenuHref(city)
-                      : mkHref(city, l.path)
-                  }
-                  onClick={() => setOpen(false)}
-                  className="tracking-wide"
-                >
-                  {l.label}
-                </Link>
-              ))}
-            </nav>
-          </div>
+          <button
+            onClick={() => {
+              onClose();
+              setCartOpen(true);
+            }}
+            className="tracking-wide hover:text-white transition-colors"
+          >
+            KOSZYK
+          </button>
+
+          <button
+            onClick={() => {
+              onClose();
+              setAccountOpen(true);
+            }}
+            className="tracking-wide hover:text-white transition-colors"
+          >
+            KONTO
+          </button>
+        </nav>
+
+        {/* Dodatkowe linki */}
+        <div className="flex flex-col items-center gap-3 text-sm text-white/50 mt-4">
+          <button
+            onClick={() => handleNavClick("kontakt")}
+            className="hover:text-white/80 transition-colors"
+          >
+            Kontakt
+          </button>
+          <button
+            onClick={() => handleNavClick("regulamin")}
+            className="hover:text-white/80 transition-colors"
+          >
+            Regulamin
+          </button>
+          <button
+            onClick={() => handleNavClick("polityka-prywatnosci")}
+            className="hover:text-white/80 transition-colors"
+          >
+            Polityka prywatności
+          </button>
         </div>
-      )}
-    </header>
+      </div>
+    </div>
   );
 }

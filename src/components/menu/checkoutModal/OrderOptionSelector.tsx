@@ -58,18 +58,18 @@ export function OrderOptionSelector({
               onSelect(key);
             }}
             className={clsx(
-              "flex flex-col items-center justify-center border px-3 py-4 transition",
+              "flex flex-col items-center justify-center border px-3 py-4 transition rounded-xl",
               selectedOption === key
                 ? "bg-yellow-400 text-black border-yellow-500"
-                : "bg-gray-50 text-black border-black/10 hover:bg-gray-100",
-              disabled && "opacity-50 cursor-not-allowed hover:bg-gray-50"
+                : "bg-white/5 lg:bg-gray-50 text-white lg:text-black border-white/20 lg:border-black/10 hover:bg-white/10 lg:hover:bg-gray-100",
+              disabled && "opacity-50 cursor-not-allowed hover:bg-white/5 lg:hover:bg-gray-50"
             )}
             title={disabled ? hint : undefined}
           >
             <Icon size={22} />
             <span className="mt-1 text-sm font-medium">{label}</span>
             {disabled && hint ? (
-              <span className="mt-1 text-[10px] text-black/60">{hint}</span>
+              <span className="mt-1 text-[10px] text-white/60 lg:text-black/60">{hint}</span>
             ) : null}
           </button>
         );

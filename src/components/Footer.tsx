@@ -34,8 +34,17 @@ export default function Footer() {
   const pathname = usePathname();
   const city = params?.city ?? null;
   const [r, setR] = useState<R | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
 
   const hideFooter = pathname?.startsWith("/admin");
+
+  // Wykryj mobile - na mobile footer jest ukryty gdy korzystamy z MobileAppShell
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -88,7 +97,8 @@ export default function Footer() {
     if (typeof window !== "undefined") window.location.reload();
   };
 
-  if (hideFooter) return null;
+  // Na mobile footer jest ukryty (MobileAppShell ma własną nawigację)
+  if (hideFooter || isMobile) return null;
 
   return (
     <footer className="text-white py-12">

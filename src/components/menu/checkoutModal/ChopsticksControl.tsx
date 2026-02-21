@@ -26,35 +26,37 @@ export function ChopsticksControl({ value, onChange, min = 0, max = 10 }: Props)
   const inc = () => setClamped(v + 1);
 
   return (
-    <div className="w-full rounded-xl border border-black/10 bg-white px-3 py-2">
+    <div className="w-full rounded-2xl border border-white/10 lg:border-black/10 bg-white/[0.03] lg:bg-gray-50 px-4 py-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 flex items-center gap-2">
-          <Utensils size={16} className="shrink-0 opacity-70" />
+        <div className="min-w-0 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-white/10 lg:bg-white flex items-center justify-center">
+            <Utensils size={18} className="text-[#a61b1b]" />
+          </div>
           <div className="min-w-0">
-            <div className="text-sm font-semibold leading-tight truncate">
+            <div className="text-sm font-semibold leading-tight">
               Pałeczki
             </div>
-            <div className="text-[11px] text-black/50 leading-tight hidden sm:block">
+            <div className="text-xs text-white/50 lg:text-black/50 leading-tight">
               0 = bez pałeczek
             </div>
           </div>
         </div>
 
-        <div className="shrink-0 inline-flex items-center rounded-xl border border-black/10 overflow-hidden">
+        <div className="shrink-0 inline-flex items-center rounded-xl bg-white/10 lg:bg-white overflow-hidden border border-white/10 lg:border-black/10">
           <button
             type="button"
             onClick={dec}
             disabled={v <= min}
             className={clsx(
-              "h-9 w-9 grid place-items-center",
-              v <= min ? "opacity-40 cursor-not-allowed" : "hover:bg-black/5"
+              "h-10 w-10 grid place-items-center transition-colors",
+              v <= min ? "opacity-40 cursor-not-allowed" : "hover:bg-white/10 lg:hover:bg-gray-100 active:scale-95"
             )}
             aria-label="Mniej pałeczek"
           >
-            <Minus size={16} />
+            <Minus size={18} />
           </button>
 
-          <div className="h-9 w-10 grid place-items-center text-sm font-semibold tabular-nums border-x border-black/10">
+          <div className="h-10 w-12 grid place-items-center text-base font-bold tabular-nums border-x border-white/10 lg:border-black/10">
             {v}
           </div>
 
@@ -63,12 +65,12 @@ export function ChopsticksControl({ value, onChange, min = 0, max = 10 }: Props)
             onClick={inc}
             disabled={v >= max}
             className={clsx(
-              "h-9 w-9 grid place-items-center",
-              v >= max ? "opacity-40 cursor-not-allowed" : "hover:bg-black/5"
+              "h-10 w-10 grid place-items-center transition-colors",
+              v >= max ? "opacity-40 cursor-not-allowed" : "hover:bg-white/10 lg:hover:bg-gray-100 active:scale-95"
             )}
             aria-label="Więcej pałeczek"
           >
-            <Plus size={16} />
+            <Plus size={18} />
           </button>
         </div>
       </div>

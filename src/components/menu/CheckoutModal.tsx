@@ -1812,7 +1812,7 @@ const OPTIONS: { key: OrderOption; label: string; Icon: any; disabled?: boolean;
   ];
 
 const LegalConsent = (
-  <label className="flex items-start gap-2 text-xs leading-5 text-black">
+  <label className="flex items-start gap-2 text-xs leading-5">
     <input
       type="checkbox"
       checked={legalAccepted}
@@ -1849,11 +1849,11 @@ const pln = (v: number) =>
   `${Number(v || 0).toFixed(2).replace(".", ",")} zł`;
 
 const PriceSummaryCard = (
-  <div className="rounded-2xl border border-black/10 bg-white p-4 space-y-4">
+  <div className="checkout-card space-y-4">
     <div className="flex items-center justify-between gap-3">
       <h4 className="text-sm font-semibold">Podsumowanie cen</h4>
       {selectedOption === "delivery" && deliveryInfo?.eta ? (
-        <span className="text-[11px] text-black/60">
+        <span className="text-[11px] checkout-muted">
           ETA: {deliveryInfo.eta}
         </span>
       ) : null}
@@ -1861,28 +1861,28 @@ const PriceSummaryCard = (
 
     <div className="space-y-2 text-sm">
       <div className="flex items-center justify-between">
-        <span className="text-black/70">Produkty</span>
+        <span className="checkout-text-secondary">Produkty</span>
         <span className="font-semibold">{pln(baseTotal)}</span>
       </div>
 
       {selectedOption ? (
         <div className="flex items-center justify-between">
-          <span className="text-black/70">Opakowanie</span>
+          <span className="checkout-text-secondary">Opakowanie</span>
           <span className="font-semibold">{pln(packagingCost)}</span>
         </div>
       ) : null}
 
       {selectedOption === "delivery" ? (
         <div className="flex items-center justify-between">
-          <span className="text-black/70">Dostawa</span>
+          <span className="checkout-text-secondary">Dostawa</span>
           <span className="font-semibold">{pln(deliveryCost)}</span>
         </div>
       ) : null}
 
       {discount > 0 ? (
         <div className="flex items-center justify-between">
-          <span className="text-black/70">Rabat promocyjny</span>
-          <span className="font-semibold text-green-700">
+          <span className="checkout-text-secondary">Rabat promocyjny</span>
+          <span className="font-semibold text-green-500 lg:text-green-700">
             -{pln(discount)}
           </span>
         </div>
@@ -1890,14 +1890,14 @@ const PriceSummaryCard = (
 
       {loyaltyDiscount > 0 ? (
         <div className="flex items-center justify-between">
-          <span className="text-black/70">Rabat lojalnościowy −30%</span>
-          <span className="font-semibold text-green-700">
+          <span className="checkout-text-secondary">Rabat lojalnościowy −30%</span>
+          <span className="font-semibold text-green-500 lg:text-green-700">
             -{pln(loyaltyDiscount)}
           </span>
         </div>
       ) : null}
 
-      <div className="h-px bg-black/10 my-2" />
+      <div className="h-px checkout-divider my-2" />
 
       <div className="flex items-center justify-between text-base">
         <span className="font-semibold">Do zapłaty</span>
@@ -1917,7 +1917,7 @@ const PriceSummaryCard = (
       onClear={clearPromo}
     />
 
-    <div className="text-[11px] text-black/60">
+    <div className="text-[11px] checkout-muted">
       Ceny zawierają VAT.{" "}
       {selectedOption === "delivery"
         ? "Płatność: gotówka u kierowcy."
@@ -1951,70 +1951,104 @@ return (
   }}
 >
         <div
-  className="w-full max-w-5xl bg-white text-black shadow-2xl grid grid-rows-[auto,1fr] h-screen h-[100dvh] lg:h-auto lg:max-h-[90vh]"
+  className="w-full max-w-5xl bg-[#0b0b0b] lg:bg-white text-white lg:text-black shadow-2xl grid grid-rows-[auto,1fr] h-[100dvh] lg:h-auto lg:max-h-[90vh] lg:rounded-2xl"
   onMouseDown={(e) => e.stopPropagation()}
 >
-        <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4 border-b border-black/10 min-w-0">
-  <h2 className="text-base sm:text-xl font-semibold min-w-0 truncate">
-            Zamówienie — {restaurantCityLabel}
-          </h2>
-          {!orderSent && (
-            <button
-              aria-label="Zamknij"
-              onClick={closeCheckoutModal}
-              className="p-2 rounded-full hover:bg-black/5"
-            >
-              <X size={20} />
-            </button>
+        {/* Premium Header */}
+        <div className="relative overflow-hidden"
+             style={{ paddingTop: "max(env(safe-area-inset-top), 0px)" }}>
+          {/* Gradient bg on mobile */}
+          <div className="absolute inset-0 bg-gradient-to-b from-[#a61b1b]/15 via-transparent to-transparent lg:hidden" />
+          
+          <div className="relative flex items-center justify-between gap-3 px-5 py-4 border-b border-white/5 lg:border-black/10">
+            {!orderSent && (
+              <button
+                aria-label="Zamknij"
+                onClick={closeCheckoutModal}
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-white/10 lg:bg-black/5 hover:bg-white/20 lg:hover:bg-black/10 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            )}
+            <div className="flex-1 text-center">
+              <h2 className="text-lg font-bold">
+                Twoje zamówienie
+              </h2>
+              <p className="text-xs text-white/50 lg:text-black/50 mt-0.5">{restaurantCityLabel}</p>
+            </div>
+            {!orderSent && <div className="w-10" />}
+          </div>
+          
+          {/* Progress steps - mobile only */}
+          {!orderSent && isMobile && (
+            <div className="flex items-center justify-center gap-2 px-5 py-3 border-b border-white/5">
+              {[1, 2, 3].map((step) => (
+                <div key={step} className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
+                    checkoutStep >= step 
+                      ? 'bg-gradient-to-br from-[#c41e1e] to-[#8a1414] text-white shadow-lg shadow-red-500/20' 
+                      : 'bg-white/10 text-white/40'
+                  }`}>
+                    {checkoutStep > step ? (
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    ) : step}
+                  </div>
+                  {step < 3 && <div className={`w-8 h-0.5 rounded-full ${checkoutStep > step ? 'bg-[#a61b1b]' : 'bg-white/10'}`} />}
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
         <div className="min-h-0 overflow-y-auto overscroll-contain modal-scroll">
           <div
   className={clsx(
-    "grid grid-cols-1 gap-6 px-6 pt-6 pb-6 lg:pb-6",
+    "grid grid-cols-1 gap-6 px-5 pt-6 pb-6 lg:px-6 lg:pb-6",
     !orderSent && checkoutStep !== 4 && "lg:grid-cols-[1fr_380px]"
   )}
 >
      <div>
               {orderSent ? (
-                <div className="min-h-[320px] flex flex-col items-center justify-center text-center space-y-5 px-4">
-                  <div className="bg-white p-4 rounded-2xl shadow flex flex-col items-center gap-2">
-                    <div className="bg-white p-3 rounded-xl">
-                      <QRCode value={googleReviewUrl || thanksQrUrl} size={170} />
+                <div className="min-h-[400px] flex flex-col items-center justify-center text-center space-y-6 px-4 py-8">
+                  {/* Success animation */}
+                  <div className="relative">
+                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/30">
+                      <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
                     </div>
-                    <p className="text-xs text-black/60 max-w-xs">
-                      Zeskanuj kod lub kliknij poniższy przycisk, aby ocenić
-                      lokal w Google.
+                    <div className="absolute -inset-2 rounded-full border-2 border-emerald-500/30 animate-ping" />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <h3 className="text-2xl font-bold">Dziękujemy!</h3>
+                    <p className="text-white/60 lg:text-black/60 max-w-xs mx-auto">
+                      Twoje zamówienie zostało przyjęte. Potwierdzenie wysłaliśmy na e-mail.
                     </p>
                   </div>
-                  {!orderSent && (
-  <div className="hidden lg:block">
-    <div className="lg:sticky lg:top-6 space-y-4">
-      {PriceSummaryCard}
-    </div>
-  </div>
-)}
-
-                  <h3 className="text-2xl font-bold">
-                    Dziękujemy za zamówienie!
-                  </h3>
-                  <p className="text-black/70">
-                    Potwierdzenie i link do śledzenia wysłaliśmy na Twój adres
-                    e-mail.
-                  </p>
-                  <div className="flex justify-center gap-3 flex-wrap">
+                  
+                  {/* QR Code card */}
+                  <div className="bg-white p-5 rounded-2xl shadow-xl">
+                    <QRCode value={googleReviewUrl || thanksQrUrl} size={140} />
+                    <p className="text-xs text-black/50 mt-3 max-w-[160px]">
+                      Zeskanuj, aby ocenić nas w Google
+                    </p>
+                  </div>
+                  
+                  <div className="flex flex-col gap-3 w-full max-w-xs">
                     <a
-  href={googleReviewUrl || thanksQrUrl}
-  target="_blank"
-  rel="noopener noreferrer"
-  className={`inline-flex items-center justify-center px-4 py-2 rounded-xl ${accentBtn}`}
->
-  Zostaw opinię w Google
-</a>
+                      href={googleReviewUrl || thanksQrUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-3.5 rounded-2xl font-bold text-white bg-gradient-to-r from-[#c41e1e] to-[#8a1414] shadow-lg active:scale-[0.98] transition-all"
+                    >
+                      ⭐ Zostaw opinię
+                    </a>
                     <button
                       onClick={closeCheckoutModal}
-                      className="px-4 py-2 rounded-xl border border-black/15"
+                      className="w-full py-3 rounded-2xl font-medium border border-white/10 lg:border-black/10 hover:bg-white/10 lg:hover:bg-black/5 transition-colors"
                     >
                       Zamknij
                     </button>
@@ -2023,15 +2057,29 @@ return (
               ) : (
                 <>
                   {errorMessage && (
-                    <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-red-700">
-                      {errorMessage}
+                    <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-400 flex items-start gap-3">
+                      <svg className="w-5 h-5 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      <span className="text-sm">{errorMessage}</span>
                     </div>
                   )}
 
                   {/* KROK 1 MOBILE: lista produktów */}
                   {checkoutStep === 1 && (
-                    <div className="space-y-6">
-                      <h3 className="text-2xl font-bold">Wybrane produkty</h3>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-xl font-bold">Wybrane produkty</h3>
+                          <p className="text-sm text-white/50 lg:text-black/50 mt-0.5">{items.length} {items.length === 1 ? 'produkt' : items.length < 5 ? 'produkty' : 'produktów'}</p>
+                        </div>
+                        {items.length > 0 && (
+                          <div className="text-right">
+                            <p className="text-xs text-white/50 lg:text-black/50">Suma</p>
+                            <p className="text-lg font-bold">{baseTotal.toFixed(2)} zł</p>
+                          </div>
+                        )}
+                      </div>
 
                       {/* START: lista pozycji koszyka */}
 {/* START: lista pozycji koszyka */}
@@ -2039,7 +2087,7 @@ return (
   {items.map((item: any, idx: number) => {
     const itemKey = getItemKey(item, idx);
     return (
-      <div key={itemKey} className="space-y-1">
+      <div key={itemKey} className="space-y-2">
         <ProductItem
           prod={item}
           productCategory={productCategory}
@@ -2051,8 +2099,9 @@ return (
         />
 
         <textarea
-          className="w-full text-xs border border-black/15 rounded-xl px-2 py-1 bg-white"
+          className="checkout-textarea"
           placeholder="Notatka do produktu (np. alergie, zamiany składników)"
+          rows={2}
           value={notes[itemKey] ?? ""}
           onChange={(e) =>
             setNotes((prev) => ({ ...prev, [itemKey]: e.target.value }))
@@ -2063,20 +2112,29 @@ return (
   })}
 
   {items.length === 0 && (
-    <p className="text-center text-black/60">Brak produktów w koszyku.</p>
+    <div className="checkout-card text-center py-12">
+      <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/10 lg:bg-black/5 flex items-center justify-center">
+        <ShoppingBag size={32} className="text-white/30 lg:text-black/30" />
+      </div>
+      <p className="text-white/50 lg:text-black/50 font-medium">Twój koszyk jest pusty</p>
+      <p className="text-sm text-white/30 lg:text-black/30 mt-1">Dodaj produkty z menu</p>
+    </div>
   )}
 </div>
 
 {/* MOBILE: fixed footer – przycisk na samym dole */}
 <div className="fixed inset-x-0 bottom-0 z-[70] lg:hidden">
-  <div className="mx-auto max-w-5xl border-t border-black/10 bg-white/95 backdrop-blur px-6 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-    <button
-      onClick={nextStep}
-      disabled={items.length === 0}
-      className={`w-full py-3 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
-    >
-      Dalej →
-    </button>
+  <div className="bg-gradient-to-t from-[#0b0b0b] via-[#0b0b0b] to-transparent pt-6">
+    <div className="mx-auto max-w-5xl px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom)+72px)]">
+      <button
+        onClick={nextStep}
+        disabled={items.length === 0}
+        className="w-full py-4 rounded-2xl font-bold text-white disabled:opacity-40 transition-all active:scale-[0.98]
+                   bg-gradient-to-r from-[#c41e1e] to-[#8a1414] shadow-[0_8px_32px_rgba(166,27,27,0.4)]"
+      >
+        Kontynuuj • {baseTotal.toFixed(2)} zł
+      </button>
+    </div>
   </div>
 </div>
 
@@ -2098,8 +2156,11 @@ return (
                   {/* KROK 1 DESKTOP / KROK 2 MOBILE: sposób odbioru */}
                   {/* KROK 2: sposób odbioru */}
 {checkoutStep === 2 && (
-  <div className="space-y-6 pb-[calc(12rem+env(safe-area-inset-bottom))]">
-                      <h3 className="text-2xl font-bold">Sposób odbioru</h3>
+  <div className="space-y-5 pb-[calc(14rem+env(safe-area-inset-bottom))]">
+                      <div>
+                        <h3 className="text-xl font-bold">Sposób odbioru</h3>
+                        <p className="text-sm text-white/50 lg:text-black/50 mt-0.5">Wybierz jak chcesz odebrać zamówienie</p>
+                      </div>
 
                       <div className="grid grid-cols-2 gap-3">
                         {OPTIONS.map(({ key, label, Icon, disabled, hint }) => (
@@ -2120,18 +2181,23 @@ return (
       handleSelectOption(key);
     }}
     className={clsx(
-      "flex flex-col items-center justify-center border px-3 py-4 transition",
-      selectedOption === key
-        ? "bg-yellow-400 text-black border-yellow-500"
-        : "bg-gray-50 text-black border-black/10 hover:bg-gray-100",
-      disabled && "opacity-50 cursor-not-allowed hover:bg-gray-50"
+      "checkout-option-btn py-8 lg:py-6 relative",
+      selectedOption === key && "selected",
+      disabled && "opacity-40 cursor-not-allowed"
     )}
     title={disabled ? hint : undefined}
   >
-    <Icon size={22} />
-    <span className="mt-1 text-sm font-medium">{label}</span>
+    {selectedOption === key && (
+      <div className="absolute top-3 right-3 w-6 h-6 rounded-full bg-[#a61b1b] flex items-center justify-center">
+        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+        </svg>
+      </div>
+    )}
+    <Icon size={32} className="lg:w-7 lg:h-7" />
+    <span className="mt-3 text-base lg:text-sm font-semibold">{label}</span>
     {disabled && hint ? (
-      <span className="mt-1 text-[10px] text-black/60">{hint}</span>
+      <span className="mt-1 text-[11px] lg:text-[10px] checkout-muted">{hint}</span>
     ) : null}
   </button>
 ))}
@@ -2139,28 +2205,35 @@ return (
                       </div>
 
                       {selectedOption === "delivery" && (
-                        <div className="rounded-xl bg-yellow-50 border border-yellow-200 p-3 text-sm">
+                        <div className="checkout-card-info">
                           Płatność: <b>gotówka u kierowcy</b>.
                         </div>
                       )}
 
                      {selectedOption && (
-  <div className="space-y-2">
-    <h4 className="font-semibold">
+  <div className="checkout-card space-y-3">
+    <h4 className="font-semibold flex items-center gap-2">
+      <svg className="w-5 h-5 text-[#a61b1b]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
       {selectedOption === "delivery" ? "Czas dostawy" : "Czas odbioru"}
     </h4>
-    <div className="flex flex-wrap gap-6 items-center">
-      <label className="flex items-center gap-2">
+    <div className="flex flex-col gap-3">
+      <label className="flex items-center gap-3 p-3 rounded-xl border border-white/10 lg:border-black/10 cursor-pointer hover:bg-white/5 lg:hover:bg-black/5 transition-colors">
         <input
           type="radio"
           name="timeOption"
           value="asap"
           checked={deliveryTimeOption === "asap"}
           onChange={() => setDeliveryTimeOption("asap")}
+          className="w-5 h-5 accent-[#a61b1b]"
         />
-        <span>Jak najszybciej</span>
+        <div>
+          <span className="font-medium">Jak najszybciej</span>
+          <p className="text-xs text-white/50 lg:text-black/50">Szacowany czas: 30-45 min</p>
+        </div>
       </label>
-       <label className="flex items-center gap-2">
+      <label className={`flex items-center gap-3 p-3 rounded-xl border border-white/10 lg:border-black/10 cursor-pointer transition-colors ${!canSchedule ? 'opacity-50' : 'hover:bg-white/5 lg:hover:bg-black/5'}`}>
         <input
           type="radio"
           name="timeOption"
@@ -2171,15 +2244,17 @@ return (
             if (!canSchedule) return;
             setDeliveryTimeOption("schedule");
           }}
+          className="w-5 h-5 accent-[#a61b1b]"
         />
-        <span>
-          Na godzinę{!canSchedule ? " (brak wolnych slotów)" : ""}
-        </span>
+        <div className="flex-1">
+          <span className="font-medium">Na określoną godzinę</span>
+          {!canSchedule && <p className="text-xs text-red-400">Brak wolnych slotów</p>}
+        </div>
       </label>
 
       {deliveryTimeOption === "schedule" && canSchedule && (
         <select
-          className="border border-black/15 rounded-xl px-2 py-1 bg-white"
+          className="checkout-input"
           value={scheduledTime}
           onChange={(e) => setScheduledTime(e.target.value)}
         >
@@ -2190,15 +2265,9 @@ return (
           ))}
         </select>
       )}
-
-      {deliveryTimeOption === "schedule" && !canSchedule && (
-        <span className="text-xs text-red-600">
-          Brak dostępnych godzin na dziś — wybierz „Jak najszybciej”.
-        </span>
-      )}
     </div>
-    <p className="text-xs text-black/60">
-      Dzisiejsze godziny w {restaurantCityLabel}: {openInfo.label}
+    <p className="text-xs checkout-muted">
+      Godziny otwarcia {restaurantCityLabel}: {openInfo.label}
     </p>
   </div>
 )}
@@ -2225,28 +2294,34 @@ return (
 
                       {/* MOBILE: fixed footer – na sam dół (Pałeczki zostają na środku) */}
 <div className="fixed inset-x-0 bottom-0 z-[70] lg:hidden">
-  <div className="mx-auto max-w-5xl border-t border-black/10 bg-white/95 backdrop-blur px-6 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-    <div className="flex items-center gap-3">
-      <button
-        type="button"
-        onClick={() => goToStep(1)}
-        className="shrink-0 px-4 py-2 rounded-xl border border-black/15"
-      >
-        ← Cofnij
-      </button>
-
-      <div className="flex-1 flex justify-center">
+  <div className="bg-gradient-to-t from-[#0b0b0b] via-[#0b0b0b] to-transparent pt-6">
+    <div className="mx-auto max-w-5xl px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom)+72px)] space-y-3">
+      {/* Pałeczki */}
+      <div className="flex items-center justify-center py-2">
         <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
       </div>
-    </div>
+      
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => goToStep(1)}
+          className="w-12 h-12 rounded-2xl border border-white/10 flex items-center justify-center hover:bg-white/10 transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
 
-    <button
-      onClick={nextStep}
-      disabled={!selectedOption}
-      className={`mt-3 w-full py-3 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
-    >
-      Dalej →
-    </button>
+        <button
+          onClick={nextStep}
+          disabled={!selectedOption}
+          className="flex-1 py-4 rounded-2xl font-bold text-white disabled:opacity-40 transition-all active:scale-[0.98]
+                     bg-gradient-to-r from-[#c41e1e] to-[#8a1414] shadow-[0_8px_32px_rgba(166,27,27,0.4)]"
+        >
+          Kontynuuj
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -2257,96 +2332,125 @@ return (
 
                   {/* KROK 3: dane kontaktowe (mobile + desktop), a podsumowanie tylko mobile */}
 {checkoutStep === 3 && (
-  <div className="space-y-6">
-    <h3 className="text-2xl font-bold">Dane kontaktowe</h3>
+  <div className="space-y-5">
+    <div>
+      <h3 className="text-xl font-bold">Dane kontaktowe</h3>
+      <p className="text-sm text-white/50 lg:text-black/50 mt-0.5">Potrzebujemy ich do realizacji zamówienia</p>
+    </div>
 
     {selectedOption === "delivery" && (
-      <>
-        <AddressAutocomplete
-          onAddressSelect={onAddressSelect}
-          setCity={setCity}
-          setPostalCode={setPostalCode}
-          setFlatNumber={setFlatNumber}
-        />
-
-        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-black/70">
-          <span>Nie możesz znaleźć swojego adresu?</span>
-          {restaurantPhone && (
-            <a
-              href={`tel:${restaurantPhone.replace(/\s+/g, "")}`}
-              className="inline-flex items-center justify-center rounded-full border border-black/15 px-3 py-1 font-semibold hover:bg-gray-100 text-black"
-            >
-              Zadzwoń do nas
-            </a>
-          )}
-        </div>
-
-        <p className="text-xs text-black/60">
-          Najpierw wybierz adres z listy Google – dopiero wtedy pola poniżej odblokują się do edycji.
-        </p>
-
-        <div className="grid grid-cols-1 gap-2">
-          <input
-            type="text"
-            placeholder="Adres (ulica i numer domu)"
-            className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
-            value={street}
-            onChange={(e) => setStreet(e.target.value)}
-            disabled={requireAutocomplete && !custCoords}
+      <div className="space-y-4">
+        {/* Adres delivery card */}
+        <div className="checkout-card space-y-4">
+          <h4 className="font-semibold flex items-center gap-2">
+            <svg className="w-5 h-5 text-[#a61b1b]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Adres dostawy
+          </h4>
+          
+          <AddressAutocomplete
+            onAddressSelect={onAddressSelect}
+            setCity={setCity}
+            setPostalCode={setPostalCode}
+            setFlatNumber={setFlatNumber}
           />
-          <div className="flex gap-2">
+
+          <div className="grid grid-cols-1 gap-3">
             <input
               type="text"
-              placeholder="Numer mieszkania (opcjonalnie)"
-              className="flex-1 px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
-              value={flatNumber}
-              onChange={(e) => setFlatNumber(e.target.value)}
+              placeholder="Adres (ulica i numer domu)"
+              className="checkout-input"
+              value={street}
+              onChange={(e) => setStreet(e.target.value)}
               disabled={requireAutocomplete && !custCoords}
             />
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="text"
+                placeholder="Nr mieszkania"
+                className="checkout-input"
+                value={flatNumber}
+                onChange={(e) => setFlatNumber(e.target.value)}
+                disabled={requireAutocomplete && !custCoords}
+              />
+              <input
+                type="text"
+                placeholder="Kod pocztowy"
+                className="checkout-input"
+                value={postalCode}
+                onChange={(e) => setPostalCode(e.target.value)}
+                disabled={requireAutocomplete && !custCoords}
+              />
+            </div>
             <input
               type="text"
-              placeholder="Kod pocztowy"
-              className="flex-1 px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
-              value={postalCode}
-              onChange={(e) => setPostalCode(e.target.value)}
+              placeholder="Miasto"
+              className="checkout-input"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
               disabled={requireAutocomplete && !custCoords}
             />
+            {requireAutocomplete && !custCoords && (
+              <p className="text-xs text-amber-400 flex items-center gap-1.5">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                </svg>
+                Wybierz adres z listy Google
+              </p>
+            )}
           </div>
-          <input
-            type="text"
-            placeholder="Miasto"
-            className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white disabled:bg-gray-100 disabled:text-black/50 disabled:cursor-not-allowed"
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            disabled={requireAutocomplete && !custCoords}
-          />
-          {requireAutocomplete && !custCoords && (
-            <p className="text-xs text-red-600">
-              Wpisanie adresu ręcznie jest zablokowane – wybierz pozycję z listy podpowiedzi Google.
-            </p>
+
+          {restaurantPhone && (
+            <div className="flex items-center justify-between pt-2 border-t border-white/5 lg:border-black/5">
+              <span className="text-xs checkout-muted">Nie możesz znaleźć adresu?</span>
+              <a
+                href={`tel:${restaurantPhone.replace(/\s+/g, "")}`}
+                className="checkout-link-btn"
+              >
+                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                </svg>
+                Zadzwoń
+              </a>
+            </div>
           )}
         </div>
-      </>
-    )}
-
-    {selectedOption === "takeaway" && (
-      <div className="rounded-xl bg-gray-50 border border-black/10 p-3 text-sm">
-        Odbiór osobisty w lokalu. Płatność przy odbiorze gotówką.
       </div>
     )}
 
-    <div className="grid grid-cols-1 gap-2">
+    {selectedOption === "takeaway" && (
+      <div className="checkout-card flex items-center gap-3">
+        <div className="w-12 h-12 rounded-xl bg-[#a61b1b]/20 flex items-center justify-center shrink-0">
+          <ShoppingBag size={24} className="text-[#a61b1b]" />
+        </div>
+        <div>
+          <p className="font-medium">Odbiór osobisty w lokalu</p>
+          <p className="text-sm text-white/50 lg:text-black/50">Płatność gotówką przy odbiorze</p>
+        </div>
+      </div>
+    )}
+
+    {/* Dane kontaktowe card */}
+    <div className="checkout-card space-y-3">
+      <h4 className="font-semibold flex items-center gap-2">
+        <svg className="w-5 h-5 text-[#a61b1b]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        </svg>
+        Twoje dane
+      </h4>
       <input
         type="text"
         placeholder="Imię"
-        className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
+        className="checkout-input"
         value={name}
         onChange={(e) => setName(e.target.value)}
       />
       <input
         type="tel"
         placeholder="Telefon"
-        className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
+        className="checkout-input"
         value={phone}
         onChange={(e) => setPhone(e.target.value)}
       />
@@ -2354,7 +2458,7 @@ return (
         <input
           type="text"
           placeholder="Uwagi do odbioru (opcjonalnie)"
-          className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
+          className="checkout-input"
           value={optionalAddress}
           onChange={(e) => setOptionalAddress(e.target.value)}
         />
@@ -2362,7 +2466,7 @@ return (
       <input
         type="email"
         placeholder="Email (wymagany do potwierdzenia)"
-        className="w-full px-3 py-2 border border-black/15 rounded-xl bg-white"
+        className="checkout-input"
         value={contactEmail}
         onChange={(e) => setContactEmail(e.target.value)}
       />
@@ -2372,11 +2476,11 @@ return (
     </div>
 
     {/* DESKTOP: sticky footer z Dalej (na mobile od razu pokazujemy Zamawiam) */}
-    <div className="-mx-6 sticky bottom-0 z-30 mt-4 border-t border-black/10 bg-white/95 backdrop-blur px-6 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] hidden lg:block">
+    <div className="-mx-6 sticky bottom-0 z-30 mt-4 border-t checkout-divider bg-white/95 backdrop-blur px-6 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] hidden lg:block">
   <div className="flex items-center gap-3">
     <button
       onClick={() => goToStep(2)}
-      className="px-4 py-2 rounded-xl border border-black/15"
+      className="checkout-btn-ghost"
     >
       ← Cofnij
     </button>
@@ -2400,121 +2504,114 @@ return (
 
                       {/* MOBILE: podsumowanie + zgody + Turnstile */}
                       {isMobile && (
-  <div ref={mobileSummaryRef} className="mt-3 space-y-4 scroll-mt-6 pb-[calc(6rem+env(safe-area-inset-bottom))]">
+  <div ref={mobileSummaryRef} className="mt-4 space-y-4 scroll-mt-6 pb-[calc(8rem+env(safe-area-inset-bottom))]">
                           {/* Podsumowanie cen */}
-                          <div className="rounded-2xl border border-black/10 bg-white p-4 space-y-2">
-                            <h4 className="text-lg font-semibold">Podsumowanie</h4>
+                          <div className="checkout-card space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-lg font-bold">Podsumowanie</h4>
+                              <span className="text-xs px-2.5 py-1 rounded-full bg-white/10 text-white/60">
+                                {selectedOption === "delivery" ? "🚗 Dostawa" : "🏪 Odbiór"}
+                              </span>
+                            </div>
 
-<p className="text-[11px] text-black/60">
-  {selectedOption === "delivery"
-    ? "Sposób: dostawa"
-    : selectedOption === "takeaway"
-    ? "Sposób: odbiór osobisty"
-    : "Sposób: —"}
-</p>
-
-<div className="mt-3">
+{/* Pałeczki */}
+<div className="py-2 border-y border-white/5">
   <ChopsticksControl value={chopsticksQty} onChange={setChopsticksQty} />
 </div>
 
-{/* Lista pozycji (żeby było widać co wybrane) */}
-<div className="space-y-2 max-h-[180px] overflow-y-auto border-y border-black/10 py-2">
+{/* Lista pozycji */}
+<div className="space-y-2 max-h-[160px] overflow-y-auto">
   {items.length === 0 ? (
-    <p className="text-sm text-black/60 text-center">Brak produktów.</p>
+    <p className="text-sm checkout-muted text-center py-4">Brak produktów.</p>
   ) : (
     items.map((it: any, i: number) => {
       const label = withCategoryPrefix(it.name, productCategory(it.name));
       const qty = it.quantity || 1;
       return (
-        <div key={i} className="flex justify-between text-sm">
-          <span className="truncate pr-2">
-            {label} ×{qty}
+        <div key={i} className="flex justify-between text-sm py-1">
+          <span className="truncate pr-3 text-white/80">
+            {qty}× {label}
           </span>
-          <span>{getItemLineTotal(it).toFixed(2)} zł</span>
+          <span className="font-medium shrink-0">{getItemLineTotal(it).toFixed(2)} zł</span>
         </div>
       );
     })
   )}
 </div>
 
-<div className="space-y-1 text-sm">
-  <div className="flex justify-between">
-    <span>Produkty:</span>
-    <span>{baseTotal.toFixed(2)} zł</span>
+{/* Ceny */}
+<div className="space-y-2 pt-3 border-t border-white/5">
+  <div className="flex justify-between text-sm">
+    <span className="text-white/60">Produkty</span>
+    <span className="font-medium">{baseTotal.toFixed(2)} zł</span>
   </div>
 
   {selectedOption && (
-    <div className="flex justify-between">
-      <span>Opakowanie:</span>
-      <span>{packagingUnit.toFixed(2)} zł</span>
+    <div className="flex justify-between text-sm">
+      <span className="text-white/60">Opakowanie</span>
+      <span className="font-medium">{packagingUnit.toFixed(2)} zł</span>
     </div>
   )}
 
-  {/* Dostawa: pokazuj zawsze przy delivery (fallback gdy jeszcze nie policzona) */}
   {selectedOption === "delivery" && (
-    <div className="flex justify-between">
-      <span>Dostawa:</span>
-      <span>
+    <div className="flex justify-between text-sm">
+      <span className="text-white/60">Dostawa</span>
+      <span className="font-medium">
         {deliveryInfo && typeof deliveryInfo.cost === "number"
           ? `${deliveryInfo.cost.toFixed(2)} zł`
           : "—"}
       </span>
     </div>
   )}
-                            </div>
+</div>
 
                             {/* LOYALTY – MOBILE */}
                             {isLoggedIn && (
-                              <div className="mt-2">
+                              <div>
                                 {loyaltyLoading ? (
-                                  <p className="text-[11px] text-black/60">
-                                    Sprawdzamy Twoje naklejki...
-                                  </p>
+                                  <div className="flex items-center gap-2 text-xs checkout-muted">
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    Sprawdzamy naklejki...
+                                  </div>
                                 ) : (
                                   typeof loyaltyStickers === "number" && (
-                                    <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs space-y-2">
-                                      <div>
-                                        Masz{" "}
-                                        <b>{loyaltyStickers}</b> naklejek w
-                                        programie lojalnościowym.
+                                    <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-4 space-y-3">
+                                      <div className="flex items-center gap-2 text-sm">
+                                        <span className="text-lg">🎫</span>
+                                        <span>Masz <b className="text-emerald-400">{loyaltyStickers}</b> naklejek</span>
                                       </div>
 
                                       {canUseLoyalty4 && (
-                                        <div className="rounded-lg bg-emerald-100 border border-emerald-300 p-2 text-emerald-800 space-y-2">
+                                        <div className="rounded-xl bg-emerald-500/20 p-3 space-y-2">
                                           <div className="font-semibold text-sm flex items-center gap-2">
                                             <span>🎁</span>
-                                            <span>Wybierz darmowe Futomaki!</span>
+                                            <span>Darmowe Futomaki!</span>
                                           </div>
-                                          <p className="text-[11px] text-emerald-700">
-                                            Masz 4+ naklejek – wybierz jedną rolkę gratis z programu lojalnościowego.
-                                          </p>
                                           <button
                                             type="button"
                                             onClick={() => setShowFutomakiPicker(true)}
-                                            className="w-full mt-1 py-2 px-3 rounded-lg bg-emerald-600 text-white font-medium text-sm hover:bg-emerald-700 transition-colors"
+                                            className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 text-white font-medium text-sm hover:bg-emerald-700 transition-colors"
                                           >
-                                            {selectedFreeRoll ? `Wybrano: ${selectedFreeRoll}` : "Wybierz rolkę →"}
+                                            {selectedFreeRoll ? `✓ ${selectedFreeRoll}` : "Wybierz rolkę →"}
                                           </button>
                                           {!selectedFreeRoll && (
-                                            <p className="text-[10px] text-red-600 font-medium">
-                                              ⚠ Musisz wybrać rolkę, aby kontynuować
+                                            <p className="text-xs text-amber-400 text-center">
+                                              Musisz wybrać rolkę
                                             </p>
                                           )}
                                         </div>
                                       )}
 
                                       {loyalty4AlreadyClaimed && (
-  <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs">
-    Masz 4–7 naklejek, ale darmowa rolka została już wykorzystana.
-    Zbieraj dalej do 8 naklejek.
+  <div className="text-xs text-amber-300/80">
+    Darmowa rolka została już wykorzystana. Zbieraj do 8 naklejek!
   </div>
 )}
 
-
                                       {!canUseLoyalty4 &&
                                         hasAutoLoyaltyDiscount && (
-                                          <div className="font-semibold text-sm">
-                                            Masz 8+ naklejek – rabat −30% ({pln(loyaltyDiscount)}) został automatycznie naliczony!
+                                          <div className="font-medium text-sm text-emerald-400">
+                                            ✓ Rabat −30% ({pln(loyaltyDiscount)}) naliczony!
                                           </div>
                                         )}
                                     </div>
@@ -2531,73 +2628,84 @@ return (
                             />
 
                             {totalDiscount > 0 && (
-                              <div className="flex justify-between text-sm text-green-700">
-                                <span>Rabat łącznie:</span>
-                                <span>-{totalDiscount.toFixed(2)} zł</span>
+                              <div className="flex justify-between text-sm text-emerald-400">
+                                <span>Rabat</span>
+                                <span className="font-medium">-{totalDiscount.toFixed(2)} zł</span>
                               </div>
                             )}
 
-                            <div className="flex justify-between font-semibold border-t border-black/10 pt-2">
-                              <span>RAZEM:</span>
-                              <span>
+                            <div className="flex justify-between items-center pt-3 border-t border-white/10">
+                              <span className="text-white/60">Do zapłaty</span>
+                              <span className="text-2xl font-bold">
                                 {totalWithDelivery.toFixed(2)} zł
                               </span>
                             </div>
 
-                            {selectedOption === "delivery" && (
-  <p className="text-[11px] text-black/60 text-center mt-1">
-    {deliveryInfo?.eta ? `ETA: ${deliveryInfo.eta}` : "ETA: wybierz adres, aby policzyć dostawę"}
-  </p>
+                            {selectedOption === "delivery" && deliveryInfo?.eta && (
+  <div className="flex items-center justify-center gap-2 text-xs text-white/50">
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    Szacowany czas: {deliveryInfo.eta}
+  </div>
 )}
                           </div>
 
                           {/* Potwierdzenia + Turnstile */}
-                          <div className="rounded-2xl border border-black/10 bg-gray-50 p-4 space-y-3">
-                            <h4 className="text-lg font-semibold">
+                          <div className="checkout-card space-y-4">
+                            <h4 className="font-semibold flex items-center gap-2">
+                              <svg className="w-5 h-5 text-[#a61b1b]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
                               Potwierdzenia
                             </h4>
-                            <div className="space-y-3">
-                              {LegalConsent}
-                              <label className="flex items-start gap-2 text-xs leading-5 text-black">
+                            <div className="space-y-4">
+                              <label className="flex items-start gap-3 p-3 rounded-xl border border-white/10 hover:bg-white/5 transition-colors cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={legalAccepted}
+                                  onChange={(e) => setLegalAccepted(e.target.checked)}
+                                  className="mt-0.5 w-5 h-5 accent-[#a61b1b]"
+                                />
+                                <span className="text-sm leading-relaxed">
+                                  Akceptuję{" "}
+                                  <a href="/legal/regulamin" target="_blank" rel="noopener noreferrer" className="text-[#de1d13] underline">
+                                    Regulamin
+                                  </a>{" "}
+                                  oraz{" "}
+                                  <a href="/legal/polityka-prywatnosci" target="_blank" rel="noopener noreferrer" className="text-[#de1d13] underline">
+                                    Politykę prywatności
+                                  </a>
+                                </span>
+                              </label>
+                              
+                              <label className="flex items-start gap-3 p-3 rounded-xl border border-white/10 hover:bg-white/5 transition-colors cursor-pointer">
                                 <input
                                   type="checkbox"
                                   checked={confirmCityOk}
-                                  onChange={(e) =>
-                                    setConfirmCityOk(e.target.checked)
-                                  }
-                                  className="mt-0.5"
+                                  onChange={(e) => setConfirmCityOk(e.target.checked)}
+                                  className="mt-0.5 w-5 h-5 accent-[#a61b1b]"
                                 />
-                                <span>
-                                  Uwaga: składasz zamówienie do restauracji w{" "}
-                                  <b>{restaurantCityLabel}</b>. Potwierdzam, że
-                                  to prawidłowe miasto.
+                                <span className="text-sm leading-relaxed">
+                                  Potwierdzam zamówienie do <b>{restaurantCityLabel}</b>
                                 </span>
                               </label>
 
                               {TURNSTILE_SITE_KEY ? (
-                                <div>
-                                  <h4 className="font-semibold mb-1">
-                                    Weryfikacja
-                                  </h4>
+                                <div className="p-3 rounded-xl border border-white/10 bg-white/[0.02]">
+                                  <div className="flex items-center gap-2 text-sm mb-2">
+                                    <svg className="w-4 h-4 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                    </svg>
+                                    <span className="text-white/60">Weryfikacja bezpieczeństwa</span>
+                                  </div>
                                   {turnstileError ? (
-                                    <p className="text-sm text-red-600">
-                                      Nie udało się załadować weryfikacji.
-                                    </p>
+                                    <p className="text-sm text-red-400">Błąd weryfikacji. Odśwież stronę.</p>
                                   ) : (
-                                    <>
-                                      <div ref={tsMobileRef} />
-                                      <p className="text-[11px] text-black/60 mt-1">
-                                        Chronimy formularz przed botami.
-                                      </p>
-                                    </>
+                                    <div ref={tsMobileRef} />
                                   )}
                                 </div>
-                              ) : (
-                                <p className="text-[11px] text-black/60">
-                                  Weryfikacja Turnstile wyłączona (brak
-                                  klucza).
-                                </p>
-                              )}
+                              ) : null}
                             </div>
                           </div>
                         </div>
@@ -2606,36 +2714,39 @@ return (
                       {/* MOBILE: fixed footer z przyciskiem Zamawiam */}
                       {isMobile && !shouldHideOrderActions && (
                         <div className="fixed inset-x-0 bottom-0 z-[70] lg:hidden">
-                          <div className="mx-auto max-w-5xl border-t border-black/10 bg-white/95 backdrop-blur px-6 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-                            <div className="flex items-center gap-3">
-                              <button
-                                type="button"
-                                onClick={() => goToStep(2)}
-                                className="shrink-0 px-4 py-2 rounded-xl border border-black/15"
-                              >
-                                ← Cofnij
-                              </button>
-                              <button
-                                onClick={handleSubmitOrder}
-                                disabled={
-                                  submitting ||
-                                  !legalAccepted ||
-                                  !confirmCityOk ||
-                                  (TURNSTILE_SITE_KEY
-                                    ? !turnstileToken
-                                    : false)
-                                }
-                                className={`flex-1 py-3 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
-                              >
-                                {submitting ? (
-                                  <span className="flex items-center justify-center gap-2">
-                                    <span className="h-4 w-4 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
-                                    Przetwarzanie...
-                                  </span>
-                                ) : (
-                                  "✅ Zamawiam"
-                                )}
-                              </button>
+                          <div className="bg-gradient-to-t from-[#0b0b0b] via-[#0b0b0b] to-transparent pt-6">
+                            <div className="mx-auto max-w-5xl px-5 pb-[calc(0.75rem+env(safe-area-inset-bottom)+72px)]">
+                              <div className="flex items-center gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => goToStep(2)}
+                                  className="w-12 h-12 rounded-2xl border border-white/10 flex items-center justify-center hover:bg-white/10 transition-colors"
+                                >
+                                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                  </svg>
+                                </button>
+                                <button
+                                  onClick={handleSubmitOrder}
+                                  disabled={
+                                    submitting ||
+                                    !legalAccepted ||
+                                    !confirmCityOk ||
+                                    (TURNSTILE_SITE_KEY ? !turnstileToken : false)
+                                  }
+                                  className="flex-1 py-4 rounded-2xl font-bold text-white disabled:opacity-40 transition-all active:scale-[0.98]
+                                             bg-gradient-to-r from-[#c41e1e] to-[#8a1414] shadow-[0_8px_32px_rgba(166,27,27,0.4)]"
+                                >
+                                  {submitting ? (
+                                    <span className="flex items-center justify-center gap-2">
+                                      <span className="h-5 w-5 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
+                                      Przetwarzanie...
+                                    </span>
+                                  ) : (
+                                    `Zamawiam • ${totalWithDelivery.toFixed(2)} zł`
+                                  )}
+                                </button>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -2650,7 +2761,7 @@ return (
     <div className="flex items-start justify-between gap-4 flex-wrap">
       <div className="min-w-0">
         <h3 className="text-2xl font-bold">Podsumowanie i finalizacja</h3>
-        <p className="text-sm text-black/60 mt-1">
+        <p className="text-sm checkout-muted mt-1">
           {selectedOption === "delivery"
             ? "Sposób: dostawa"
             : selectedOption === "takeaway"
@@ -2664,7 +2775,7 @@ return (
       </div>
 
       {selectedOption === "delivery" && (
-        <div className="rounded-xl bg-yellow-50 border border-yellow-200 px-3 py-2 text-sm">
+        <div className="checkout-card-info">
           <b>Płatność wyłącznie gotówką u kierowcy.</b>
         </div>
       )}
@@ -2673,17 +2784,17 @@ return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
       {/* LEWA: produkty + ceny */}
       <div className="space-y-4">
-        <div className="rounded-2xl border border-black/10 bg-white p-4">
+        <div className="checkout-card">
           <div className="flex items-center justify-between gap-3 mb-2">
             <h4 className="text-sm font-semibold">Wybrane produkty</h4>
-            <span className="text-[11px] text-black/60">
+            <span className="text-[11px] checkout-muted">
               {items?.length || 0} poz.
             </span>
           </div>
 
           <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1">
             {items.length === 0 ? (
-              <p className="text-sm text-black/60 text-center">Brak produktów.</p>
+              <p className="text-sm checkout-muted text-center">Brak produktów.</p>
             ) : (
               items.map((it: any, i: number) => {
                 const key = getItemKey(it, i);
@@ -2694,7 +2805,7 @@ return (
                   <div key={key} className="flex items-start justify-between gap-3 text-sm">
                     <div className="min-w-0">
                       <div className="truncate">{label}</div>
-                      <div className="text-[11px] text-black/60">Ilość: {qty}</div>
+                      <div className="text-[11px] checkout-muted">Ilość: {qty}</div>
                     </div>
                     <div className="shrink-0 font-semibold">{pln(getItemLineTotal(it))}</div>
                   </div>
@@ -2709,27 +2820,27 @@ return (
 
       {/* PRAWA: dane + potwierdzenia */}
       <div className="space-y-4">
-        <div className="rounded-2xl border border-black/10 bg-white p-4 space-y-2">
+        <div className="checkout-card space-y-2">
           <h4 className="text-sm font-semibold">Dane do zamówienia</h4>
 
           <div className="text-sm">
             <div className="flex justify-between gap-3">
-              <span className="text-black/60">Imię:</span>
+              <span className="checkout-muted">Imię:</span>
               <span className="font-semibold">{name || "—"}</span>
             </div>
             <div className="flex justify-between gap-3">
-              <span className="text-black/60">Telefon:</span>
+              <span className="checkout-muted">Telefon:</span>
               <span className="font-semibold">{phone || "—"}</span>
             </div>
             <div className="flex justify-between gap-3">
-              <span className="text-black/60">E-mail:</span>
+              <span className="checkout-muted">E-mail:</span>
               <span className="font-semibold">{effectiveEmail || "—"}</span>
             </div>
 
             {selectedOption === "delivery" ? (
               <>
-                <div className="h-px bg-black/10 my-2" />
-                <div className="text-black/60 text-[11px]">Adres dostawy</div>
+                <div className="h-px checkout-divider my-2" />
+                <div className="checkout-muted text-[11px]">Adres dostawy</div>
                 <div className="text-sm font-semibold">
                   {(street || "").trim() ? street : "—"}
                 </div>
@@ -2738,7 +2849,7 @@ return (
                   {(city || "").trim() ? city : ""}
                   {(flatNumber || "").trim() ? `, m. ${flatNumber}` : ""}
                 </div>
-                <div className="text-[11px] text-black/60 mt-1">
+                <div className="text-[11px] checkout-muted mt-1">
                   {deliveryInfo?.eta ? `ETA: ${deliveryInfo.eta}` : "ETA: wybierz adres, aby policzyć dostawę"}
                 </div>
               </>
@@ -2746,7 +2857,7 @@ return (
           </div>
         </div>
 
-        <div className="rounded-2xl border border-black/10 bg-gray-50 p-4 space-y-3">
+        <div className="checkout-card-secondary space-y-3">
           <h4 className="text-lg font-semibold">Potwierdzenia</h4>
 
           <div className="space-y-3">
@@ -2765,7 +2876,7 @@ return (
               </span>
             </label>
 
-            <p className="text-[11px] text-black/60">
+            <p className="text-[11px] checkout-muted">
               Dzisiejsze godziny w {restaurantCityLabel}: {openInfo.label}
             </p>
 
@@ -2779,14 +2890,14 @@ return (
                 ) : (
                   <>
                     <div ref={tsDesktopRef} />
-                    <p className="text-[11px] text-black/60 mt-1">
+                    <p className="text-[11px] checkout-muted mt-1">
                       Chronimy formularz przed botami.
                     </p>
                   </>
                 )}
               </div>
             ) : (
-              <p className="text-[11px] text-black/60">
+              <p className="text-[11px] checkout-muted">
                 Weryfikacja Turnstile wyłączona (brak klucza).
               </p>
             )}
@@ -2795,12 +2906,12 @@ return (
       </div>
     </div>
 
-    <div className="-mx-6 sticky bottom-0 z-30 mt-4 border-t border-black/10 bg-white/95 backdrop-blur px-6 pt-4 pb-4">
+    <div className="-mx-6 sticky bottom-0 z-30 mt-4 border-t checkout-divider bg-white/95 backdrop-blur px-6 pt-4 pb-4 hidden lg:block">
       <div className="flex items-center gap-3">
         <button
           type="button"
           onClick={() => goToStep(3)}
-          className="px-4 py-2 rounded-xl border border-black/15"
+          className="checkout-btn-ghost"
         >
           ← Cofnij
         </button>

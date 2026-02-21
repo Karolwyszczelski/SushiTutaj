@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import Header from "./Header";
 import FloatingQuickActions from "./FloatingQuickActions";
@@ -13,6 +13,16 @@ const CheckoutModal = dynamic(() => import("./menu/CheckoutModal"), {
 export default function ClientWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isAdminRoute = pathname.startsWith("/admin");
+  
+  // Wykryj mobile dla ukrycia FloatingQuickActions (na mobile mamy MobileBottomNav)
+  const [isMobile, setIsMobile] = useState(false);
+  
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   // 3.3 – REJESTRACJA SERVICE WORKERA (dla całej aplikacji)
   useEffect(() => {
@@ -36,7 +46,8 @@ export default function ClientWrapper({ children }: { children: React.ReactNode 
     <>
       {!isAdminRoute && <Header />}
       {children}
-      {!isAdminRoute && <FloatingQuickActions />}
+      {/* Na mobile FloatingQuickActions jest zastąpiony przez MobileBottomNav w MobileAppShell */}
+      {!isAdminRoute && !isMobile && <FloatingQuickActions />}
       {!isAdminRoute && <CheckoutModal />}
     </>
   );
