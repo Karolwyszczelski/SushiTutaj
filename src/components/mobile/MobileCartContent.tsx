@@ -65,7 +65,7 @@ export default function MobileCartContent({ onClose }: MobileCartContentProps) {
     return (
       <div 
         className="flex flex-col items-center justify-center px-6 min-h-[60vh]"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 16px) + 32px)" }}
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}
       >
         <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-4">
           <ShoppingBag className="w-10 h-10 text-white/30" />
@@ -164,7 +164,7 @@ export default function MobileCartContent({ onClose }: MobileCartContentProps) {
       {/* Footer with total and checkout button */}
       <div 
         className="border-t border-white/10 p-4 bg-[#0b0b0b] shrink-0"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 16px) + 16px)" }}
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}
       >
         <div className="flex items-center justify-between mb-4">
           <div>

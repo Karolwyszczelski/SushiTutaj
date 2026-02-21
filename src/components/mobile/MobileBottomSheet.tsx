@@ -122,7 +122,7 @@ export default function MobileBottomSheet({
       : `${height}vh`;
 
   return (
-    <div className="md:hidden fixed inset-0 z-[60]">
+    <div className="md:hidden fixed inset-0 z-[80]">
       {/* Backdrop */}
       <div
         className={clsx(

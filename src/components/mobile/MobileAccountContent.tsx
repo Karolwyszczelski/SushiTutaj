@@ -399,7 +399,7 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
         {/* Content */}
         <div 
           className="flex-1 overflow-y-auto overscroll-contain px-6 py-6"
-          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 100px)" }}
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}
         >
           {/* Hero section */}
           <div className="text-center mb-8">
@@ -488,7 +488,7 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
         {/* Form content */}
         <div 
           className="flex-1 overflow-y-auto overscroll-contain px-6 py-6"
-          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 100px)" }}
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}
         >
           {/* Messages */}
           {(err || msg) && (
@@ -741,7 +741,7 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
       {/* Tab content */}
       <div 
         className="flex-1 overflow-y-auto overscroll-contain px-4 py-4"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 100px)" }}
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)" }}
       >
         {/* ORDERS TAB */}
         {userTab === "orders" && (

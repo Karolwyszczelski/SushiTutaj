@@ -233,13 +233,15 @@ export default function MobileSetView() {
   }
 
   return (
-    <div className="flex flex-col min-h-full bg-[#0b0b0b]">
+    <div 
+      className="flex flex-col min-h-full bg-[#0b0b0b]"
+      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 8px)" }}
+    >
       {/* Hero Image - Full width, immersive */}
       <div className="relative">
         {/* Badge - floating at top */}
         <div 
-          className="absolute top-0 left-0 right-0 z-20 flex justify-center"
-          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+          className="absolute top-0 left-0 right-0 z-20 flex justify-center pt-2"
         >
           <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10">
             <Sparkles className="w-3.5 h-3.5 text-[#e8b923]" />
