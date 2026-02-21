@@ -235,7 +235,7 @@ export default function MobileSetView() {
   return (
     <div 
       className="flex flex-col min-h-full bg-[#0b0b0b]"
-      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 20px)" }}
+      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 36px)" }}
     >
       {/* Hero Image - Full width, immersive */}
       <div className="relative">

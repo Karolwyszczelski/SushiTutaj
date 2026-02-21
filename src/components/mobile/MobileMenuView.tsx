@@ -509,7 +509,7 @@ export default function MobileMenuView() {
       {/* Sticky Header - Search + Categories */}
       <div 
         className="sticky top-0 z-20 bg-[#0b0b0b]/95 backdrop-blur-md border-b border-white/5"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 24px)" }}
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 36px)" }}
       >
         {/* Search */}
         <div className="px-4 pt-3 pb-2">
