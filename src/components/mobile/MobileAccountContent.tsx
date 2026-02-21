@@ -379,70 +379,71 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
   // RENDER: Initial view (wybór logowania/rejestracji)
   if (viewState === "initial") {
     return (
-      <div 
-        className="flex flex-col px-6 py-6 text-white relative"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 24px)" }}
-      >
-        {/* Close button */}
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
-          style={{ top: "calc(env(safe-area-inset-top, 0px) + 16px)" }}
-          aria-label="Zamknij"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
+      <div className="flex flex-col h-full text-white">
         {/* Header */}
-        <div className="text-center mb-8 pt-4">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/10 flex items-center justify-center">
-            <User className="w-8 h-8 text-white/70" />
-          </div>
-          <h2 className="text-xl font-semibold mb-1">Twoje konto</h2>
-          <p className="text-sm text-white/60">
-            Zaloguj się, aby śledzić zamówienia i korzystać z programu lojalnościowego
-          </p>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0">
+          <h2 className="text-lg font-semibold">Twoje konto</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
+            aria-label="Zamknij"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Buttons */}
-        <button
-          type="button"
-          onClick={() => {
-            setAuthMode("login");
-            setViewState("auth-form");
-          }}
-          className={clsx(
-            "w-full rounded-2xl px-6 py-4 font-semibold text-base flex items-center justify-between mb-3",
-            gradBtn
-          )}
-        >
-          <span className="flex items-center gap-3">
-            <LogIn className="w-5 h-5" />
-            Zaloguj się
-          </span>
-          <ChevronRight className="w-5 h-5" />
-        </button>
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          {/* Hero section */}
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/10 flex items-center justify-center">
+              <User className="w-8 h-8 text-white/70" />
+            </div>
+            <p className="text-sm text-white/60">
+              Zaloguj się, aby śledzić zamówienia i korzystać z programu lojalnościowego
+            </p>
+          </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            setAuthMode("register");
-            setViewState("auth-form");
-          }}
-          className="w-full rounded-2xl px-6 py-4 font-semibold text-base flex items-center justify-between bg-white/10 hover:bg-white/15 transition-colors"
-        >
-          <span className="flex items-center gap-3">
-            <UserPlus className="w-5 h-5" />
-            Załóż konto
-          </span>
-          <ChevronRight className="w-5 h-5" />
-        </button>
+          {/* Buttons */}
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMode("login");
+              setViewState("auth-form");
+            }}
+            className={clsx(
+              "w-full rounded-2xl px-6 py-4 font-semibold text-base flex items-center justify-between mb-3",
+              gradBtn
+            )}
+          >
+            <span className="flex items-center gap-3">
+              <LogIn className="w-5 h-5" />
+              Zaloguj się
+            </span>
+            <ChevronRight className="w-5 h-5" />
+          </button>
 
-        <p className="text-xs text-white/40 text-center mt-6">
-          Konto służy tylko do obsługi zamówień.<br />
-          Nie wysyłamy spamu.
-        </p>
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMode("register");
+              setViewState("auth-form");
+            }}
+            className="w-full rounded-2xl px-6 py-4 font-semibold text-base flex items-center justify-between bg-white/10 hover:bg-white/15 transition-colors"
+          >
+            <span className="flex items-center gap-3">
+              <UserPlus className="w-5 h-5" />
+              Załóż konto
+            </span>
+            <ChevronRight className="w-5 h-5" />
+          </button>
+
+          <p className="text-xs text-white/40 text-center mt-6">
+            Konto służy tylko do obsługi zamówień.<br />
+            Nie wysyłamy spamu.
+          </p>
+        </div>
       </div>
     );
   }
@@ -452,10 +453,7 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
     return (
       <div className="flex flex-col h-full text-white">
         {/* Header with back button and close button */}
-        <div 
-          className="flex items-center justify-between px-4 py-3 border-b border-white/10"
-          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
-        >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -657,10 +655,7 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
   return (
     <div className="flex flex-col h-full text-white">
       {/* User header */}
-      <div 
-        className="px-6 py-4 border-b border-white/10"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}
-      >
+      <div className="px-4 py-3 border-b border-white/10 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-[var(--accent-red)] flex items-center justify-center text-sm font-bold">
@@ -707,7 +702,7 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 px-4 py-2 bg-white/5">
+      <div className="flex gap-1 px-4 py-2 bg-white/5 shrink-0">
         <TabButton
           active={userTab === "orders"}
           onClick={() => setUserTab("orders")}
@@ -729,7 +724,10 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div 
+        className="flex-1 overflow-y-auto px-4 py-4"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}
+      >
         {/* ORDERS TAB */}
         {userTab === "orders" && (
           <div>
