@@ -48,13 +48,13 @@ export default function CookieBanner() {
 
   return (
     <>
-      {/* ============ MOBILE - Bottom Sheet Style ============ */}
-      <div className="md:hidden fixed inset-0 z-[60]">
+      {/* ============ MOBILE - Minimalist Bottom Sheet ============ */}
+      <div className="md:hidden fixed inset-0 z-[100]">
         {/* Backdrop */}
         <div
           className={`
-            absolute inset-0 bg-black/70 backdrop-blur-sm
-            transition-opacity duration-300 ease-out
+            absolute inset-0 bg-black/80
+            transition-opacity duration-200 ease-out
             ${isVisible && !isClosing ? "opacity-100" : "opacity-0"}
           `}
           aria-hidden
@@ -64,134 +64,131 @@ export default function CookieBanner() {
         <div
           className={`
             absolute inset-x-0 bottom-0
-            bg-[#0b0b0b] rounded-t-3xl
-            shadow-[0_-10px_50px_rgba(0,0,0,0.5)]
+            bg-[#0a0a0a] rounded-t-[28px]
             flex flex-col
-            transform-gpu transition-transform duration-300 ease-out
+            transform-gpu transition-transform duration-200 ease-out
           `}
           style={{
             transform: isVisible && !isClosing 
               ? "translateY(0)" 
               : "translateY(100%)",
+            willChange: "transform",
           }}
           role="dialog"
           aria-modal="true"
           aria-label="Zgoda na pliki cookie"
         >
           {/* Handle */}
-          <div className="flex justify-center pt-3 pb-1">
-            <div className="w-10 h-1 bg-white/30 rounded-full" />
+          <div className="flex justify-center pt-3 pb-2">
+            <div className="w-9 h-1 bg-white/20 rounded-full" />
           </div>
 
-          {/* Header */}
-          <div className="flex items-center gap-3 px-5 py-4 border-b border-white/10">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center shadow-lg shadow-red-900/30">
-              <Cookie className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-white">Zgoda na cookies</h2>
-              <p className="text-xs text-white/50">Dostosuj swoje preferencje</p>
+          {/* Header - Minimalist */}
+          <div className="px-6 pt-2 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-[#a61b1b] flex items-center justify-center">
+                <Cookie className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-[17px] font-semibold text-white tracking-tight">Cookies</h2>
+                <p className="text-[13px] text-white/40">Twoje preferencje</p>
+              </div>
             </div>
           </div>
 
-          {/* Content */}
-          <div className="px-5 py-4 space-y-3">
-            <p className="text-sm text-white/70 leading-relaxed">
-              Używamy plików cookie, aby strona działała poprawnie i lepiej dopasowywała treści do Twoich potrzeb.
+          {/* Content - Clean */}
+          <div className="px-6 pb-5">
+            <p className="text-[14px] text-white/60 leading-relaxed mb-5">
+              Używamy plików cookie dla poprawnego działania strony i lepszego dopasowania treści.
             </p>
 
-            {/* Cookie Categories */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                <div className="w-9 h-9 rounded-xl bg-green-500/20 flex items-center justify-center">
-                  <Shield className="w-5 h-5 text-green-400" />
+            {/* Cookie Categories - Compact */}
+            <div className="space-y-2.5 mb-5">
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.04]">
+                <div className="flex items-center gap-3">
+                  <Shield className="w-4 h-4 text-emerald-400" />
+                  <span className="text-[14px] font-medium text-white">Niezbędne</span>
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-white">Niezbędne</p>
-                  <p className="text-xs text-white/50">Zawsze aktywne</p>
-                </div>
-                <div className="w-10 h-6 rounded-full bg-green-500 flex items-center justify-end px-1">
-                  <div className="w-4 h-4 rounded-full bg-white shadow" />
-                </div>
+                <span className="text-[12px] text-emerald-400/80 font-medium">Aktywne</span>
               </div>
 
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                <div className="w-9 h-9 rounded-xl bg-blue-500/20 flex items-center justify-center">
-                  <BarChart3 className="w-5 h-5 text-blue-400" />
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.04]">
+                <div className="flex items-center gap-3">
+                  <BarChart3 className="w-4 h-4 text-white/40" />
+                  <span className="text-[14px] text-white/70">Analityczne</span>
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-white">Statystyka</p>
-                  <p className="text-xs text-white/50">Analiza ruchu</p>
-                </div>
+                <span className="text-[12px] text-white/30">Opcjonalne</span>
               </div>
 
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
-                <div className="w-9 h-9 rounded-xl bg-purple-500/20 flex items-center justify-center">
-                  <Megaphone className="w-5 h-5 text-purple-400" />
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.04]">
+                <div className="flex items-center gap-3">
+                  <Megaphone className="w-4 h-4 text-white/40" />
+                  <span className="text-[14px] text-white/70">Marketingowe</span>
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-white">Marketing</p>
-                  <p className="text-xs text-white/50">Reklamy i treści</p>
-                </div>
+                <span className="text-[12px] text-white/30">Opcjonalne</span>
               </div>
             </div>
 
-            {/* Links */}
-            <div className="flex items-center justify-center gap-4 pt-2">
+            {/* Links - Minimal */}
+            <div className="flex items-center justify-center gap-3 mb-5">
               <a
                 href="/polityka-prywatnosci"
-                className="text-xs text-red-400 hover:text-red-300 underline-offset-2 hover:underline"
+                className="text-[12px] text-white/40 active:text-white/60"
               >
                 Polityka prywatności
               </a>
-              <span className="text-white/20">•</span>
+              <span className="text-white/10">·</span>
               <a
                 href="/regulamin"
-                className="text-xs text-red-400 hover:text-red-300 underline-offset-2 hover:underline"
+                className="text-[12px] text-white/40 active:text-white/60"
               >
                 Regulamin
               </a>
             </div>
           </div>
 
-          {/* Actions */}
+          {/* Actions - Professional */}
           <div 
-            className="px-5 pt-3 pb-4 border-t border-white/10 space-y-2"
-            style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 16px) + 16px)" }}
+            className="px-6 pt-4 border-t border-white/[0.06]"
+            style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 20px) + 20px)" }}
           >
+            {/* Primary CTA */}
             <button
               onClick={() => save({ necessary: true, analytics: true, marketing: true })}
               className="
-                w-full py-3.5 rounded-2xl
-                bg-gradient-to-r from-red-600 to-red-500
-                text-white font-semibold text-sm
-                shadow-lg shadow-red-900/40
-                active:scale-[0.98] transition-transform
+                w-full h-[52px] rounded-2xl mb-3
+                bg-[#a61b1b] text-white
+                font-semibold text-[15px]
+                active:bg-[#8a1515] active:scale-[0.98]
+                transition-all duration-150
               "
             >
               Akceptuj wszystkie
             </button>
 
-            <div className="flex gap-2">
+            {/* Secondary options */}
+            <div className="flex gap-2.5">
               <button
                 onClick={() => save({ necessary: true, analytics: true, marketing: false })}
                 className="
-                  flex-1 py-3 rounded-2xl
-                  bg-white/10 border border-white/10
-                  text-white font-medium text-sm
-                  active:bg-white/15 transition-colors
+                  flex-1 h-[46px] rounded-xl
+                  bg-white/[0.06] text-white/80
+                  font-medium text-[14px]
+                  active:bg-white/10 active:scale-[0.98]
+                  transition-all duration-150
                 "
               >
-                Tylko statystyka
+                + Analityka
               </button>
 
               <button
                 onClick={() => save({ necessary: true, analytics: false, marketing: false })}
                 className="
-                  flex-1 py-3 rounded-2xl
-                  bg-white/5 border border-white/10
-                  text-white/70 font-medium text-sm
-                  active:bg-white/10 transition-colors
+                  flex-1 h-[46px] rounded-xl
+                  bg-white/[0.03] text-white/50
+                  font-medium text-[14px]
+                  active:bg-white/[0.06] active:scale-[0.98]
+                  transition-all duration-150
                 "
               >
                 Tylko niezbędne
