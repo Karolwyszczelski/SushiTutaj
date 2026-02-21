@@ -509,7 +509,7 @@ export default function MobileMenuView() {
       {/* Sticky Header - Search + Categories */}
       <div 
         className="sticky top-0 z-20 bg-[#0b0b0b]/95 backdrop-blur-md border-b border-white/5"
-        style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}
       >
         {/* Search */}
         <div className="px-4 pt-3 pb-2">
@@ -564,7 +564,7 @@ export default function MobileMenuView() {
       </div>
 
       {/* Products List */}
-      <div className="flex-1 px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+100px)]">
+      <div className="flex-1 px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+120px)]">
         {loading ? (
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (

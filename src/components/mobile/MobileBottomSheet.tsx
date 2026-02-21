@@ -114,7 +114,7 @@ export default function MobileBottomSheet({
 
   const heightStyle =
     height === "full"
-      ? "calc(100dvh - env(safe-area-inset-top, 0px) - 20px)"
+      ? "calc(100dvh - env(safe-area-inset-top, 0px) - 32px)"
       : height === "half"
       ? "50vh"
       : height === "auto"

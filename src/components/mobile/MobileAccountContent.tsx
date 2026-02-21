@@ -383,7 +383,7 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
         {/* Header */}
         <div 
           className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0"
-          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 20px)" }}
         >
           <h2 className="text-lg font-semibold">Twoje konto</h2>
           <button
@@ -461,7 +461,7 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
         {/* Header with back button and close button */}
         <div 
           className="flex items-center justify-between px-4 py-3 border-b border-white/10 shrink-0"
-          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 20px)" }}
         >
           <div className="flex items-center gap-3">
             <button
@@ -669,7 +669,7 @@ export default function MobileAccountContent({ onClose }: MobileAccountContentPr
       {/* User header */}
       <div 
         className="px-4 py-3 border-b border-white/10 shrink-0"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 20px)" }}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">

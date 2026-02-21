@@ -69,7 +69,10 @@ export default function MobileHeroView({ onGoToMenu }: MobileHeroViewProps) {
       </div>
 
       {/* Górny blok: logo + tytuł */}
-      <div className="relative z-10 flex flex-col items-center px-6 text-center pt-4">
+      <div 
+        className="relative z-10 flex flex-col items-center px-6 text-center"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}
+      >
         <Image src="/assets/logo.png" alt="Logo" width={84} height={84} priority />
         <h1 className="mt-6 text-xl leading-tight font-normal text-white max-w-[280px]">
           {copy.title}
