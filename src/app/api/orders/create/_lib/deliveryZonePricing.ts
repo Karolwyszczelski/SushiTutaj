@@ -115,7 +115,7 @@ export async function enforceDeliveryZonePricing(
     zone.cost_per_km != null ? Number(zone.cost_per_km) : Number(zone.cost ?? 0);
 
   // POPRAWKA: dla per_km używamy cost_fixed + cost_per_km * distance_km
-  let serverCost =
+  const serverCost =
     pricingType === "per_km" 
       ? flatCostRaw + perKmRateRaw * distance_km 
       : flatCostRaw;
