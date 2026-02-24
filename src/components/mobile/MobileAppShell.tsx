@@ -209,19 +209,19 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
       {/* Main content area - scrollable within bounds */}
       <main 
         className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)", touchAction: "pan-y" }}
+        style={{ touchAction: "pan-y" }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
         {/* Keep all tab views mounted but hidden — prevents re-import & re-render lag */}
-        <div className={activeTab === "home" ? "min-h-full" : "hidden"}>
+        <div className={activeTab === "home" ? "min-h-full" : "hidden"} style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}>
           <MobileHeroView onGoToMenu={goToMenu} />
         </div>
         <div className={activeTab === "menu" ? "min-h-full" : "hidden"}>
           <MobileMenuView />
         </div>
-        <div className={activeTab === "set" ? "min-h-full" : "hidden"}>
+        <div className={activeTab === "set" ? "min-h-full" : "hidden"} style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}>
           <MobileSetView />
         </div>
       </main>

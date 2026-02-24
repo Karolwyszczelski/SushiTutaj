@@ -295,7 +295,6 @@ export default function MobileSetView() {
           </p>
           <h1
             className="text-[26px] font-bold text-white leading-tight tracking-tight mb-3 hero-stagger hero-stagger-3"
-            style={{ fontFamily: "var(--font-display), serif" }}
           >
             {title}
           </h1>

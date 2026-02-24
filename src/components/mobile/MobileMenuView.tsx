@@ -555,7 +555,8 @@ export default function MobileMenuView() {
     <div className="flex flex-col min-h-full bg-[#0a0a0a]">
       {/* ── Sticky Header ── */}
       <div 
-        className="sticky top-0 z-20 bg-[#0a0a0a]/95 backdrop-blur-lg pt-2"
+        className="sticky top-0 z-20 bg-[#0a0a0a]/95 backdrop-blur-lg"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 8px)" }}
       >
         {/* Title row */}
         <div className="px-5 mb-3">
@@ -566,7 +567,6 @@ export default function MobileMenuView() {
               </p>
               <h1
                 className="text-[22px] font-bold text-white tracking-tight"
-                style={{ fontFamily: "var(--font-display), serif" }}
               >
                 {activeCat === "Wszystko" ? "Wszystkie dania" : activeCat}
               </h1>
@@ -746,7 +746,6 @@ export default function MobileMenuView() {
                             )}
                             <h3
                               className="text-[17px] font-bold text-white leading-snug"
-                              style={{ fontFamily: "var(--font-display), serif" }}
                             >
                               {displayName}
                             </h3>
