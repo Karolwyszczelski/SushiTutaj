@@ -273,9 +273,9 @@ function CartItemRow({
         <Trash2 className="w-5 h-5 text-white" />
       </div>
 
-      {/* card */}
+      {/* card — opaque bg so swipe-red never bleeds through */}
       <div
-        className="relative bg-white/[0.05] rounded-2xl p-3 flex gap-3 transition-transform"
+        className="relative bg-[#161616] rounded-2xl p-3 flex gap-3 transition-transform"
         style={{
           transform: `translateX(${offset}px)`,
           transition: startX !== null ? "none" : "transform 0.25s ease-out",
@@ -286,13 +286,13 @@ function CartItemRow({
       >
         {/* thumbnail */}
         {!imgError ? (
-          <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-white/[0.04] shrink-0">
+          <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-white/[0.04] shrink-0 self-center">
             <Image
               src={imgSrc}
               alt={item.name}
               fill
               className="object-cover"
-              sizes="64px"
+              sizes="56px"
               onError={() => {
                 // try .jpg fallback
                 if (imgSrc.endsWith(".webp")) {
@@ -304,13 +304,14 @@ function CartItemRow({
             />
           </div>
         ) : (
-          <div className="w-16 h-16 rounded-xl bg-white/[0.04] shrink-0 flex items-center justify-center">
+          <div className="w-14 h-14 rounded-xl bg-white/[0.04] shrink-0 self-center flex items-center justify-center">
             <span className="text-2xl opacity-30">🍣</span>
           </div>
         )}
 
-        {/* info */}
-        <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+        {/* info + stepper row */}
+        <div className="flex-1 min-w-0 flex flex-col justify-between gap-1.5 py-0.5">
+          {/* top: name + addons */}
           <div>
             <h4 className="text-[13px] font-medium text-white leading-tight line-clamp-2">
               {item.name}
@@ -322,35 +323,38 @@ function CartItemRow({
             )}
           </div>
 
-          <p className="text-[14px] font-semibold text-white">
-            {itemTotal.toFixed(2)}{" "}
-            <span className="text-[11px] font-normal text-white/50">zł</span>
-          </p>
-        </div>
+          {/* bottom: price + stepper on same row */}
+          <div className="flex items-center justify-between">
+            <p className="text-[14px] font-semibold text-white">
+              {itemTotal.toFixed(2)}{" "}
+              <span className="text-[11px] font-normal text-white/50">zł</span>
+            </p>
 
-        {/* quantity stepper */}
-        <div className="flex items-center gap-1.5 self-center shrink-0">
-          <button
-            type="button"
-            onClick={onDecrease}
-            className="w-7 h-7 rounded-lg bg-white/[0.08] flex items-center justify-center active:bg-white/[0.15] transition-colors"
-            aria-label="Zmniejsz ilość"
-          >
-            <Minus className="w-3.5 h-3.5 text-white/70" />
-          </button>
+            {/* quantity stepper */}
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={onDecrease}
+                className="w-7 h-7 rounded-lg bg-white/[0.08] flex items-center justify-center active:bg-white/[0.15] transition-colors"
+                aria-label="Zmniejsz ilość"
+              >
+                <Minus className="w-3.5 h-3.5 text-white/70" />
+              </button>
 
-          <span className="w-6 text-center text-[13px] font-semibold text-white tabular-nums">
-            {item.quantity || 1}
-          </span>
+              <span className="w-5 text-center text-[13px] font-semibold text-white tabular-nums">
+                {item.quantity || 1}
+              </span>
 
-          <button
-            type="button"
-            onClick={onIncrease}
-            className="w-7 h-7 rounded-lg bg-white/[0.08] flex items-center justify-center active:bg-white/[0.15] transition-colors"
-            aria-label="Zwiększ ilość"
-          >
-            <Plus className="w-3.5 h-3.5 text-white/70" />
-          </button>
+              <button
+                type="button"
+                onClick={onIncrease}
+                className="w-7 h-7 rounded-lg bg-white/[0.08] flex items-center justify-center active:bg-white/[0.15] transition-colors"
+                aria-label="Zwiększ ilość"
+              >
+                <Plus className="w-3.5 h-3.5 text-white/70" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

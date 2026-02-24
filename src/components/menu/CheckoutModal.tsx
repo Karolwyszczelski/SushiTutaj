@@ -1959,44 +1959,62 @@ return (
         <div className="relative overflow-hidden"
              style={{ paddingTop: "max(env(safe-area-inset-top), 0px)" }}>
           {/* Gradient bg on mobile */}
-          <div className="absolute inset-0 bg-gradient-to-b from-[#a61b1b]/15 via-transparent to-transparent lg:hidden" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#a61b1b]/12 via-[#a61b1b]/5 to-transparent lg:hidden" />
           
-          <div className="relative flex items-center justify-between gap-3 px-5 py-4 border-b border-white/5 lg:border-black/10">
+          <div className="relative flex items-center justify-between gap-3 px-5 py-4 border-b border-white/[0.06] lg:border-black/10">
             {!orderSent && (
               <button
                 aria-label="Zamknij"
                 onClick={closeCheckoutModal}
-                className="w-10 h-10 flex items-center justify-center rounded-full bg-white/10 lg:bg-black/5 hover:bg-white/20 lg:hover:bg-black/10 transition-colors"
+                className="w-10 h-10 flex items-center justify-center rounded-full bg-white/[0.08] lg:bg-black/5 hover:bg-white/15 lg:hover:bg-black/10 transition-all active:scale-95"
               >
                 <X size={20} />
               </button>
             )}
             <div className="flex-1 text-center">
-              <h2 className="text-lg font-bold">
+              <h2 className="text-lg font-bold tracking-tight">
                 Twoje zamówienie
               </h2>
-              <p className="text-xs text-white/50 lg:text-black/50 mt-0.5">{restaurantCityLabel}</p>
+              <p className="text-[11px] text-white/40 lg:text-black/50 mt-0.5 font-medium">{restaurantCityLabel}</p>
             </div>
             {!orderSent && <div className="w-10" />}
           </div>
           
           {/* Progress steps - mobile only */}
           {!orderSent && isMobile && (
-            <div className="flex items-center justify-center gap-2 px-5 py-3 border-b border-white/5">
-              {[1, 2, 3].map((step) => (
-                <div key={step} className="flex items-center gap-2">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
-                    checkoutStep >= step 
-                      ? 'bg-gradient-to-br from-[#c41e1e] to-[#8a1414] text-white shadow-lg shadow-red-500/20' 
-                      : 'bg-white/10 text-white/40'
-                  }`}>
-                    {checkoutStep > step ? (
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    ) : step}
+            <div className="flex items-center justify-center gap-0 px-6 py-3.5 border-b border-white/5">
+              {[
+                { step: 1, label: "Koszyk" },
+                { step: 2, label: "Odbiór" },
+                { step: 3, label: "Płatność" },
+              ].map(({ step, label }, idx) => (
+                <div key={step} className="flex items-center">
+                  <div className="flex flex-col items-center">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 ${
+                      checkoutStep > step 
+                        ? 'bg-gradient-to-br from-[#c41e1e] to-[#8a1414] text-white shadow-lg shadow-red-500/25 scale-90' 
+                        : checkoutStep === step
+                        ? 'bg-gradient-to-br from-[#c41e1e] to-[#8a1414] text-white shadow-lg shadow-red-500/30 ring-[3px] ring-[#c41e1e]/20'
+                        : 'bg-white/[0.06] text-white/30 border border-white/10'
+                    }`}>
+                      {checkoutStep > step ? (
+                        <svg className="w-4.5 h-4.5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      ) : step}
+                    </div>
+                    <span className={`checkout-step-label ${checkoutStep === step ? 'active' : checkoutStep > step ? 'done' : ''}`}>
+                      {label}
+                    </span>
                   </div>
-                  {step < 3 && <div className={`w-8 h-0.5 rounded-full ${checkoutStep > step ? 'bg-[#a61b1b]' : 'bg-white/10'}`} />}
+                  {idx < 2 && (
+                    <div className="relative w-12 h-[2px] mx-1 -mt-3.5 rounded-full overflow-hidden bg-white/[0.06]">
+                      <div 
+                        className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#c41e1e] to-[#a61b1b] rounded-full transition-all duration-500 ease-out"
+                        style={{ width: checkoutStep > idx + 1 ? '100%' : '0%' }}
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -2012,29 +2030,51 @@ return (
 >
      <div>
               {orderSent ? (
-                <div className="min-h-[400px] flex flex-col items-center justify-center text-center space-y-6 px-4 py-8">
-                  {/* Success animation */}
+                <div className="min-h-[400px] flex flex-col items-center justify-center text-center space-y-6 px-4 py-8 checkout-step-enter">
+                  {/* Success animation with sparkles */}
                   <div className="relative">
-                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/30">
+                    {/* Sparkle particles - mobile only */}
+                    <div className="lg:hidden">
+                      {['✨', '🎉', '⭐', '🍣', '🎊'].map((emoji, i) => (
+                        <span
+                          key={i}
+                          className="checkout-sparkle absolute text-lg"
+                          style={{
+                            left: `${['-20px', '50px', '-10px', '60px', '25px'][i]}`,
+                            top: `${['-5px', '-10px', '20px', '15px', '-15px'][i]}`,
+                          }}
+                        >
+                          {emoji}
+                        </span>
+                      ))}
+                    </div>
+                    
+                    {/* Success circle */}
+                    <div className="checkout-success-circle w-24 h-24 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-xl shadow-emerald-500/30">
                       <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        <path className="checkout-checkmark-path" strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                       </svg>
                     </div>
-                    <div className="absolute -inset-2 rounded-full border-2 border-emerald-500/30 animate-ping" />
+                    
+                    {/* Pulse rings */}
+                    <div className="absolute -inset-3 rounded-full border-2 border-emerald-500/20 checkout-success-ring" />
+                    <div className="absolute -inset-6 rounded-full border border-emerald-500/10 checkout-success-ring" style={{ animationDelay: '0.3s' }} />
                   </div>
                   
                   <div className="space-y-2">
                     <h3 className="text-2xl font-bold">Dziękujemy!</h3>
-                    <p className="text-white/60 lg:text-black/60 max-w-xs mx-auto">
+                    <p className="text-white/60 lg:text-black/60 max-w-xs mx-auto leading-relaxed">
                       Twoje zamówienie zostało przyjęte. Potwierdzenie wysłaliśmy na e-mail.
                     </p>
                   </div>
                   
                   {/* QR Code card */}
-                  <div className="bg-white p-5 rounded-2xl shadow-xl">
-                    <QRCode value={googleReviewUrl || thanksQrUrl} size={140} />
-                    <p className="text-xs text-black/50 mt-3 max-w-[160px]">
-                      Zeskanuj, aby ocenić nas w Google
+                  <div className="bg-white/[0.06] lg:bg-white p-5 rounded-2xl shadow-xl border border-white/10 lg:border-black/5">
+                    <div className="bg-white p-3 rounded-xl">
+                      <QRCode value={googleReviewUrl || thanksQrUrl} size={140} />
+                    </div>
+                    <p className="text-xs text-white/40 lg:text-black/50 mt-3 max-w-[180px] mx-auto leading-relaxed">
+                      Zeskanuj kod, aby ocenić nas w Google
                     </p>
                   </div>
                   
@@ -2043,13 +2083,16 @@ return (
                       href={googleReviewUrl || thanksQrUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full py-3.5 rounded-2xl font-bold text-white bg-gradient-to-r from-[#c41e1e] to-[#8a1414] shadow-lg active:scale-[0.98] transition-all"
+                      className="w-full py-3.5 rounded-2xl font-bold text-white bg-gradient-to-r from-[#c41e1e] to-[#8a1414] shadow-lg shadow-red-500/25 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                     >
-                      ⭐ Zostaw opinię
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                      </svg>
+                      Zostaw opinię
                     </a>
                     <button
                       onClick={closeCheckoutModal}
-                      className="w-full py-3 rounded-2xl font-medium border border-white/10 lg:border-black/10 hover:bg-white/10 lg:hover:bg-black/5 transition-colors"
+                      className="w-full py-3 rounded-2xl font-medium border border-white/10 lg:border-black/10 text-white/70 lg:text-black/70 hover:bg-white/10 lg:hover:bg-black/5 transition-colors active:scale-[0.98]"
                     >
                       Zamknij
                     </button>
@@ -2058,25 +2101,32 @@ return (
               ) : (
                 <>
                   {errorMessage && (
-                    <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-red-400 flex items-start gap-3">
-                      <svg className="w-5 h-5 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                      </svg>
-                      <span className="text-sm">{errorMessage}</span>
+                    <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3.5 text-red-400 flex items-start gap-3 checkout-step-enter">
+                      <div className="w-8 h-8 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0 mt-0.5">
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <span className="text-sm leading-relaxed pt-1">{errorMessage}</span>
                     </div>
                   )}
 
                   {/* KROK 1 MOBILE: lista produktów */}
                   {checkoutStep === 1 && (
-                    <div className="space-y-4">
+                    <div className="space-y-4 checkout-step-enter">
                       <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="text-xl font-bold">Wybrane produkty</h3>
-                          <p className="text-sm text-white/50 lg:text-black/50 mt-0.5">{items.length} {items.length === 1 ? 'produkt' : items.length < 5 ? 'produkty' : 'produktów'}</p>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#c41e1e]/20 to-[#c41e1e]/5 flex items-center justify-center lg:hidden">
+                            <ShoppingBag size={20} className="text-[#c41e1e]" />
+                          </div>
+                          <div>
+                            <h3 className="text-xl font-bold">Wybrane produkty</h3>
+                            <p className="text-sm text-white/50 lg:text-black/50 mt-0.5">{items.length} {items.length === 1 ? 'produkt' : items.length < 5 ? 'produkty' : 'produktów'}</p>
+                          </div>
                         </div>
                         {items.length > 0 && (
                           <div className="text-right">
-                            <p className="text-xs text-white/50 lg:text-black/50">Suma</p>
+                            <p className="text-[10px] uppercase tracking-wider text-white/40 lg:text-black/40">Suma</p>
                             <p className="text-lg font-bold">{baseTotal.toFixed(2)} zł</p>
                           </div>
                         )}
@@ -2084,7 +2134,7 @@ return (
 
                       {/* START: lista pozycji koszyka */}
 {/* START: lista pozycji koszyka */}
-<div className="space-y-3 pb-[calc(10rem+env(safe-area-inset-bottom))]">
+<div className="space-y-3 pb-[calc(10rem+env(safe-area-inset-bottom))] checkout-stagger">
   {items.map((item: any, idx: number) => {
     const itemKey = getItemKey(item, idx);
     return (
@@ -2157,13 +2207,18 @@ return (
                   {/* KROK 1 DESKTOP / KROK 2 MOBILE: sposób odbioru */}
                   {/* KROK 2: sposób odbioru */}
 {checkoutStep === 2 && (
-  <div className="space-y-5 pb-[calc(14rem+env(safe-area-inset-bottom))]">
-                      <div>
-                        <h3 className="text-xl font-bold">Sposób odbioru</h3>
-                        <p className="text-sm text-white/50 lg:text-black/50 mt-0.5">Wybierz jak chcesz odebrać zamówienie</p>
+  <div className="space-y-5 pb-[calc(14rem+env(safe-area-inset-bottom))] checkout-step-enter">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#c41e1e]/20 to-[#c41e1e]/5 flex items-center justify-center lg:hidden">
+                          <Truck size={20} className="text-[#c41e1e]" />
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-bold">Sposób odbioru</h3>
+                          <p className="text-sm text-white/50 lg:text-black/50 mt-0.5">Wybierz jak chcesz odebrać zamówienie</p>
+                        </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-2 gap-3 checkout-stagger">
                         {OPTIONS.map(({ key, label, Icon, disabled, hint }) => (
   <button
     key={key}
@@ -2220,7 +2275,7 @@ return (
       {selectedOption === "delivery" ? "Czas dostawy" : "Czas odbioru"}
     </h4>
     <div className="flex flex-col gap-3">
-      <label className="flex items-center gap-3 p-3 rounded-xl border border-white/10 lg:border-black/10 cursor-pointer hover:bg-white/5 lg:hover:bg-black/5 transition-colors">
+      <label className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all active:scale-[0.99] ${deliveryTimeOption === 'asap' ? 'border-[#c41e1e]/30 bg-[#c41e1e]/5' : 'border-white/10 lg:border-black/10 hover:bg-white/[0.03] lg:hover:bg-black/[0.02]'}`}>
         <input
           type="radio"
           name="timeOption"
@@ -2231,10 +2286,10 @@ return (
         />
         <div>
           <span className="font-medium">Jak najszybciej</span>
-          <p className="text-xs text-white/50 lg:text-black/50">Szacowany czas: 30-45 min</p>
+          <p className="text-xs text-white/40 lg:text-black/40 mt-0.5">Szacowany czas: 30-45 min</p>
         </div>
       </label>
-      <label className={`flex items-center gap-3 p-3 rounded-xl border border-white/10 lg:border-black/10 cursor-pointer transition-colors ${!canSchedule ? 'opacity-50' : 'hover:bg-white/5 lg:hover:bg-black/5'}`}>
+      <label className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all active:scale-[0.99] ${!canSchedule ? 'opacity-50 cursor-not-allowed' : deliveryTimeOption === 'schedule' ? 'border-[#c41e1e]/30 bg-[#c41e1e]/5' : 'border-white/10 lg:border-black/10 hover:bg-white/[0.03] lg:hover:bg-black/[0.02]'}`}>
         <input
           type="radio"
           name="timeOption"
@@ -2254,17 +2309,21 @@ return (
       </label>
 
       {deliveryTimeOption === "schedule" && canSchedule && (
-        <select
-          className="checkout-input"
-          value={scheduledTime}
-          onChange={(e) => setScheduledTime(e.target.value)}
-        >
-          {scheduleSlots.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
+        <div className="space-y-2">
+          <p className="text-xs text-white/40 lg:text-black/40 font-medium">Wybierz godzinę:</p>
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+            {scheduleSlots.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setScheduledTime(t)}
+                className={`checkout-time-chip ${scheduledTime === t ? 'selected' : ''}`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
     </div>
     <p className="text-xs checkout-muted">
@@ -2333,10 +2392,17 @@ return (
 
                   {/* KROK 3: dane kontaktowe (mobile + desktop), a podsumowanie tylko mobile */}
 {checkoutStep === 3 && (
-  <div className="space-y-5">
-    <div>
-      <h3 className="text-xl font-bold">Dane kontaktowe</h3>
-      <p className="text-sm text-white/50 lg:text-black/50 mt-0.5">Potrzebujemy ich do realizacji zamówienia</p>
+  <div className="space-y-5 checkout-step-enter">
+    <div className="flex items-center gap-3">
+      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#c41e1e]/20 to-[#c41e1e]/5 flex items-center justify-center lg:hidden">
+        <svg className="w-5 h-5 text-[#c41e1e]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+        </svg>
+      </div>
+      <div>
+        <h3 className="text-xl font-bold">Dane kontaktowe</h3>
+        <p className="text-sm text-white/50 lg:text-black/50 mt-0.5">Potrzebujemy ich do realizacji zamówienia</p>
+      </div>
     </div>
 
     {selectedOption === "delivery" && (
@@ -2505,12 +2571,20 @@ return (
 
                       {/* MOBILE: podsumowanie + zgody + Turnstile */}
                       {isMobile && (
-  <div ref={mobileSummaryRef} className="mt-4 space-y-4 scroll-mt-6 pb-[calc(8rem+env(safe-area-inset-bottom))]">
+  <div ref={mobileSummaryRef} className="mt-4 space-y-4 scroll-mt-6 pb-[calc(8rem+env(safe-area-inset-bottom))] checkout-stagger">
                           {/* Podsumowanie cen */}
-                          <div className="checkout-card space-y-4">
-                            <div className="flex items-center justify-between">
-                              <h4 className="text-lg font-bold">Podsumowanie</h4>
-                              <span className="text-xs px-2.5 py-1 rounded-full bg-white/10 text-white/60">
+                          <div className="checkout-card space-y-4 relative overflow-hidden">
+                            {/* Subtle gradient accent line at top */}
+                            <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-[#c41e1e]/40 to-transparent lg:hidden" />
+                            
+                            <div className="flex items-center justify-between pt-1">
+                              <h4 className="text-lg font-bold flex items-center gap-2">
+                                <svg className="w-5 h-5 text-[#c41e1e] lg:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                </svg>
+                                Podsumowanie
+                              </h4>
+                              <span className="text-xs px-2.5 py-1 rounded-full bg-white/[0.06] text-white/50 border border-white/[0.06] lg:hidden">
                                 {selectedOption === "delivery" ? "🚗 Dostawa" : "🏪 Odbiór"}
                               </span>
                             </div>
@@ -2635,11 +2709,13 @@ return (
                               </div>
                             )}
 
-                            <div className="flex justify-between items-center pt-3 border-t border-white/10">
-                              <span className="text-white/60">Do zapłaty</span>
-                              <span className="text-2xl font-bold">
-                                {totalWithDelivery.toFixed(2)} zł
-                              </span>
+                            <div className="flex justify-between items-center pt-4 border-t border-white/10">
+                              <span className="text-sm text-white/50">Do zapłaty</span>
+                              <div className="text-right">
+                                <span className="text-2xl font-bold bg-gradient-to-r from-white to-white/80 bg-clip-text lg:bg-none lg:text-black">
+                                  {totalWithDelivery.toFixed(2)} zł
+                                </span>
+                              </div>
                             </div>
 
                             {selectedOption === "delivery" && deliveryInfo?.eta && (
@@ -2653,39 +2729,49 @@ return (
                           </div>
 
                           {/* Potwierdzenia + Turnstile */}
-                          <div className="checkout-card space-y-4">
-                            <h4 className="font-semibold flex items-center gap-2">
+                          <div className="checkout-card space-y-4 relative overflow-hidden">
+                            <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-white/10 to-transparent lg:hidden" />
+                            
+                            <h4 className="font-semibold flex items-center gap-2 pt-1">
                               <svg className="w-5 h-5 text-[#a61b1b]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                               </svg>
                               Potwierdzenia
                             </h4>
-                            <div className="space-y-4">
-                              <label className="flex items-start gap-3 p-3 rounded-xl border border-white/10 hover:bg-white/5 transition-colors cursor-pointer">
+                            <div className="space-y-3">
+                              <label className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all cursor-pointer active:scale-[0.99] ${
+                                legalAccepted 
+                                  ? 'border-[#c41e1e]/30 bg-[#c41e1e]/5' 
+                                  : 'border-white/10 hover:bg-white/[0.03] lg:border-black/10 lg:hover:bg-black/[0.02]'
+                              }`}>
                                 <input
                                   type="checkbox"
                                   checked={legalAccepted}
                                   onChange={(e) => setLegalAccepted(e.target.checked)}
-                                  className="mt-0.5 w-5 h-5 accent-[#a61b1b]"
+                                  className="checkout-checkbox mt-0.5"
                                 />
                                 <span className="text-sm leading-relaxed">
                                   Akceptuję{" "}
-                                  <a href="/legal/regulamin" target="_blank" rel="noopener noreferrer" className="text-[#de1d13] underline">
+                                  <a href="/legal/regulamin" target="_blank" rel="noopener noreferrer" className="text-[#de1d13] underline underline-offset-2">
                                     Regulamin
                                   </a>{" "}
                                   oraz{" "}
-                                  <a href="/legal/polityka-prywatnosci" target="_blank" rel="noopener noreferrer" className="text-[#de1d13] underline">
+                                  <a href="/legal/polityka-prywatnosci" target="_blank" rel="noopener noreferrer" className="text-[#de1d13] underline underline-offset-2">
                                     Politykę prywatności
                                   </a>
                                 </span>
                               </label>
                               
-                              <label className="flex items-start gap-3 p-3 rounded-xl border border-white/10 hover:bg-white/5 transition-colors cursor-pointer">
+                              <label className={`flex items-start gap-3 p-3.5 rounded-xl border transition-all cursor-pointer active:scale-[0.99] ${
+                                confirmCityOk 
+                                  ? 'border-[#c41e1e]/30 bg-[#c41e1e]/5' 
+                                  : 'border-white/10 hover:bg-white/[0.03] lg:border-black/10 lg:hover:bg-black/[0.02]'
+                              }`}>
                                 <input
                                   type="checkbox"
                                   checked={confirmCityOk}
                                   onChange={(e) => setConfirmCityOk(e.target.checked)}
-                                  className="mt-0.5 w-5 h-5 accent-[#a61b1b]"
+                                  className="checkout-checkbox mt-0.5"
                                 />
                                 <span className="text-sm leading-relaxed">
                                   Potwierdzam zamówienie do <b>{restaurantCityLabel}</b>
@@ -2693,12 +2779,14 @@ return (
                               </label>
 
                               {TURNSTILE_SITE_KEY ? (
-                                <div className="p-3 rounded-xl border border-white/10 bg-white/[0.02]">
-                                  <div className="flex items-center gap-2 text-sm mb-2">
-                                    <svg className="w-4 h-4 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                                    </svg>
-                                    <span className="text-white/60">Weryfikacja bezpieczeństwa</span>
+                                <div className="p-3.5 rounded-xl border border-white/[0.06] bg-white/[0.02] lg:border-black/10 lg:bg-gray-50">
+                                  <div className="flex items-center gap-2 text-sm mb-2.5">
+                                    <div className="w-7 h-7 rounded-lg bg-white/[0.06] lg:bg-white flex items-center justify-center">
+                                      <svg className="w-4 h-4 text-white/40 lg:text-black/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                      </svg>
+                                    </div>
+                                    <span className="text-white/50 lg:text-black/50 text-xs font-medium">Weryfikacja bezpieczeństwa</span>
                                   </div>
                                   {turnstileError ? (
                                     <p className="text-sm text-red-400">Błąd weryfikacji. Odśwież stronę.</p>
@@ -3169,38 +3257,48 @@ return (
     {/* FUTOMAKI PICKER MODAL */}
     {showFutomakiPicker && (
       <div 
-        className="fixed inset-0 bg-black/60 flex items-center justify-center p-4"
+        className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end lg:items-center justify-center lg:p-4"
         style={{ zIndex: 99999 }}
         onClick={(e) => {
           if (e.target === e.currentTarget) setShowFutomakiPicker(false);
         }}
       >
         <div 
-          className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col"
+          className="bg-[#141414] lg:bg-white rounded-t-3xl lg:rounded-2xl shadow-2xl max-w-md w-full max-h-[85vh] lg:max-h-[80vh] overflow-hidden flex flex-col checkout-step-enter"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="p-4 border-b border-gray-200 bg-emerald-50">
+          {/* Handle bar on mobile */}
+          <div className="flex justify-center pt-3 pb-0 lg:hidden">
+            <div className="w-10 h-1 rounded-full bg-white/20" />
+          </div>
+          
+          <div className="p-5 lg:p-4 lg:border-b lg:border-gray-200 lg:bg-emerald-50">
             <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-emerald-800">🎁 Wybierz darmowe Futomaki</h3>
-                <p className="text-sm text-emerald-600">Nagroda za 4 naklejki lojalnościowe</p>
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-emerald-500/15 lg:bg-emerald-100 flex items-center justify-center">
+                  <span className="text-xl">🎁</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white lg:text-emerald-800">Darmowe Futomaki</h3>
+                  <p className="text-sm text-white/50 lg:text-emerald-600">Nagroda za 4 naklejki</p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowFutomakiPicker(false)}
-                className="p-2 hover:bg-emerald-100 rounded-full transition-colors"
+                className="p-2 hover:bg-white/10 lg:hover:bg-emerald-100 rounded-full transition-colors"
               >
-                <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 text-white/60 lg:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-4 lg:p-4">
             {availableFutomaki.length === 0 ? (
-              <p className="text-center text-gray-500 py-8">Brak dostępnych Futomaki</p>
+              <p className="text-center text-white/40 lg:text-gray-500 py-8">Brak dostępnych Futomaki</p>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2 checkout-stagger">
                 {availableFutomaki.map((name) => (
                   <button
                     key={name}
@@ -3209,16 +3307,20 @@ return (
                       setSelectedFreeRoll(name);
                       setShowFutomakiPicker(false);
                     }}
-                    className={`w-full text-left p-3 rounded-xl border-2 transition-all ${
+                    className={`w-full text-left p-4 rounded-2xl border-2 transition-all active:scale-[0.98] ${
                       selectedFreeRoll === name
-                        ? "border-emerald-500 bg-emerald-50 text-emerald-800"
-                        : "border-gray-200 hover:border-emerald-300 hover:bg-emerald-50/50"
+                        ? "border-emerald-500 bg-emerald-500/15 lg:bg-emerald-50 text-white lg:text-emerald-800"
+                        : "border-white/10 lg:border-gray-200 hover:border-emerald-500/30 hover:bg-white/5 lg:hover:bg-emerald-50/50 text-white/80 lg:text-black"
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-medium">{name}</span>
                       {selectedFreeRoll === name && (
-                        <span className="text-emerald-600">✓</span>
+                        <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center">
+                          <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </div>
                       )}
                     </div>
                   </button>
@@ -3227,13 +3329,13 @@ return (
             )}
           </div>
           {selectedFreeRoll && (
-            <div className="p-4 border-t border-gray-200 bg-gray-50">
+            <div className="p-4 border-t border-white/10 lg:border-gray-200 bg-white/[0.02] lg:bg-gray-50">
               <button
                 type="button"
                 onClick={() => setShowFutomakiPicker(false)}
-                className="w-full py-3 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 transition-colors"
+                className="w-full py-3.5 rounded-2xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 transition-colors active:scale-[0.98] shadow-lg shadow-emerald-500/20"
               >
-                Potwierdź wybór: {selectedFreeRoll}
+                Potwierdź: {selectedFreeRoll}
               </button>
             </div>
           )}

@@ -989,7 +989,7 @@ if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
       {isExpanded && (
         <div className="mt-2 p-4 rounded-xl border border-white/10 lg:border-black/10 space-y-4">
           
-          {/* Zamiana rolki */}
+          {/* Zamiana rolki — lista */}
           {!isSetMonth && pool.length > 1 && (
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-xs font-medium text-white/70 lg:text-black/70">
@@ -998,7 +998,7 @@ if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
                 </svg>
                 Zamień na inną
               </div>
-              <div className="grid grid-cols-2 gap-1.5 max-h-[180px] overflow-y-auto pr-1">
+              <div className="rounded-xl border border-white/[0.08] lg:border-black/[0.08] overflow-hidden divide-y divide-white/[0.06] lg:divide-black/[0.06] max-h-[220px] overflow-y-auto overscroll-contain">
                 {selectOptions.map((n) => {
                   const short = optionLabelShort(n);
                   const isSelected = current === n;
@@ -1028,20 +1028,32 @@ if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
                         doSetSwap(rowKeyBase, row.from, n);
                       }}
                       className={clsx(
-                        "px-3 py-2.5 rounded-lg text-[11px] text-left transition-all border",
+                        "w-full flex items-center gap-3 px-3.5 py-3 text-left transition-colors",
                         isSelected
-                          ? "bg-[#a61b1b] text-white border-[#a61b1b] font-medium"
-                          : "bg-white/5 lg:bg-white text-white/80 lg:text-black/80 border-white/10 lg:border-black/10 hover:bg-white/10 lg:hover:bg-gray-100"
+                          ? "bg-[#a61b1b]/15 lg:bg-[#a61b1b]/10"
+                          : "bg-transparent hover:bg-white/[0.04] lg:hover:bg-black/[0.03] active:bg-white/[0.07]"
                       )}
                     >
-                      <div className="flex items-start gap-2">
+                      {/* radio indicator */}
+                      <div className={clsx(
+                        "w-[18px] h-[18px] rounded-full border-2 shrink-0 flex items-center justify-center transition-colors",
+                        isSelected
+                          ? "border-[#c41e1e] bg-[#c41e1e]"
+                          : "border-white/20 lg:border-black/20"
+                      )}>
                         {isSelected && (
-                          <svg className="w-3.5 h-3.5 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
+                          <div className="w-[6px] h-[6px] rounded-full bg-white" />
                         )}
-                        <span className="break-words leading-tight">{isOriginal ? `${short} (oryginał)` : short}</span>
                       </div>
+                      {/* label */}
+                      <span className={clsx(
+                        "text-[13px] leading-tight",
+                        isSelected
+                          ? "text-white lg:text-black font-medium"
+                          : "text-white/70 lg:text-black/70"
+                      )}>
+                        {isOriginal ? `${short} (oryginał)` : short}
+                      </span>
                     </button>
                   );
                 })}

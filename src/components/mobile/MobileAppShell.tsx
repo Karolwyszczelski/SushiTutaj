@@ -170,18 +170,24 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
     const deltaX = e.touches[0].clientX - touchStartX.current;
     const deltaY = e.touches[0].clientY - touchStartY.current;
     
-    // Tylko gdy ruch jest bardziej poziomy niż pionowy
-    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+    // Wyższy próg (30px) + ruch musi być wyraźnie poziomy (2x)
+    if (Math.abs(deltaX) > Math.abs(deltaY) * 2 && Math.abs(deltaX) > 30) {
       isSwiping.current = true;
     }
   }, [cartOpen, accountOpen, reservationOpen]);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (cartOpen || accountOpen || reservationOpen) return;
+    if (cartOpen || accountOpen || reservationOpen) {
+      isSwiping.current = false;
+      return;
+    }
     if (!isSwiping.current) return;
     
+    // Always reset swiping flag
+    isSwiping.current = false;
+    
     const deltaX = e.changedTouches[0].clientX - touchStartX.current;
-    const threshold = 80; // Minimalna odległość swipe
+    const threshold = 80;
     
     if (Math.abs(deltaX) < threshold) return;
     
@@ -189,14 +195,10 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
     if (currentIndex === -1) return;
     
     if (deltaX > 0 && currentIndex > 0) {
-      // Swipe w prawo - poprzednia zakładka
       setActiveTab(tabs[currentIndex - 1]);
     } else if (deltaX < 0 && currentIndex < tabs.length - 1) {
-      // Swipe w lewo - następna zakładka
       setActiveTab(tabs[currentIndex + 1]);
     }
-    
-    isSwiping.current = false;
   }, [activeTab, setActiveTab, cartOpen, accountOpen, reservationOpen]);
 
   // Determine which MobileTab to show in bottom nav (hero maps to none being active)
@@ -207,7 +209,7 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
       {/* Main content area - scrollable within bounds */}
       <main 
         className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)", touchAction: "pan-y" }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}

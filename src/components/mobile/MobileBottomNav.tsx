@@ -114,8 +114,7 @@ export default function MobileBottomNav({
                 <div
                   className={clsx(
                     "relative w-[54px] h-[54px] rounded-full flex items-center justify-center",
-                    "bg-[#c41e1e] shadow-[0_4px_20px_rgba(196,30,30,0.45)]",
-                    "ring-[3px] ring-[#161616]"
+                    "bg-[#c41e1e] shadow-[0_6px_24px_rgba(196,30,30,0.5)]"
                   )}
                 >
                   <ChopsticksIcon className="w-6 h-6 text-white" />
