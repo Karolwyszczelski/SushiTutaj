@@ -580,7 +580,7 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
               <DayPicker
                 mode="single"
                 className="rdp rdp-res"
-                captionLayout="buttons"
+                captionLayout="dropdown"
                 month={currentMonth}
                 onMonthChange={setCurrentMonth}
                 selected={selectedDate}
