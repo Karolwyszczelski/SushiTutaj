@@ -308,11 +308,12 @@ export function useNotifications(): UseNotificationsReturn {
         appStateRef.current.match(/inactive|background/) &&
         nextState === "active"
       ) {
-        console.log("[FCM] App wróciła na pierwszy plan, sprawdzam token...");
-        // Re-rejestruj token po powrocie z tła
-        AsyncStorage.getItem(STORAGE_KEY_SLUG).then((slug) => {
-          void registerToken(slug);
-        });
+        console.log("[FCM] App wróciła na pierwszy plan — token zostanie odświeżony z WebView (czekam na AUTH_TOKEN)");
+        // NIE rejestruj od razu — token w AsyncStorage mógł wygasnąć.
+        // INJECTED_JS odświeża auth token co 5s → poczekaj aż 
+        // App.tsx dostanie świeży AUTH_TOKEN z WebView, zaktualizuje
+        // AsyncStorage i ustawi hasAuthToken → wtedy useEffect
+        // z [pushToken, restaurantSlug, hasAuthToken] odpali registerToken().
       }
       appStateRef.current = nextState;
     };

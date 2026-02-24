@@ -157,31 +157,39 @@ const INJECTED_JS = `
       var token = null;
       var allCookies = document.cookie.split(';');
       
-      // Zbierz chunked cookies (sb-*-auth-token.0, .1, .2, ...)
       var chunks = [];
       var baseCookie = null;
       
       for (var j = 0; j < allCookies.length; j++) {
         var c = allCookies[j].trim();
-        // Chunked: sb-xxx-auth-token.0, sb-xxx-auth-token.1, etc.
-        var chunkMatch = c.match(/^(sb-[^=]+-auth-token)\.(\d+)=(.*)/);
-        if (chunkMatch) {
-          chunks.push({ idx: parseInt(chunkMatch[2], 10), value: chunkMatch[3] });
-          continue;
+        var eqIdx = c.indexOf('=');
+        if (eqIdx < 1) continue;
+        var name = c.substring(0, eqIdx);
+        var val = c.substring(eqIdx + 1);
+        
+        // Wyklucz WSZYSTKO co zawiera "code-verifier" — od razu
+        if (name.indexOf('code-verifier') !== -1) continue;
+        
+        // Chunked: sb-xxx-auth-token.0, .1, .2, etc.
+        var dotIdx = name.lastIndexOf('.');
+        if (dotIdx > 0) {
+          var basePart = name.substring(0, dotIdx);
+          var numPart = name.substring(dotIdx + 1);
+          if (basePart.indexOf('sb-') === 0 && basePart.indexOf('-auth-token') === basePart.length - 11 && numPart.match(/^\d+$/)) {
+            chunks.push({ idx: parseInt(numPart, 10), value: val });
+            continue;
+          }
         }
-        // Base (non-chunked): sb-xxx-auth-token=value
-        // Wyklucz code-verifier!
-        var baseMatch = c.match(/^(sb-[^=]+-auth-token)=(.+)/);
-        if (baseMatch && baseMatch[1].indexOf('code-verifier') === -1) {
-          baseCookie = baseMatch[2];
+        
+        // Base (non-chunked): nazwa MUSI kończyć się na "-auth-token" (dokładnie)
+        if (name.indexOf('sb-') === 0 && name.indexOf('-auth-token') === name.length - 11) {
+          baseCookie = val;
         }
       }
       
       var raw = '';
       if (chunks.length > 0) {
-        // Sortuj chunki po indeksie i złóż
         chunks.sort(function(a, b) { return a.idx - b.idx; });
-        raw = '';
         for (var k = 0; k < chunks.length; k++) {
           raw += chunks[k].value;
         }
@@ -213,7 +221,18 @@ const INJECTED_JS = `
         }));
         window.ReactNativeWebView.postMessage(JSON.stringify({
           type: 'DEBUG',
-          message: 'AUTH_TOKEN extracted, length=' + token.length,
+          message: 'AUTH_TOKEN ok len=' + token.length + ' chunks=' + chunks.length,
+        }));
+      } else if (!token && !_lastAuthToken) {
+        // Brak tokena — loguj diagnostykę (raz)
+        var cookieNames = [];
+        for (var m = 0; m < allCookies.length; m++) {
+          var cn = allCookies[m].trim().split('=')[0];
+          if (cn.indexOf('sb-') === 0) cookieNames.push(cn);
+        }
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'DEBUG',
+          message: 'NO_AUTH sb-cookies: [' + cookieNames.join(', ') + ']',
         }));
       }
     } catch(e) {
