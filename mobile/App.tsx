@@ -219,9 +219,16 @@ const INJECTED_JS = `
         }
         
         // 3) base64url encoded JSON (domyślne w @supabase/ssr >=0.5)
+        //    Format cookie: "base64-<base64url_encoded_json>"
+        //    Musimy NAJPIERW usunąć prefix "base64-" ZANIM zamienimy - na +
         if (!token) {
           try {
-            var b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
+            var b64raw = raw;
+            // Usuń prefix "base64-" jeśli jest (7 znaków)
+            if (b64raw.indexOf('base64-') === 0) {
+              b64raw = b64raw.substring(7);
+            }
+            var b64 = b64raw.replace(/-/g, '+').replace(/_/g, '/');
             // KRYTYCZNE: dodaj padding '=' — atob() wymaga wielokrotności 4
             while (b64.length % 4 !== 0) b64 += '=';
             var decoded2 = atob(b64);
