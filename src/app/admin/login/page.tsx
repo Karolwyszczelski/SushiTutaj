@@ -24,7 +24,7 @@ export default function AdminLogin() {
   // jeśli jest sesja → sprawdź admina i przekieruj
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
-      if (data.session) {
+      if (data?.session) {
         // Wywołaj ensure-cookie żeby ustawić restaurant_id
         try {
           const res = await fetch("/api/restaurants/ensure-cookie", {
@@ -38,9 +38,13 @@ export default function AdminLogin() {
           router.replace(returnPath as "/admin/AdminPanel");
         }
       }
+    }).catch((err) => {
+      // Sesja mogła wygasnąć lub ciasteczka mogą być uszkodzone
+      // Na tablecie po uśpieniu to jest normalne – pokaż formularz logowania
+      console.warn("[AdminLogin] getSession() failed:", err);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [])
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -86,7 +90,7 @@ export default function AdminLogin() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
+    <div className="admin-shell min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
       <div className="mx-auto flex min-h-screen max-w-6xl items-center px-6">
         <div className="grid w-full grid-cols-1 gap-8 lg:grid-cols-2">
           {/* Panel branding */}

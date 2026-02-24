@@ -6,6 +6,10 @@
 //
 // Cała logika kliencka (Sidebar, AuthGuard, NotificationBell)
 // jest w AdminClientLayout ("use client").
+//
+// WAŻNE: Wrapper <div> z admin-shell i inline style zapewnia
+// jasne tło ZANIM React się zahydruje – zapobiega czarnemu
+// ekranowi na tablecie.
 // ──────────────────────────────────────────────────────────────
 
 import type { ReactNode } from "react";
@@ -16,5 +20,19 @@ import AdminClientLayout from "@/components/admin/AdminClientLayout";
 export const dynamic = "force-dynamic";
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
-  return <AdminClientLayout>{children}</AdminClientLayout>;
+  return (
+    <>
+      {/* Inline style – gwarantuje jasne tło PRZED załadowaniem CSS/JS */}
+      {/* Działa nawet gdy Tailwind/globals.css jeszcze się nie załadowały */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            body { background: #f8fafc !important; color: #0f172a !important; }
+            body::before { display: none !important; }
+          `,
+        }}
+      />
+      <AdminClientLayout>{children}</AdminClientLayout>
+    </>
+  );
 }

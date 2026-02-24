@@ -275,10 +275,6 @@ export default function App() {
             }
             break;
 
-          case "JS_ERROR":
-            console.error("[WebView JS]", msg.message, msg.source, msg.line);
-            break;
-
           default:
             break;
         }
@@ -389,27 +385,6 @@ export default function App() {
         ref={webViewRef}
         source={{ uri: startUrl }}
         style={styles.webview}
-        // Wstrzyknij error handler PRZED załadowaniem strony
-        injectedJavaScriptBeforeContentLoaded={`
-          window.onerror = function(msg, source, line, col, error) {
-            try {
-              window.ReactNativeWebView.postMessage(JSON.stringify({
-                type: 'JS_ERROR', message: String(msg), source: String(source||''), line: line
-              }));
-            } catch(e) {}
-          };
-          window.addEventListener('unhandledrejection', function(e) {
-            try {
-              var msg = e.reason ? (e.reason.message || String(e.reason)) : 'Unknown';
-              window.ReactNativeWebView.postMessage(JSON.stringify({
-                type: 'JS_ERROR', message: 'Promise: ' + msg
-              }));
-            } catch(e2) {}
-          });
-          window.__NATIVE_APP__ = true;
-          window.__NATIVE_FCM__ = true;
-          true;
-        `}
         // Wstrzyknij JS po załadowaniu
         injectedJavaScript={INJECTED_JS}
         // Obsługa wiadomości z WebView
@@ -459,8 +434,8 @@ export default function App() {
         applicationNameForUserAgent="SushiTutajAdmin/1.0"
         // Android: pozwól na file upload (zdjęcia menu)
         allowFileAccess={true}
-        // Debugowanie (tymczasowo włączone — do wyłączenia po naprawieniu)
-        webviewDebuggingEnabled={true}
+        // Debugowanie (wyłącz na produkcji)
+        webviewDebuggingEnabled={__DEV__}
       />
     </SafeAreaView>
   );

@@ -46,8 +46,28 @@ body > *{ position:relative; z-index:1; }
 /* Akcentowa czcionka dla H1/H2 */
 .font-display{ font-family:var(--font-display), serif; }
 
+/* ================================
+   ADMIN PANEL – nadpisanie ciemnego motywu
+   Zapobiega czarnemu/białemu ekranowi na tablecie
+   przez wymuszenie jasnego tła ZANIM React się zahydruje.
+   ================================ */
+.admin-shell,
+.admin-shell *{
+  color-scheme: light;
+}
+/* Gdy admin-shell jest w DOM, nadpisz ciemne body */
+body:has(.admin-shell){
+  background: #f8fafc !important; /* slate-50 */
+  color: #0f172a !important;      /* slate-900 */
+}
+body:has(.admin-shell)::before{
+  display: none !important;       /* wyłącz ciemny overlay */
+}
+
 /* Linki i focus */
 a{ color:#fff; }
+/* W admin sekcji linki mają inny kolor */
+.admin-shell a{ color: inherit; }
 a:hover{ opacity:.9; }
 :focus-visible{ outline:2px solid #fff; outline-offset:2px; }
 
