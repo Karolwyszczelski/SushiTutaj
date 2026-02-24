@@ -198,18 +198,36 @@ const INJECTED_JS = `
       }
       
       if (raw) {
+        // @supabase/ssr >=0.5 domyślnie cookieEncoding='base64url'
+        // Próbujemy 3 sposoby dekodowania:
+        
+        // 1) Surowy JSON (cookieEncoding='raw' lub starsze wersje)
         try {
-          var decoded = decodeURIComponent(raw);
-          var parsed = JSON.parse(decoded);
+          var parsed = JSON.parse(raw);
           token = parsed.access_token || null;
-        } catch(e3) {
-          // Może być base64url encoded
+        } catch(e3) {}
+        
+        // 2) URI-encoded JSON
+        if (!token) {
+          try {
+            var decoded = decodeURIComponent(raw);
+            if (decoded !== raw) {
+              var parsed2 = JSON.parse(decoded);
+              token = parsed2.access_token || null;
+            }
+          } catch(e4) {}
+        }
+        
+        // 3) base64url encoded JSON (domyślne w @supabase/ssr >=0.5)
+        if (!token) {
           try {
             var b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
+            // KRYTYCZNE: dodaj padding '=' — atob() wymaga wielokrotności 4
+            while (b64.length % 4 !== 0) b64 += '=';
             var decoded2 = atob(b64);
-            var parsed2 = JSON.parse(decoded2);
-            token = parsed2.access_token || null;
-          } catch(e4) {}
+            var parsed3 = JSON.parse(decoded2);
+            token = parsed3.access_token || null;
+          } catch(e5) {}
         }
       }
       
@@ -221,18 +239,19 @@ const INJECTED_JS = `
         }));
         window.ReactNativeWebView.postMessage(JSON.stringify({
           type: 'DEBUG',
-          message: 'AUTH_TOKEN ok len=' + token.length + ' chunks=' + chunks.length,
+          message: 'AUTH ok len=' + token.length + ' chunks=' + chunks.length,
         }));
-      } else if (!token && !_lastAuthToken) {
-        // Brak tokena — loguj diagnostykę (raz)
+      } else if (!token) {
+        // Brak tokena — loguj diagnostykę
         var cookieNames = [];
         for (var m = 0; m < allCookies.length; m++) {
           var cn = allCookies[m].trim().split('=')[0];
           if (cn.indexOf('sb-') === 0) cookieNames.push(cn);
         }
+        var rawPreview = raw ? raw.substring(0, 40) : '(empty)';
         window.ReactNativeWebView.postMessage(JSON.stringify({
           type: 'DEBUG',
-          message: 'NO_AUTH sb-cookies: [' + cookieNames.join(', ') + ']',
+          message: 'NO_AUTH cookies=[' + cookieNames.join(',') + '] raw=' + rawPreview,
         }));
       }
     } catch(e) {
