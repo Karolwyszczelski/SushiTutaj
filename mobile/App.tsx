@@ -20,6 +20,7 @@ import {
 import { WebView, WebViewNavigation } from "react-native-webview";
 import * as SplashScreen from "expo-splash-screen";
 import { registerRootComponent } from "expo";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { ADMIN_URL, START_PATH } from "./src/config";
 import {
@@ -144,6 +145,55 @@ const INJECTED_JS = `
   sendCookies();
   setInterval(sendCookies, 10000);
 
+  // --- 2b. Wyciągnij Supabase access_token i wyślij do RN ---
+  function sendAuthToken() {
+    try {
+      // Supabase przechowuje sesję w localStorage
+      // Klucz: sb-<project_ref>-auth-token
+      var token = null;
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (key && key.match(/sb-.*-auth-token$/)) {
+          var raw = localStorage.getItem(key);
+          if (raw) {
+            try {
+              var parsed = JSON.parse(raw);
+              token = parsed.access_token || (parsed.currentSession && parsed.currentSession.access_token) || null;
+            } catch(e3) {}
+          }
+          break;
+        }
+      }
+      // Fallback: chunked cookies (sb-*-auth-token.0, .1, ...)
+      if (!token) {
+        var parts = [];
+        var allCookies = document.cookie.split(';');
+        for (var j = 0; j < allCookies.length; j++) {
+          var c = allCookies[j].trim();
+          if (c.match(/sb-.*-auth-token/)) {
+            var eqIdx = c.indexOf('=');
+            if (eqIdx > -1) parts.push(c.substring(eqIdx + 1));
+          }
+        }
+        if (parts.length > 0) {
+          try {
+            var joined = decodeURIComponent(parts.join(''));
+            var p2 = JSON.parse(joined);
+            token = p2.access_token || null;
+          } catch(e4) {}
+        }
+      }
+      if (token) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'AUTH_TOKEN',
+          token: token,
+        }));
+      }
+    } catch(e) {}
+  }
+  sendAuthToken();
+  setInterval(sendAuthToken, 10000);
+
   // --- 3. Wyciągnij restaurant_slug ---
   function sendSlug() {
     try {
@@ -233,6 +283,7 @@ export default function App() {
   } = useNotifications();
 
   const [restaurantSlug, setRestaurantSlug] = useState<string | null>(null);
+  const [hasAuthToken, setHasAuthToken] = useState(false);
 
   // ------------------------------------------------------------------
   // Ukryj NATYWNY splash od razu → nasz loading overlay przejmuje
@@ -302,14 +353,14 @@ export default function App() {
   }, [lastNotificationUrl, clearLastNotificationUrl]);
 
   // ------------------------------------------------------------------
-  // Zarejestruj FCM token gdy mamy slug restauracji
+  // Zarejestruj FCM token gdy mamy slug restauracji I auth token
   // ------------------------------------------------------------------
   useEffect(() => {
-    if (pushToken && restaurantSlug) {
-      console.log("[App] Rejestruję FCM token dla:", restaurantSlug);
+    if (pushToken && restaurantSlug && hasAuthToken) {
+      console.log("[App] Rejestruję FCM token dla:", restaurantSlug, "pushToken:", pushToken?.slice(0, 25) + "...");
       void registerToken(restaurantSlug);
     }
-  }, [pushToken, restaurantSlug, registerToken]);
+  }, [pushToken, restaurantSlug, hasAuthToken, registerToken]);
 
   // ------------------------------------------------------------------
   // Obsługa wiadomości z WebView
@@ -332,6 +383,15 @@ export default function App() {
 
           case "COOKIES":
             void saveCookiesFromWebView(msg.cookies);
+            break;
+
+          case "AUTH_TOKEN":
+            if (msg.token) {
+              console.log("[App] Auth token z WebView (Supabase access_token)");
+              void AsyncStorage.setItem("@sushi_auth_token", msg.token).then(() => {
+                setHasAuthToken(true);
+              });
+            }
             break;
 
           case "RESTAURANT_SLUG":

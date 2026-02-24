@@ -53,6 +53,7 @@ interface UseNotificationsReturn {
 const STORAGE_KEY_TOKEN = "@sushi_fcm_token";
 const STORAGE_KEY_SLUG = "@sushi_restaurant_slug";
 const STORAGE_KEY_COOKIES = "@sushi_auth_cookies";
+const STORAGE_KEY_AUTH = "@sushi_auth_token";
 
 // ============================================================================
 // HOOK
@@ -176,27 +177,55 @@ export function useNotifications(): UseNotificationsReturn {
           await AsyncStorage.setItem(STORAGE_KEY_SLUG, slug);
         }
 
-        // Pobierz zapisane cookies z WebView (ustawiane przez saveCookies)
-        const authCookies =
-          (await AsyncStorage.getItem(STORAGE_KEY_COOKIES)) || "";
+        // Pobierz access token Supabase z WebView (Bearer auth)
+        const authToken =
+          (await AsyncStorage.getItem(STORAGE_KEY_AUTH)) || "";
 
-        const res = await fetch(FCM_REGISTER_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            // Przekazujemy cookies z WebView jako header
-            // Serwer odczyta z nich sesję Supabase
-            Cookie: authCookies,
-          },
-          body: JSON.stringify({
-            token,
-            token_type: token.startsWith("ExponentPushToken")
-              ? "expo"
-              : "fcm",
-            restaurant_slug: slug,
-            device_info: `${Platform.OS} | ${Device.modelName || "unknown"} | ${Device.osVersion || "?"}`,
-          }),
+        if (!authToken) {
+          console.warn("[FCM] Brak auth token — użytkownik niezalogowany lub token nie dotarł z WebView");
+          setRegistrationState("error");
+          setError("Zaloguj się w panelu admina");
+          return;
+        }
+
+        console.log("[FCM] Rejestruję token na serwerze...", {
+          slug,
+          tokenType: token.startsWith("ExponentPushToken") ? "expo" : "fcm",
+          tokenSuffix: token.slice(-20),
+          hasAuth: !!authToken,
         });
+
+        // Retry logic — 3 próby z rosnącym opóźnieniem
+        let res: Response | null = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            res = await fetch(FCM_REGISTER_URL, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${authToken}`,
+              },
+              body: JSON.stringify({
+                token,
+                token_type: token.startsWith("ExponentPushToken")
+                  ? "expo"
+                  : "fcm",
+                restaurant_slug: slug,
+                device_info: `${Platform.OS} | ${Device.modelName || "unknown"} | ${Device.osVersion || "?"}`,
+              }),
+            });
+            if (res.ok || res.status === 401 || res.status === 403) break;
+          } catch (fetchErr: any) {
+            console.warn(`[FCM] Próba ${attempt}/3 nieudana:`, fetchErr?.message);
+            if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 2000));
+          }
+        }
+
+        if (!res) {
+          setRegistrationState("error");
+          setError("Nie udało się połączyć z serwerem");
+          return;
+        }
 
         if (res.status === 401) {
           console.warn(
