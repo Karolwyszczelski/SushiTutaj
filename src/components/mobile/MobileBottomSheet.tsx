@@ -1,7 +1,7 @@
 // src/components/mobile/MobileBottomSheet.tsx
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { X } from "lucide-react";
 import clsx from "clsx";
 
@@ -10,13 +10,9 @@ interface MobileBottomSheetProps {
   onClose: () => void;
   title?: string;
   children: React.ReactNode;
-  /** Wysokość: "full" = 95vh, "half" = 50vh, "auto" = dopasowanie do treści, number = konkretna wysokość w vh */
   height?: "full" | "half" | "auto" | number;
-  /** Czy pokazać uchwyt do przeciągania */
   showHandle?: boolean;
-  /** Czy pokazać przycisk X */
   showClose?: boolean;
-  /** Czy pokazać nagłówek */
   showHeader?: boolean;
 }
 
@@ -31,85 +27,130 @@ export default function MobileBottomSheet({
   showHeader = true,
 }: MobileBottomSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
-  const [touchStartY, setTouchStartY] = useState<number | null>(null);
-  const [translateY, setTranslateY] = useState(0);
-  const [isClosing, setIsClosing] = useState(false);
-  const [isVisible, setIsVisible] = useState(false);
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef({ startY: 0, currentY: 0, isDragging: false });
+  const phaseRef = useRef<"closed" | "opening" | "open" | "closing">("closed");
+  const rafRef = useRef<number>(0);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
-  // Animacja wejścia
+  // ── Animate open / close via direct DOM (zero React re-renders) ──
   useEffect(() => {
-    if (isOpen) {
-      // Minimalne opóźnienie dla animacji
-      requestAnimationFrame(() => setIsVisible(true));
-    } else {
-      setIsVisible(false);
-    }
-  }, [isOpen]);
+    const sheet = sheetRef.current;
+    const backdrop = backdropRef.current;
+    if (!sheet || !backdrop) return;
 
-  // Zablokuj scroll body gdy sheet jest otwarty
-  useEffect(() => {
     if (isOpen) {
+      phaseRef.current = "opening";
       document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
+
+      // Start off-screen, then slide in on next frame
+      sheet.style.transform = "translate3d(0,100%,0)";
+      sheet.style.willChange = "transform";
+      backdrop.style.opacity = "0";
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (!sheetRef.current) return;
+          sheet.style.transition = "transform 0.32s cubic-bezier(0.32,0.72,0,1)";
+          sheet.style.transform = "translate3d(0,0,0)";
+          backdrop.style.transition = "opacity 0.2s ease-out";
+          backdrop.style.opacity = "1";
+          phaseRef.current = "open";
+        });
+      });
+    } else if (phaseRef.current === "open" || phaseRef.current === "opening") {
+      // Animate out
+      phaseRef.current = "closing";
+      sheet.style.transition = "transform 0.26s cubic-bezier(0.32,0.72,0,1)";
+      sheet.style.transform = "translate3d(0,100%,0)";
+      backdrop.style.transition = "opacity 0.18s ease-in";
+      backdrop.style.opacity = "0";
+
+      const timer = setTimeout(() => {
+        phaseRef.current = "closed";
+        document.body.style.overflow = "";
+        sheet.style.willChange = "";
+      }, 280);
+      return () => clearTimeout(timer);
     }
+
     return () => {
       document.body.style.overflow = "";
     };
   }, [isOpen]);
 
-  // Reset state przy otwieraniu
-  useEffect(() => {
-    if (isOpen) {
-      setTranslateY(0);
-      setIsClosing(false);
-    } else {
-      setIsVisible(false);
-    }
-  }, [isOpen]);
-
+  // ── Drag-to-dismiss — pure DOM, no setState ──
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     const target = e.target as HTMLElement;
-    // Tylko na uchwycie lub headerze
     if (target.closest("[data-sheet-handle]") || target.closest("[data-sheet-header]")) {
-      setTouchStartY(e.touches[0].clientY);
+      const sheet = sheetRef.current;
+      if (sheet) {
+        sheet.style.transition = "none"; // disable transition during drag
+      }
+      dragRef.current = { startY: e.touches[0].clientY, currentY: 0, isDragging: true };
     }
   }, []);
 
-  const handleTouchMove = useCallback(
-    (e: React.TouchEvent) => {
-      if (touchStartY === null) return;
-      const deltaY = e.touches[0].clientY - touchStartY;
-      // Tylko w dół
-      if (deltaY > 0) {
-        setTranslateY(deltaY);
-      }
-    },
-    [touchStartY]
-  );
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!dragRef.current.isDragging) return;
+    const deltaY = e.touches[0].clientY - dragRef.current.startY;
+    if (deltaY <= 0) return; // only downward
+
+    dragRef.current.currentY = deltaY;
+
+    // Direct DOM — zero re-renders
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      const sheet = sheetRef.current;
+      const backdrop = backdropRef.current;
+      if (!sheet || !backdrop) return;
+      sheet.style.transform = `translate3d(0,${deltaY}px,0)`;
+      backdrop.style.opacity = String(Math.max(0, 1 - deltaY / 400));
+    });
+  }, []);
 
   const handleTouchEnd = useCallback(() => {
-    if (translateY > 100) {
-      // Zamknij jeśli przeciągnięto > 100px
-      setIsClosing(true);
-      setTimeout(onClose, 280);
+    if (!dragRef.current.isDragging) return;
+    dragRef.current.isDragging = false;
+    cancelAnimationFrame(rafRef.current);
+
+    const sheet = sheetRef.current;
+    const backdrop = backdropRef.current;
+    if (!sheet || !backdrop) return;
+
+    if (dragRef.current.currentY > 100) {
+      // Close
+      sheet.style.transition = "transform 0.26s cubic-bezier(0.32,0.72,0,1)";
+      sheet.style.transform = "translate3d(0,100%,0)";
+      backdrop.style.transition = "opacity 0.18s ease-in";
+      backdrop.style.opacity = "0";
+      setTimeout(() => onCloseRef.current(), 260);
     } else {
-      setTranslateY(0);
+      // Snap back
+      sheet.style.transition = "transform 0.26s cubic-bezier(0.32,0.72,0,1)";
+      sheet.style.transform = "translate3d(0,0,0)";
+      backdrop.style.transition = "opacity 0.15s ease-out";
+      backdrop.style.opacity = "1";
     }
-    setTouchStartY(null);
-  }, [translateY, onClose]);
+    dragRef.current.currentY = 0;
+  }, []);
 
-  const handleBackdropClick = useCallback(() => {
-    setIsClosing(true);
-    setTimeout(onClose, 280);
-  }, [onClose]);
+  const animateClose = useCallback(() => {
+    const sheet = sheetRef.current;
+    const backdrop = backdropRef.current;
+    if (sheet) {
+      sheet.style.transition = "transform 0.26s cubic-bezier(0.32,0.72,0,1)";
+      sheet.style.transform = "translate3d(0,100%,0)";
+    }
+    if (backdrop) {
+      backdrop.style.transition = "opacity 0.18s ease-in";
+      backdrop.style.opacity = "0";
+    }
+    setTimeout(() => onCloseRef.current(), 260);
+  }, []);
 
-  const handleCloseClick = useCallback(() => {
-    setIsClosing(true);
-    setTimeout(onClose, 280);
-  }, [onClose]);
-
-  if (!isOpen) return null;
+  if (!isOpen && phaseRef.current === "closed") return null;
 
   const heightStyle =
     height === "full"
@@ -124,28 +165,20 @@ export default function MobileBottomSheet({
     <div className="md:hidden fixed inset-0 z-[80]">
       {/* Backdrop */}
       <div
-        className={clsx(
-          "absolute inset-0 bg-black/70 transition-opacity duration-150",
-          isVisible && !isClosing ? "opacity-100" : "opacity-0"
-        )}
-        onClick={handleBackdropClick}
+        ref={backdropRef}
+        className="absolute inset-0 bg-black/70"
+        style={{ opacity: 0 }}
+        onClick={animateClose}
         aria-hidden
       />
 
       {/* Sheet */}
       <div
         ref={sheetRef}
-        className={clsx(
-          "absolute inset-x-0 bottom-0 bg-[#0b0b0b] rounded-t-3xl shadow-2xl flex flex-col",
-          "transform-gpu",
-          touchStartY === null && "transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
-        )}
+        className="absolute inset-x-0 bottom-0 bg-[#0b0b0b] rounded-t-3xl shadow-2xl flex flex-col transform-gpu"
         style={{
           maxHeight: heightStyle,
-          transform: isVisible && !isClosing 
-            ? `translate3d(0,${translateY}px,0)` 
-            : "translate3d(0,100%,0)",
-          willChange: "transform",
+          transform: "translate3d(0,100%,0)",
           contain: "layout style paint",
         }}
         onTouchStart={handleTouchStart}
@@ -157,10 +190,7 @@ export default function MobileBottomSheet({
       >
         {/* Handle */}
         {showHandle && (
-          <div
-            data-sheet-handle
-            className="flex justify-center pt-3 pb-1 cursor-grab"
-          >
+          <div data-sheet-handle className="flex justify-center pt-3 pb-1 cursor-grab">
             <div className="w-10 h-1 bg-white/30 rounded-full" />
           </div>
         )}
@@ -175,8 +205,8 @@ export default function MobileBottomSheet({
             {showClose && (
               <button
                 type="button"
-                onClick={handleCloseClick}
-                className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
+                onClick={animateClose}
+                className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center active:bg-white/20"
                 aria-label="Zamknij"
               >
                 <X className="w-5 h-5 text-white" />
@@ -186,9 +216,7 @@ export default function MobileBottomSheet({
         )}
 
         {/* Content */}
-        <div 
-          className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
-        >
+        <div className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain">
           {children}
         </div>
       </div>

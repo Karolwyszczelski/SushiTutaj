@@ -98,6 +98,21 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
   const reservationOpen = useMobileNavStore((s) => s.reservationOpen);
   const setReservationOpen = useMobileNavStore((s) => s.setReservationOpen);
 
+  // "Loaded-once" flags — keep content mounted after first open to avoid re-import lag
+  const cartLoadedRef = useRef(false);
+  const accountLoadedRef = useRef(false);
+  const [cartLoaded, setCartLoaded] = useState(false);
+  const [accountLoaded, setAccountLoaded] = useState(false);
+
+  if (cartOpen && !cartLoadedRef.current) {
+    cartLoadedRef.current = true;
+    if (!cartLoaded) setCartLoaded(true);
+  }
+  if (accountOpen && !accountLoadedRef.current) {
+    accountLoadedRef.current = true;
+    if (!accountLoaded) setAccountLoaded(true);
+  }
+
   // Cart store
   const items = useCartStore((s) => s.items);
   const cartCount = useMemo(
@@ -216,24 +231,24 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
         cartCount={cartCount}
       />
 
-      {/* Cart Bottom Sheet */}
+      {/* Cart Bottom Sheet — content stays mounted after first open */}
       <MobileBottomSheet
         isOpen={cartOpen}
         onClose={closeCart}
         title="Twój koszyk"
         height="full"
       >
-        {cartOpen && <MobileCartContent onClose={closeCart} />}
+        {cartLoaded && <MobileCartContent onClose={closeCart} />}
       </MobileBottomSheet>
 
-      {/* Account Bottom Sheet */}
+      {/* Account Bottom Sheet — content stays mounted after first open */}
       <MobileBottomSheet
         isOpen={accountOpen}
         onClose={closeAccount}
         showHeader={false}
         height="full"
       >
-        {accountOpen && <MobileAccountContent onClose={closeAccount} />}
+        {accountLoaded && <MobileAccountContent onClose={closeAccount} />}
       </MobileBottomSheet>
 
       {/* Reservation Modal */}

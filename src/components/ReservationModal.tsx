@@ -1,7 +1,7 @@
 // src/components/ReservationModal.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { DayPicker } from "react-day-picker";
@@ -119,6 +119,9 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
 
   /** Blokady z restaurant_blocked_times */
   const [blockedSlots, setBlockedSlots] = useState<BlockedSlot[]>([]);
+
+  /** Ref do sekcji godzin — auto-scroll po wyborze daty */
+  const timeSlotsRef = useRef<HTMLDivElement>(null);
 
   /* ===== init: określ restaurację po slugu ===== */
   useEffect(() => {
@@ -587,6 +590,12 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
                 onSelect={(day) => {
                   if (day && isDayFullyBlocked(format(day, "yyyy-MM-dd"), blockedSlots)) return;
                   setSelectedDate(day);
+                  // Auto-scroll do sekcji godzin
+                  if (day) {
+                    setTimeout(() => {
+                      timeSlotsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }, 150);
+                  }
                 }}
                 locale={pl}
                 fromDate={nowPL()}
@@ -603,7 +612,7 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
             {selectedDate && (
               <>
                 <div className="h-px bg-white/[0.06]" />
-                <div>
+                <div ref={timeSlotsRef}>
                   <label className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35 mb-3">Godzina</label>
                   <div className="grid grid-cols-3 gap-2">
                     {generateSlots().map((slot) => {

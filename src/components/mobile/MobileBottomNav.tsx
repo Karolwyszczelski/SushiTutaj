@@ -12,7 +12,7 @@ interface MobileBottomNavProps {
   cartCount: number;
 }
 
-/* ── inline chopstick icon for center button ── */
+/* ── Chopsticks icon for center button ── */
 function ChopsticksIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -31,16 +31,12 @@ function ChopsticksIcon({ className }: { className?: string }) {
   );
 }
 
-// Kolejność: Zestaw, Rezerwacja, MENU (środek), Koszyk, Konto
-const TABS: {
-  id: MobileTab;
-  label: string;
-  icon: typeof Gift;
-  isCenter?: boolean;
-}[] = [
+const SIDE_TABS: { id: MobileTab; label: string; icon: typeof Gift }[] = [
   { id: "set", label: "Zestaw", icon: Gift },
   { id: "reservation", label: "Rezerwacja", icon: CalendarDays },
-  { id: "menu", label: "Menu", icon: Gift /* placeholder, center uses custom */, isCenter: true },
+];
+
+const RIGHT_TABS: { id: MobileTab; label: string; icon: typeof Gift }[] = [
   { id: "cart", label: "Koszyk", icon: ShoppingCart },
   { id: "account", label: "Konto", icon: User },
 ];
@@ -53,135 +49,137 @@ export default function MobileBottomNav({
   return (
     <nav
       className="md:hidden fixed inset-x-0 bottom-0 z-[70]"
-      style={{ paddingBottom: "env(safe-area-inset-bottom, 8px)" }}
+      style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
-      {/* top shadow gradient — replaces hard border */}
-      <div
-        className="absolute inset-x-0 -top-6 h-6 pointer-events-none"
-        style={{
-          background:
-            "linear-gradient(to top, rgba(11,11,11,0.85) 0%, transparent 100%)",
-        }}
-      />
+      {/* Bar background — floating pill */}
+      <div className="mx-3 mb-2 relative">
+        {/* Shadow underneath */}
+        <div className="absolute inset-0 rounded-[22px] bg-black/60 blur-xl -z-10 scale-[0.95] translate-y-1" />
 
-      {/* glass-like bar */}
-      <div className="relative bg-[#0d0d0d]/95 backdrop-blur-md border-t border-white/[0.06]">
-        <div className="flex items-end justify-around h-[64px] px-1">
-          {TABS.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            const showBadge = tab.id === "cart" && cartCount > 0;
-            const isCenter = tab.isCenter;
-
-            /* ── center elevated Menu button ── */
-            if (isCenter) {
+        <div className="relative bg-[#161616] rounded-[22px] border border-white/[0.06] overflow-visible">
+          <div className="flex items-center h-[62px] px-1">
+            {/* Left tabs */}
+            {SIDE_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
                   type="button"
                   onClick={() => onTabChange(tab.id)}
-                  className="flex flex-col items-center justify-end flex-1 pb-1.5 -mt-5 group active:scale-[0.92] transition-transform"
+                  className="flex flex-col items-center justify-center flex-1 gap-1 active:scale-90 transition-transform"
                   aria-label={tab.label}
                   aria-current={isActive ? "page" : undefined}
                 >
-                  {/* outer subtle ring */}
-                  <div className="relative">
-                    <div
-                      className={clsx(
-                        "absolute -inset-[3px] rounded-full transition-opacity duration-300",
-                        isActive ? "opacity-100" : "opacity-0"
-                      )}
-                      style={{
-                        background:
-                          "linear-gradient(135deg, #c41e1e 0%, #7a0d0d 100%)",
-                        filter: "blur(6px)",
-                      }}
-                    />
-                    <div
-                      className={clsx(
-                        "relative w-[52px] h-[52px] rounded-full flex items-center justify-center transition-all duration-200",
-                        isActive
-                          ? "bg-gradient-to-br from-[#c41e1e] to-[#8a1414] shadow-[0_4px_20px_rgba(166,27,27,0.5)]"
-                          : "bg-gradient-to-br from-[#a61b1b] to-[#7a0d0d] shadow-[0_2px_12px_rgba(0,0,0,0.6)]"
-                      )}
-                    >
-                      <ChopsticksIcon className="w-6 h-6 text-white" />
-                    </div>
-                  </div>
+                  <Icon
+                    className={clsx(
+                      "w-[20px] h-[20px] transition-colors duration-150",
+                      isActive ? "text-white" : "text-white/35"
+                    )}
+                    strokeWidth={isActive ? 2.2 : 1.5}
+                  />
                   <span
                     className={clsx(
-                      "text-[10px] font-semibold mt-1 tracking-wide transition-colors",
-                      isActive ? "text-white" : "text-white/60"
+                      "text-[9px] tracking-wide transition-colors duration-150",
+                      isActive ? "text-white font-semibold" : "text-white/35"
                     )}
                   >
                     {tab.label}
                   </span>
                 </button>
               );
-            }
+            })}
 
-            /* ── regular tab ── */
-            return (
+            {/* Center — elevated Menu FAB */}
+            <div className="flex-1 flex justify-center">
               <button
-                key={tab.id}
                 type="button"
-                onClick={() => onTabChange(tab.id)}
-                className={clsx(
-                  "flex flex-col items-center justify-end flex-1 pb-1.5 gap-[3px] relative",
-                  "active:scale-[0.90] transition-all duration-150"
-                )}
-                aria-label={tab.label}
-                aria-current={isActive ? "page" : undefined}
+                onClick={() => onTabChange("menu")}
+                className="relative -mt-7 group active:scale-90 transition-transform"
+                aria-label="Menu"
+                aria-current={activeTab === "menu" ? "page" : undefined}
               >
-                <div className="relative">
-                  <Icon
-                    className={clsx(
-                      "w-[21px] h-[21px] transition-all duration-200",
-                      isActive ? "text-white" : "text-white/40"
-                    )}
-                    strokeWidth={isActive ? 2.4 : 1.6}
-                    {...(isActive && tab.id !== "cart"
-                      ? { fill: "currentColor", fillOpacity: 0.15 }
-                      : {})}
-                  />
-                  {showBadge && (
-                    <span
-                      className={clsx(
-                        "absolute -top-1.5 -right-2.5 min-w-[17px] h-[17px] px-[5px]",
-                        "flex items-center justify-center",
-                        "text-[9px] font-bold text-white",
-                        "bg-[#c41e1e] rounded-full",
-                        "shadow-[0_2px_6px_rgba(196,30,30,0.5)]",
-                        "nav-badge-pop"
-                      )}
-                    >
-                      {cartCount > 99 ? "99+" : cartCount}
-                    </span>
+                {/* Glow ring */}
+                <div
+                  className={clsx(
+                    "absolute inset-0 rounded-full transition-opacity duration-300",
+                    activeTab === "menu" ? "opacity-60" : "opacity-0"
                   )}
+                  style={{
+                    background: "radial-gradient(circle, rgba(196,30,30,0.5) 0%, transparent 70%)",
+                    transform: "scale(1.6)",
+                  }}
+                />
+                {/* Button */}
+                <div
+                  className={clsx(
+                    "relative w-[54px] h-[54px] rounded-full flex items-center justify-center",
+                    "bg-[#c41e1e] shadow-[0_4px_20px_rgba(196,30,30,0.45)]",
+                    "ring-[3px] ring-[#161616]"
+                  )}
+                >
+                  <ChopsticksIcon className="w-6 h-6 text-white" />
                 </div>
                 <span
                   className={clsx(
-                    "text-[10px] tracking-wide transition-colors duration-200",
-                    isActive
-                      ? "text-white font-semibold"
-                      : "text-white/40 font-normal"
+                    "block text-[9px] font-semibold text-center mt-1 tracking-wide transition-colors",
+                    activeTab === "menu" ? "text-white" : "text-white/50"
                   )}
                 >
-                  {tab.label}
+                  Menu
                 </span>
-
-                {/* active dot indicator */}
-                <span
-                  className={clsx(
-                    "absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full transition-all duration-200",
-                    isActive
-                      ? "bg-[#c41e1e] opacity-100 scale-100"
-                      : "bg-transparent opacity-0 scale-0"
-                  )}
-                />
               </button>
-            );
-          })}
+            </div>
+
+            {/* Right tabs */}
+            {RIGHT_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              const showBadge = tab.id === "cart" && cartCount > 0;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => onTabChange(tab.id)}
+                  className="flex flex-col items-center justify-center flex-1 gap-1 active:scale-90 transition-transform"
+                  aria-label={tab.label}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  <div className="relative">
+                    <Icon
+                      className={clsx(
+                        "w-[20px] h-[20px] transition-colors duration-150",
+                        isActive ? "text-white" : "text-white/35"
+                      )}
+                      strokeWidth={isActive ? 2.2 : 1.5}
+                    />
+                    {showBadge && (
+                      <span
+                        className={clsx(
+                          "absolute -top-1.5 -right-2.5 min-w-[16px] h-[16px] px-[4px]",
+                          "flex items-center justify-center",
+                          "text-[8px] font-bold text-white",
+                          "bg-[#c41e1e] rounded-full",
+                          "shadow-[0_2px_6px_rgba(196,30,30,0.5)]",
+                          "nav-badge-pop"
+                        )}
+                      >
+                        {cartCount > 99 ? "99+" : cartCount}
+                      </span>
+                    )}
+                  </div>
+                  <span
+                    className={clsx(
+                      "text-[9px] tracking-wide transition-colors duration-150",
+                      isActive ? "text-white font-semibold" : "text-white/35"
+                    )}
+                  >
+                    {tab.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     </nav>
