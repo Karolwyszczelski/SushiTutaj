@@ -146,53 +146,85 @@ const INJECTED_JS = `
   setInterval(sendCookies, 10000);
 
   // --- 2b. Wyciągnij Supabase access_token i wyślij do RN ---
+  // UWAGA: @supabase/ssr używa COOKIES (nie localStorage!)
+  // Ciasteczka mogą być:
+  //   a) pojedyncze: sb-<ref>-auth-token=base64url(JSON)
+  //   b) chunked: sb-<ref>-auth-token.0, .1, .2, ...
+  // Musimy wykluczyć: sb-<ref>-auth-token-code-verifier
+  var _lastAuthToken = null;
   function sendAuthToken() {
     try {
-      // Supabase przechowuje sesję w localStorage
-      // Klucz: sb-<project_ref>-auth-token
       var token = null;
-      for (var i = 0; i < localStorage.length; i++) {
-        var key = localStorage.key(i);
-        if (key && key.match(/sb-.*-auth-token$/)) {
-          var raw = localStorage.getItem(key);
-          if (raw) {
-            try {
-              var parsed = JSON.parse(raw);
-              token = parsed.access_token || (parsed.currentSession && parsed.currentSession.access_token) || null;
-            } catch(e3) {}
-          }
-          break;
+      var allCookies = document.cookie.split(';');
+      
+      // Zbierz chunked cookies (sb-*-auth-token.0, .1, .2, ...)
+      var chunks = [];
+      var baseCookie = null;
+      
+      for (var j = 0; j < allCookies.length; j++) {
+        var c = allCookies[j].trim();
+        // Chunked: sb-xxx-auth-token.0, sb-xxx-auth-token.1, etc.
+        var chunkMatch = c.match(/^(sb-[^=]+-auth-token)\.(\d+)=(.*)/);
+        if (chunkMatch) {
+          chunks.push({ idx: parseInt(chunkMatch[2], 10), value: chunkMatch[3] });
+          continue;
+        }
+        // Base (non-chunked): sb-xxx-auth-token=value
+        // Wyklucz code-verifier!
+        var baseMatch = c.match(/^(sb-[^=]+-auth-token)=(.+)/);
+        if (baseMatch && baseMatch[1].indexOf('code-verifier') === -1) {
+          baseCookie = baseMatch[2];
         }
       }
-      // Fallback: chunked cookies (sb-*-auth-token.0, .1, ...)
-      if (!token) {
-        var parts = [];
-        var allCookies = document.cookie.split(';');
-        for (var j = 0; j < allCookies.length; j++) {
-          var c = allCookies[j].trim();
-          if (c.match(/sb-.*-auth-token/)) {
-            var eqIdx = c.indexOf('=');
-            if (eqIdx > -1) parts.push(c.substring(eqIdx + 1));
-          }
+      
+      var raw = '';
+      if (chunks.length > 0) {
+        // Sortuj chunki po indeksie i złóż
+        chunks.sort(function(a, b) { return a.idx - b.idx; });
+        raw = '';
+        for (var k = 0; k < chunks.length; k++) {
+          raw += chunks[k].value;
         }
-        if (parts.length > 0) {
+      } else if (baseCookie) {
+        raw = baseCookie;
+      }
+      
+      if (raw) {
+        try {
+          var decoded = decodeURIComponent(raw);
+          var parsed = JSON.parse(decoded);
+          token = parsed.access_token || null;
+        } catch(e3) {
+          // Może być base64url encoded
           try {
-            var joined = decodeURIComponent(parts.join(''));
-            var p2 = JSON.parse(joined);
-            token = p2.access_token || null;
+            var b64 = raw.replace(/-/g, '+').replace(/_/g, '/');
+            var decoded2 = atob(b64);
+            var parsed2 = JSON.parse(decoded2);
+            token = parsed2.access_token || null;
           } catch(e4) {}
         }
       }
-      if (token) {
+      
+      if (token && token !== _lastAuthToken) {
+        _lastAuthToken = token;
         window.ReactNativeWebView.postMessage(JSON.stringify({
           type: 'AUTH_TOKEN',
           token: token,
         }));
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'DEBUG',
+          message: 'AUTH_TOKEN extracted, length=' + token.length,
+        }));
       }
-    } catch(e) {}
+    } catch(e) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'DEBUG',
+        message: 'sendAuthToken error: ' + String(e),
+      }));
+    }
   }
   sendAuthToken();
-  setInterval(sendAuthToken, 10000);
+  setInterval(sendAuthToken, 5000);
 
   // --- 3. Wyciągnij restaurant_slug ---
   function sendSlug() {
@@ -207,11 +239,21 @@ const INJECTED_JS = `
           type: 'RESTAURANT_SLUG',
           slug: slug,
         }));
+      } else {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'DEBUG',
+          message: 'sendSlug: no slug found. Cookies=' + document.cookie.substring(0, 200),
+        }));
       }
-    } catch(e) {}
+    } catch(e) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        type: 'DEBUG',
+        message: 'sendSlug error: ' + String(e),
+      }));
+    }
   }
   sendSlug();
-  setInterval(sendSlug, 15000);
+  setInterval(sendSlug, 10000);
 
   // --- 4. Ukryj elementy niepotrzebne w natywnej apce ---
   try {
@@ -284,6 +326,7 @@ export default function App() {
 
   const [restaurantSlug, setRestaurantSlug] = useState<string | null>(null);
   const [hasAuthToken, setHasAuthToken] = useState(false);
+  const [debugLog, setDebugLog] = useState<string[]>([]);
 
   // ------------------------------------------------------------------
   // Ukryj NATYWNY splash od razu → nasz loading overlay przejmuje
@@ -358,7 +401,13 @@ export default function App() {
   useEffect(() => {
     if (pushToken && restaurantSlug && hasAuthToken) {
       console.log("[App] Rejestruję FCM token dla:", restaurantSlug, "pushToken:", pushToken?.slice(0, 25) + "...");
-      void registerToken(restaurantSlug);
+      setDebugLog((prev) => [...prev.slice(-4), "REG → " + restaurantSlug]);
+      void registerToken(restaurantSlug).then(() => {
+        setDebugLog((prev) => [...prev.slice(-4), "REG DONE state=" + registrationState]);
+      });
+    } else {
+      console.log("[App] FCM wait: token=" + !!pushToken + " slug=" + !!restaurantSlug + " auth=" + !!hasAuthToken);
+      setDebugLog((prev) => [...prev.slice(-4), "WAIT tk=" + !!pushToken + " sl=" + !!restaurantSlug + " au=" + !!hasAuthToken]);
     }
   }, [pushToken, restaurantSlug, hasAuthToken, registerToken]);
 
@@ -387,7 +436,8 @@ export default function App() {
 
           case "AUTH_TOKEN":
             if (msg.token) {
-              console.log("[App] Auth token z WebView (Supabase access_token)");
+              console.log("[App] Auth token z WebView (Supabase access_token), len=" + msg.token.length);
+              setDebugLog((prev) => [...prev.slice(-4), "AUTH ✓ len=" + msg.token.length]);
               void AsyncStorage.setItem("@sushi_auth_token", msg.token).then(() => {
                 setHasAuthToken(true);
               });
@@ -397,12 +447,18 @@ export default function App() {
           case "RESTAURANT_SLUG":
             if (msg.slug && msg.slug !== restaurantSlug) {
               console.log("[App] Restaurant slug z WebView:", msg.slug);
+              setDebugLog((prev) => [...prev.slice(-4), "SLUG ✓ " + msg.slug]);
               setRestaurantSlug(msg.slug);
             }
             break;
 
           case "JS_ERROR":
             console.warn("[App] JS error w WebView:", msg.message);
+            break;
+
+          case "DEBUG":
+            console.log("[App] DEBUG z WebView:", msg.message);
+            setDebugLog((prev) => [...prev.slice(-4), "WV: " + msg.message.substring(0, 60)]);
             break;
 
           default:
@@ -589,6 +645,19 @@ export default function App() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* DEBUG: Tymczasowy banner — pokaż stan FCM */}
+      {isReady && (
+        <View style={styles.debugBanner}>
+          <Text style={styles.debugText}>
+            FCM: {registrationState} | tk={pushToken ? "✓" : "✗"} sl={restaurantSlug || "✗"} au={hasAuthToken ? "✓" : "✗"}
+          </Text>
+          {debugLog.slice(-3).map((line, i) => (
+            <Text key={i} style={styles.debugText}>{line}</Text>
+          ))}
+          {pushError && <Text style={[styles.debugText, { color: "#f87171" }]}>ERR: {pushError}</Text>}
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -685,5 +754,21 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 12,
     textAlign: "center",
+  },
+  debugBanner: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(0,0,0,0.85)",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    zIndex: 100,
+    elevation: 100,
+  },
+  debugText: {
+    color: "#4ade80",
+    fontSize: 10,
+    fontFamily: Platform.OS === "android" ? "monospace" : "Menlo",
   },
 });

@@ -129,29 +129,33 @@ export function useNotifications(): UseNotificationsReturn {
         return null;
       }
 
+      console.log("[FCM] Requesting Expo Push Token, projectId:", easProjectId);
+
       const tokenData = await Notifications.getExpoPushTokenAsync({
         projectId: easProjectId,
       });
 
       const token = tokenData.data;
-      console.log("[FCM] Token uzyskany:", token.slice(0, 30) + "...");
+      console.log("[FCM] ✅ Token uzyskany:", token.slice(0, 30) + "...");
 
       await AsyncStorage.setItem(STORAGE_KEY_TOKEN, token);
       setPushToken(token);
       return token;
     } catch (err: any) {
+      console.error("[FCM] getExpoPushTokenAsync failed:", err?.message || err);
       // Fallback: spróbuj natywny Device Push Token (FCM bezpośrednio)
       try {
+        console.log("[FCM] Trying fallback getDevicePushTokenAsync...");
         const deviceToken = await Notifications.getDevicePushTokenAsync();
         const token = deviceToken.data as string;
-        console.log("[FCM] Device token uzyskany:", token.slice(0, 30) + "...");
+        console.log("[FCM] ✅ Device token uzyskany:", token.slice(0, 30) + "...");
         
         await AsyncStorage.setItem(STORAGE_KEY_TOKEN, token);
         setPushToken(token);
         return token;
       } catch (deviceErr: any) {
-        console.error("[FCM] Nie udało się uzyskać tokena:", deviceErr);
-        setError("Nie udało się uzyskać tokena push");
+        console.error("[FCM] ❌ Nie udało się uzyskać tokena:", deviceErr?.message || deviceErr);
+        setError("Nie udało się uzyskać tokena push: " + (deviceErr?.message || "unknown"));
         return null;
       }
     }
@@ -189,10 +193,12 @@ export function useNotifications(): UseNotificationsReturn {
         }
 
         console.log("[FCM] Rejestruję token na serwerze...", {
+          url: FCM_REGISTER_URL,
           slug,
           tokenType: token.startsWith("ExponentPushToken") ? "expo" : "fcm",
           tokenSuffix: token.slice(-20),
           hasAuth: !!authToken,
+          authTokenLen: authToken.length,
         });
 
         // Retry logic — 3 próby z rosnącym opóźnieniem
@@ -238,9 +244,9 @@ export function useNotifications(): UseNotificationsReturn {
 
         if (!res.ok) {
           const text = await res.text().catch(() => "");
-          console.error("[FCM] Rejestracja nieudana:", res.status, text);
+          console.error("[FCM] ❌ Rejestracja nieudana:", res.status, text);
           setRegistrationState("error");
-          setError(`Błąd rejestracji: ${res.status}`);
+          setError(`Błąd rejestracji: ${res.status} - ${text.substring(0, 100)}`);
           return;
         }
 
