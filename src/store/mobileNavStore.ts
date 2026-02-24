@@ -4,6 +4,10 @@ import { create } from "zustand";
 export type MobileTab = "set" | "reservation" | "menu" | "cart" | "account" | "home";
 
 interface MobileNavState {
+  /** Czy mobile app shell jest aktywny (ukrywa globalny Header/Footer) */
+  shellActive: boolean;
+  setShellActive: (active: boolean) => void;
+
   activeTab: MobileTab;
   setActiveTab: (tab: MobileTab) => void;
   
@@ -19,6 +23,9 @@ interface MobileNavState {
 }
 
 export const useMobileNavStore = create<MobileNavState>((set) => ({
+  shellActive: false,
+  setShellActive: (active) => set({ shellActive: active }),
+
   activeTab: "home",
   setActiveTab: (tab) => set({ activeTab: tab }),
   

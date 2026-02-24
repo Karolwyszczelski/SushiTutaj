@@ -630,6 +630,7 @@ useEffect(() => {
     name: displayName,
     price: priceNumber(p),
     quantity: 1,
+    image_url: p.image_url ?? undefined,
   });
   setJustAdded((prev) => (prev.includes(p.id) ? prev : [...prev, p.id]));
   setTimeout(

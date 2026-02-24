@@ -3,7 +3,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { ShoppingCart, Sparkles, Star, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import useCartStore from "@/store/cartStore";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import clsx from "clsx";
@@ -34,13 +34,6 @@ type RestaurantIdRow = {
   id: string;
   slug?: string | null;
 };
-
-const gradBtn =
-  "inline-flex items-center justify-center gap-2.5 rounded-2xl px-8 py-4 " +
-  "font-semibold text-base text-white bg-gradient-to-r from-[#b31217] via-[#a61b1b] to-[#7a0b0b] " +
-  "shadow-[0_8px_30px_rgba(166,27,27,0.4)] " +
-  "hover:shadow-[0_12px_40px_rgba(166,27,27,0.5)] hover:scale-[1.02] " +
-  "active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed";
 
 export default function MobileSetView() {
   const supabase = getSupabaseBrowser();
@@ -199,124 +192,160 @@ export default function MobileSetView() {
       name: productName,
       price,
       quantity: 1,
+      image_url: img ?? undefined,
     });
     setAdded(true);
     setTimeout(() => setAdded(false), 1200);
   };
 
+  /* ── loading skeleton ── */
   if (loading) {
     return (
-      <div 
-        className="flex-1 flex flex-col items-center justify-center bg-[#0a0a0a]"
-        style={{ 
-          paddingTop: "calc(env(safe-area-inset-top, 0px) + 48px)",
-          paddingBottom: "calc(env(safe-area-inset-bottom, 16px) + 100px)" 
-        }}
-      >
-        <div className="w-8 h-8 border-2 border-white/10 border-t-[#a61b1b] rounded-full animate-spin" />
+      <div className="flex flex-col min-h-full bg-[#0a0a0a]">
+        <div className="w-full aspect-[4/5] skeleton-pulse" />
+        <div className="px-6 pt-6 space-y-4">
+          <div className="h-3 w-24 rounded skeleton-pulse" />
+          <div className="h-7 w-56 rounded skeleton-pulse" />
+          <div className="h-4 w-40 rounded skeleton-pulse" />
+          <div className="space-y-3 mt-6">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="h-4 rounded skeleton-pulse" style={{ width: `${70 - i * 8}%` }} />
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
+  /* ── empty state ── */
   if (!title) {
     return (
-      <div 
+      <div
         className="flex-1 flex flex-col items-center justify-center px-8 text-center bg-[#0a0a0a]"
-        style={{ 
+        style={{
           paddingTop: "calc(env(safe-area-inset-top, 0px) + 48px)",
-          paddingBottom: "calc(env(safe-area-inset-bottom, 16px) + 100px)" 
+          paddingBottom: "calc(env(safe-area-inset-bottom, 16px) + 100px)",
         }}
       >
-        <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mb-5">
-          <Sparkles className="w-7 h-7 text-white/20" />
+        <div className="relative w-20 h-20 mb-6">
+          <div className="absolute inset-0 bg-white/[0.04] rounded-2xl rotate-6" />
+          <div className="absolute inset-0 bg-white/[0.06] rounded-2xl -rotate-3 flex items-center justify-center">
+            <span className="text-3xl opacity-40">🍣</span>
+          </div>
         </div>
-        <h3 className="text-base font-medium text-white mb-2">Brak zestawu</h3>
-        <p className="text-white/40 text-sm leading-relaxed">
-          Aktualnie nie ma dostępnego<br />zestawu miesiąca.
+        <h3 className="text-base font-semibold text-white mb-2">
+          Brak zestawu w tym miesiącu
+        </h3>
+        <p className="text-white/40 text-sm leading-relaxed max-w-[240px]">
+          Nowy zestaw pojawi się wkrótce — wróć po więcej!
         </p>
       </div>
     );
   }
 
+  /* ── main view ── */
   return (
-    <div 
-      className="flex flex-col min-h-full bg-[#0a0a0a]"
-      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 48px)" }}
-    >
-      {/* Minimalist Header */}
-      <div className="px-6 mb-6">
-        <div className="flex items-center gap-2 mb-1">
-          <div className="w-1 h-4 bg-[#a61b1b] rounded-full" />
-          <span className="text-[11px] font-medium uppercase tracking-widest text-white/40">
-            {monthLabel}
-          </span>
-        </div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">
-          Zestaw Miesiąca
-        </h1>
-      </div>
+    <div className="flex flex-col min-h-full bg-[#0a0a0a]">
 
-      {/* Hero Image - Clean, rounded */}
-      <div className="px-5 mb-6">
-        {img && (
-          <div className="relative w-full aspect-square rounded-3xl overflow-hidden bg-white/5">
-            <Image
-              src={img}
-              alt={title}
-              fill
-              sizes="100vw"
-              className="object-cover"
-              priority
-            />
-            
-            {/* Subtle overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-            
-            {/* Price badge - bottom left */}
-            {price !== null && (
-              <div className="absolute bottom-4 left-4 bg-white px-4 py-2 rounded-xl">
-                <span className="text-2xl font-bold text-[#0a0a0a]">{price.toFixed(0)}</span>
-                <span className="text-sm text-black/60 ml-1">zł</span>
-              </div>
-            )}
-            
-            {/* Pieces badge - bottom right */}
-            {pieces && (
-              <div className="absolute bottom-4 right-4 bg-[#a61b1b] px-3 py-2 rounded-xl">
-                <span className="text-sm font-semibold text-white">{pieces} szt.</span>
-              </div>
-            )}
+      {/* ── Full-bleed hero image ── */}
+      <div className="relative w-full aspect-[4/5] overflow-hidden">
+        {img ? (
+          <Image
+            src={img}
+            alt={title}
+            fill
+            sizes="100vw"
+            className="object-cover"
+            priority
+          />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-[#1a0a0a] to-[#0a0a0a] flex items-center justify-center">
+            <span className="text-6xl opacity-20">🍣</span>
           </div>
         )}
-      </div>
 
-      {/* Content */}
-      <div 
-        className="flex-1 px-6"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 16px) + 160px)" }}
-      >
-        {/* Title card */}
-        <div className="mb-6">
-          <h2 className="text-lg font-semibold text-white mb-1">{title}</h2>
-          {parsedDesc.header && (
-            <p className="text-sm text-white/50">{parsedDesc.header}</p>
+        {/* Gradient overlays */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/30 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0a]/50 via-transparent to-transparent h-24" />
+
+        {/* Top label */}
+        <div
+          className="absolute top-0 left-0 right-0 px-6 flex items-center justify-between hero-stagger hero-stagger-1"
+          style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 20px)" }}
+        >
+          <div className="flex items-center gap-2">
+            <div className="w-[3px] h-4 bg-[#c41e1e] rounded-full" />
+            <span className="text-[11px] font-semibold uppercase tracking-[0.15em] text-white/50">
+              {monthLabel}
+            </span>
+          </div>
+          {pieces && (
+            <span className="text-[11px] font-medium text-white/40 bg-white/[0.08] px-2.5 py-1 rounded-lg backdrop-blur-sm">
+              {pieces} szt.
+            </span>
           )}
         </div>
 
-        {/* What's included - Minimal list */}
+        {/* Bottom info overlay */}
+        <div className="absolute bottom-0 left-0 right-0 px-6 pb-6">
+          <p
+            className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#c8a97e] mb-2 hero-stagger hero-stagger-2"
+          >
+            Zestaw Miesiąca
+          </p>
+          <h1
+            className="text-[26px] font-bold text-white leading-tight tracking-tight mb-3 hero-stagger hero-stagger-3"
+            style={{ fontFamily: "var(--font-display), serif" }}
+          >
+            {title}
+          </h1>
+
+          {/* Price */}
+          {price !== null && (
+            <div className="flex items-baseline gap-1.5 hero-stagger hero-stagger-3">
+              <span className="text-[32px] font-bold text-[#c41e1e] leading-none tracking-tight">
+                {price.toFixed(0)}
+              </span>
+              <span className="text-[15px] font-medium text-[#c41e1e]/60">zł</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Content section ── */}
+      <div
+        className="flex-1 px-6 pt-6"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 16px) + 200px)" }}
+      >
+        {/* Subtitle / header */}
+        {parsedDesc.header && (
+          <p className="text-[13px] text-white/45 font-medium mb-5">
+            {parsedDesc.header}
+          </p>
+        )}
+
+        {/* Contents list */}
         {parsedDesc.items.length > 0 && (
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-widest text-white/30 mb-4">
-              W zestawie
-            </p>
-            <div className="space-y-3">
+          <div className="hero-stagger hero-stagger-4">
+            <div className="flex items-center gap-2.5 mb-4">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-white/30">
+                W zestawie
+              </p>
+              <div className="flex-1 h-px bg-white/[0.06]" />
+            </div>
+
+            <div className="space-y-0">
               {parsedDesc.items.map((item, i) => (
                 <div
                   key={i}
-                  className="flex items-start gap-3 py-2 border-b border-white/5 last:border-0"
+                  className="flex items-center gap-3 py-3 border-b border-white/[0.04] last:border-0"
                 >
-                  <span className="shrink-0 w-1.5 h-1.5 mt-2 rounded-full bg-[#a61b1b]" />
-                  <span className="text-[15px] text-white/70 leading-relaxed">{item}</span>
+                  <span className="text-[13px] font-medium text-white/20 tabular-nums w-5 shrink-0 text-right">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span className="text-[14px] text-white/65 leading-relaxed">
+                    {item}
+                  </span>
                 </div>
               ))}
             </div>
@@ -324,12 +353,12 @@ export default function MobileSetView() {
         )}
       </div>
 
-      {/* Sticky Bottom CTA - Minimal */}
-      <div 
+      {/* ── Sticky bottom CTA ── */}
+      <div
         className="fixed inset-x-0 bottom-0 z-30 pointer-events-none"
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 8px) + 76px)" }}
       >
-        <div className="px-5 pb-4 pt-8 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/95 to-transparent pointer-events-auto">
+        <div className="px-5 pb-4 pt-10 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/95 to-transparent pointer-events-auto">
           <button
             type="button"
             onClick={handleAdd}
@@ -337,20 +366,22 @@ export default function MobileSetView() {
             className={clsx(
               "w-full flex items-center justify-center gap-2.5 py-4 rounded-2xl font-semibold text-[15px] transition-all duration-200",
               added
-                ? "bg-emerald-600 text-white"
-                : "bg-[#a61b1b] text-white active:scale-[0.98] active:bg-[#8a1515]",
+                ? "bg-emerald-600 text-white cart-bounce"
+                : "bg-gradient-to-r from-[#c41e1e] via-[#a61b1b] to-[#7a0b0b] text-white shadow-[0_6px_24px_rgba(166,27,27,0.4)] active:scale-[0.98]",
               (!productId || added) && "opacity-50"
             )}
           >
             {added ? (
               <>
-                <Check className="w-5 h-5" />
+                <Check className="w-5 h-5 cart-check-flash" />
                 <span>Dodano do koszyka</span>
               </>
             ) : (
               <>
-                <ShoppingCart className="w-5 h-5" />
                 <span>Dodaj do koszyka</span>
+                {price !== null && (
+                  <span className="text-white/60">· {price.toFixed(0)} zł</span>
+                )}
               </>
             )}
           </button>

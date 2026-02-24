@@ -53,8 +53,25 @@ const ReservationModal = dynamic(
 
 function MobileViewSkeleton() {
   return (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="w-10 h-10 border-2 border-white/20 border-t-white/80 rounded-full animate-spin" />
+    <div className="flex-1 flex flex-col px-5 pt-16 gap-4">
+      {/* Skeleton header */}
+      <div className="space-y-2.5 mb-2">
+        <div className="h-3 w-20 rounded skeleton-pulse" />
+        <div className="h-6 w-48 rounded skeleton-pulse" />
+      </div>
+      {/* Skeleton search */}
+      <div className="h-11 w-full rounded-xl skeleton-pulse" />
+      {/* Skeleton product cards */}
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} className="flex gap-3.5 p-3.5 rounded-2xl" style={{ animationDelay: `${i * 120}ms` }}>
+          <div className="w-[88px] h-[88px] rounded-xl skeleton-pulse shrink-0" />
+          <div className="flex-1 py-1 space-y-2.5">
+            <div className="h-4 rounded w-3/4 skeleton-pulse" />
+            <div className="h-3 rounded w-1/2 skeleton-pulse" />
+            <div className="h-5 rounded w-16 mt-auto skeleton-pulse" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -67,6 +84,13 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
   // Globalny store dla nawigacji mobile
   const activeTab = useMobileNavStore((s) => s.activeTab);
   const setActiveTab = useMobileNavStore((s) => s.setActiveTab);
+  const setShellActive = useMobileNavStore((s) => s.setShellActive);
+
+  // Ukryj globalny Header/Footer gdy mobile shell jest aktywny
+  useEffect(() => {
+    setShellActive(true);
+    return () => setShellActive(false);
+  }, [setShellActive]);
   const cartOpen = useMobileNavStore((s) => s.cartOpen);
   const setCartOpen = useMobileNavStore((s) => s.setCartOpen);
   const accountOpen = useMobileNavStore((s) => s.accountOpen);
@@ -173,9 +197,11 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {activeTab === "home" && <MobileHeroView onGoToMenu={goToMenu} />}
-        {activeTab === "menu" && <MobileMenuView />}
-        {activeTab === "set" && <MobileSetView />}
+        <div key={activeTab} className="tab-crossfade min-h-full">
+          {activeTab === "home" && <MobileHeroView onGoToMenu={goToMenu} />}
+          {activeTab === "menu" && <MobileMenuView />}
+          {activeTab === "set" && <MobileSetView />}
+        </div>
       </main>
 
       {/* Bottom Navigation - zawsze widoczna */}

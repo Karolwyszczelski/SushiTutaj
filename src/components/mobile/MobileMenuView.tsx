@@ -9,7 +9,6 @@ import React, {
   useCallback,
 } from "react";
 import Image from "next/image";
-import { ShoppingCart, ChevronLeft, ChevronRight } from "lucide-react";
 import { getSupabaseBrowser } from "@/lib/supabase-browser";
 import useCartStore from "@/store/cartStore";
 
@@ -30,8 +29,6 @@ type Product = {
 type RestaurantIdRow = {
   id: string;
 };
-
-const ACCENT = "[background:linear-gradient(180deg,#b31217_0%,#7a0b0b_100%)]";
 
 const norm = (s: string) =>
   s
@@ -203,8 +200,60 @@ const formatSetDescription = (desc: string | null): string[] => {
   return [...lines, ...result];
 };
 
+// ─── Category emoji map ──────────────────────────────────────
+const CAT_EMOJI: Record<string, string> = {
+  "wszystko": "📋",
+  "zestaw": "🍣", "zestawy": "🍣", "set": "🍣",
+  "lunch": "🍱", "lunche": "🍱",
+  "burger": "🍔", "burgery": "🍔",
+  "pancake": "🥞", "pancakes": "🥞", "naleśniki": "🥞",
+  "kids": "🧒", "dzieci": "🧒", "dla dzieci": "🧒",
+  "frytki": "🍟",
+  "napoje": "🥤", "napój": "🥤",
+  "sake": "🍶",
+  "sosy": "💧", "sos": "💧",
+  "sashimi": "🐟",
+  "nigiri": "🍣",
+  "futomaki": "🍙",
+  "california": "🌊",
+  "hosomaki": "🔸",
+  "inne": "✨",
+};
+
+function getCatEmoji(cat: string): string {
+  const key = norm(cat);
+  for (const [k, v] of Object.entries(CAT_EMOJI)) {
+    if (key.includes(k)) return v;
+  }
+  return "🍽️";
+}
+
+// ─── Product tags ────────────────────────────────────────────
+function getProductTags(p: Product): { label: string; color: string }[] {
+  const tags: { label: string; color: string }[] = [];
+  const n = norm(p.name || "");
+  const d = norm(p.description || "");
+  const sub = norm(p.subcategory || "");
+
+  if (n.includes("vege") || n.includes("wege") || d.includes("vege") || d.includes("wege"))
+    tags.push({ label: "🌱 Vege", color: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/20" });
+  if (n.includes("pikant") || d.includes("pikant") || n.includes("spicy") || d.includes("spicy"))
+    tags.push({ label: "🔥 Pikantne", color: "bg-orange-500/15 text-orange-400 ring-orange-500/20" });
+  if (n.includes("new") || n.includes("nowosc") || n.includes("nowość"))
+    tags.push({ label: "✨ Nowość", color: "bg-amber-500/15 text-amber-300 ring-amber-500/20" });
+
+  return tags;
+}
+
+// ─── Check if product is a Set ───────────────────────────────
+function isSetProduct(p: Product): boolean {
+  const sub = norm(p.subcategory || "");
+  const name = norm(p.name || "");
+  return /zestaw|set/.test(sub) || /zestaw|set/.test(name);
+}
+
 /** Product image with fallbacks */
-function ProductImg({ p, sizes = "50vw" }: { p: Product; sizes?: string }) {
+function ProductImg({ p, sizes = "50vw", cover = true }: { p: Product; sizes?: string; cover?: boolean }) {
   const candidates = useMemo(() => {
     const base = `/assets/menuphoto/${slugify(p.name)}`;
     const list = [
@@ -228,7 +277,7 @@ function ProductImg({ p, sizes = "50vw" }: { p: Product; sizes?: string }) {
       alt={p.name}
       fill
       sizes={sizes}
-      className="object-contain transition"
+      className={`${cover ? "object-cover" : "object-contain"} transition`}
       onError={() => setIdx((i) => Math.min(i + 1, candidates.length - 1))}
       priority={false}
     />
@@ -250,8 +299,6 @@ export default function MobileMenuView() {
   const [expandedDesc, setExpandedDesc] = useState<Record<string, boolean>>({});
 
   const catsRailRef = useRef<HTMLDivElement | null>(null);
-  const [catsCanLeft, setCatsCanLeft] = useState(false);
-  const [catsCanRight, setCatsCanRight] = useState(false);
 
   // Lunch time check
   useEffect(() => {
@@ -453,24 +500,15 @@ export default function MobileMenuView() {
       name: displayName,
       price: priceNumber(p),
       quantity: 1,
+      image_url: p.image_url ?? undefined,
     });
     setJustAdded((prev) => (prev.includes(p.id) ? prev : [...prev, p.id]));
     setTimeout(() => setJustAdded((prev) => prev.filter((id) => id !== p.id)), 900);
   };
 
   const updateCatArrows = useCallback(() => {
-    const el = catsRailRef.current;
-    if (!el) return;
-    const max = el.scrollWidth - el.clientWidth;
-    setCatsCanLeft(el.scrollLeft > 2);
-    setCatsCanRight(el.scrollLeft < max - 2);
+    // Kept for scroll event listener compatibility
   }, []);
-
-  const catScroll = (dir: -1 | 1) => {
-    const el = catsRailRef.current;
-    if (!el) return;
-    el.scrollBy({ left: dir * 240, behavior: "smooth" });
-  };
 
   useEffect(() => {
     updateCatArrows();
@@ -483,11 +521,6 @@ export default function MobileMenuView() {
       window.removeEventListener("resize", updateCatArrows);
     };
   }, [categories, updateCatArrows]);
-
-  const arrowBtn =
-    `h-8 w-8 rounded-full text-white ${ACCENT} ring-1 ring-black/30 ` +
-    `shadow-[0_8px_16px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.15)] ` +
-    `hover:[filter:brightness(1.06)] active:[filter:brightness(0.96)] disabled:opacity-40 disabled:cursor-not-allowed`;
 
   // Scroll to active category
   const scrollToCat = useCallback((cat: string) => {
@@ -504,56 +537,102 @@ export default function MobileMenuView() {
     scrollToCat(cat);
   };
 
+  // ─── Lunch timer ────────────────────────────────────────
+  const lunchTimeLeft = useMemo(() => {
+    if (lunchClosed) return null;
+    const { minutes } = getWarsawTimeInfo();
+    const left = LUNCH_CUTOFF_MINUTES - minutes;
+    if (left <= 0 || left > 300) return null;
+    const h = Math.floor(left / 60);
+    const m = left % 60;
+    return h > 0 ? `${h}h ${m}min` : `${m} min`;
+  }, [lunchClosed]);
+
+  // Czy aktywna kategoria to zestawy/lunche?
+  const isSetCategory = /zestaw|set/i.test(activeCat);
+
   return (
     <div className="flex flex-col min-h-full bg-[#0a0a0a]">
-      {/* Sticky Header - Search + Categories */}
+      {/* ── Sticky Header ── */}
       <div 
-        className="sticky top-0 z-20 bg-[#0a0a0a]"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 50px)" }}
+        className="sticky top-0 z-20 bg-[#0a0a0a]/95 backdrop-blur-lg"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}
       >
-        {/* Title */}
-        <div className="px-5 mb-4">
-          <div className="flex items-center gap-2 mb-0.5">
-            <div className="w-1 h-4 bg-[#a61b1b] rounded-full" />
-            <span className="text-[11px] font-medium uppercase tracking-widest text-white/40">
-              Nasze menu
-            </span>
+        {/* Title row */}
+        <div className="px-5 mb-3">
+          <div className="flex items-end justify-between">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-white/30 mb-1">
+                Nasze menu
+              </p>
+              <h1
+                className="text-[22px] font-bold text-white tracking-tight"
+                style={{ fontFamily: "var(--font-display), serif" }}
+              >
+                {activeCat === "Wszystko" ? "Wszystkie dania" : activeCat}
+              </h1>
+            </div>
+            {!loading && (
+              <span className="text-[12px] text-white/25 font-medium pb-0.5">
+                {visible.length} {visible.length === 1 ? "pozycja" : visible.length < 5 ? "pozycje" : "pozycji"}
+              </span>
+            )}
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">
-            {activeCat === "Wszystko" ? "Wszystkie dania" : activeCat}
-          </h1>
         </div>
 
         {/* Search */}
-        <div className="px-5 pb-4">
+        <div className="px-5 pb-3">
           <div className="relative">
             <input
               type="search"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => e.key === "Escape" && setQ("")}
-              placeholder="Szukaj..."
+              placeholder="Czego szukasz?"
               spellCheck={false}
               autoComplete="off"
-              className="w-full bg-white/5 text-white placeholder-white/30 outline-none pl-11 pr-4 py-3.5 text-[15px] rounded-2xl border border-white/[0.08] focus:border-white/20 focus:bg-white/[0.07] transition-all"
+              className="w-full bg-white/[0.05] text-white placeholder-white/25 outline-none pl-11 pr-4 py-3 text-[14px] rounded-xl border border-white/[0.06] focus:border-white/15 focus:bg-white/[0.07] transition-all"
               aria-label="Szukaj w menu"
             />
-            <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-white/25" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
+            {q && (
+              <button
+                type="button"
+                onClick={() => setQ("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/10 flex items-center justify-center"
+                aria-label="Wyczyść"
+              >
+                <svg className="w-3.5 h-3.5 text-white/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Categories - horizontal scroll */}
-        <div className="relative border-b border-white/[0.06]">
+        {/* Lunch availability banner */}
+        {lunchTimeLeft && activeCat !== "Wszystko" && /lunch/i.test(activeCat) && (
+          <div className="mx-5 mb-3 flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 ring-1 ring-amber-500/20">
+            <span className="text-amber-400 text-sm">⏰</span>
+            <span className="text-[12px] font-medium text-amber-300">
+              Dostępne jeszcze {lunchTimeLeft}
+            </span>
+          </div>
+        )}
+
+        {/* Categories with emoji */}
+        <div className="border-b border-white/[0.05]">
           <div
             ref={catsRailRef}
-            className="overflow-x-auto scroll-smooth overscroll-x-contain px-5 pb-4"
+            className="overflow-x-auto scroll-smooth overscroll-x-contain px-5 pb-3"
             style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
           >
-            <div className="inline-flex flex-nowrap gap-2">
+            <div className="inline-flex flex-nowrap gap-1.5">
               {categories.map((c) => {
                 const isActive = c === activeCat;
+                const emoji = getCatEmoji(c);
                 return (
                   <button
                     key={c}
@@ -561,12 +640,13 @@ export default function MobileMenuView() {
                     data-cat={c}
                     onClick={() => handleCatClick(c)}
                     aria-pressed={isActive}
-                    className={`shrink-0 px-4 py-2.5 text-[13px] font-medium rounded-xl transition-all ${
+                    className={`shrink-0 flex items-center gap-1.5 px-3.5 py-2 text-[13px] font-medium rounded-xl transition-all ${
                       isActive
-                        ? "bg-[#a61b1b] text-white"
-                        : "bg-white/[0.06] text-white/60 active:bg-white/10"
+                        ? "bg-[#a61b1b] text-white shadow-[0_2px_12px_rgba(166,27,27,0.3)]"
+                        : "bg-white/[0.05] text-white/50 active:bg-white/10"
                     }`}
                   >
+                    <span className="text-[14px] leading-none">{emoji}</span>
                     {c}
                   </button>
                 );
@@ -576,65 +656,192 @@ export default function MobileMenuView() {
         </div>
       </div>
 
-      {/* Products List */}
-      <div className="flex-1 px-5 pt-5 pb-[calc(env(safe-area-inset-bottom)+120px)]">
+      {/* ── Products ── */}
+      <div className="flex-1 px-4 pt-4 pb-[calc(env(safe-area-inset-bottom)+120px)]">
         {loading ? (
-          <div className="space-y-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex gap-4 p-4 bg-white/[0.02] rounded-2xl animate-pulse">
-                <div className="w-[100px] h-[100px] bg-white/5 rounded-2xl shrink-0" />
-                <div className="flex-1 py-1 space-y-3">
-                  <div className="h-4 bg-white/5 rounded-lg w-3/4" />
-                  <div className="h-3 bg-white/5 rounded-lg w-1/2" />
-                  <div className="h-6 bg-white/5 rounded-lg w-20 mt-auto" />
+          /* Skeleton loader */
+          <div className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex gap-3.5 p-3.5 rounded-2xl product-enter"
+                style={{ animationDelay: `${i * 80}ms` }}
+              >
+                <div className="w-[88px] h-[88px] rounded-xl skeleton-pulse shrink-0" />
+                <div className="flex-1 py-1 space-y-2.5">
+                  <div className="h-4 rounded w-3/4 skeleton-pulse" />
+                  <div className="h-3 rounded w-1/2 skeleton-pulse" />
+                  <div className="h-5 rounded w-16 mt-auto skeleton-pulse" />
                 </div>
               </div>
             ))}
           </div>
         ) : visible.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-4">
-              <svg className="w-6 h-6 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-            <p className="text-white/40 text-sm font-medium">Brak wyników</p>
+          /* Empty state */
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <span className="text-4xl mb-4">🔍</span>
+            <p className="text-white/50 text-sm font-medium">Nic nie znaleziono</p>
+            <p className="text-white/25 text-xs mt-1">Spróbuj innej frazy</p>
             {q && (
               <button
                 type="button"
                 onClick={() => setQ("")}
-                className="mt-4 text-sm text-white/60 font-medium px-4 py-2 rounded-xl bg-white/5 active:bg-white/10"
+                className="mt-5 text-[13px] text-white/60 font-medium px-5 py-2.5 rounded-xl bg-white/[0.06] ring-1 ring-white/[0.06] active:bg-white/10"
               >
-                Wyczyść
+                Wyczyść szukaj
               </button>
             )}
           </div>
         ) : (
-          <div className="space-y-3">
-            {visible.map((p) => {
+          <div className="space-y-2.5">
+            {visible.map((p, idx) => {
               const isAdded = justAdded.includes(p.id);
               const lunchBlocked = lunchClosed && isLunchProduct(p);
               const displayName = buildDisplayName(p);
               const isUnavailable = p.available === false || lunchBlocked;
               const isExpanded = !!expandedDesc[p.id];
               const descItems = formatSetDescription(p.description);
+              const tags = getProductTags(p);
+              const isSet = isSetProduct(p) && (isSetCategory || activeCat === "Wszystko");
 
+              // ─── SET / FEATURED CARD (duży obrazek) ───
+              if (isSet) {
+                return (
+                  <article
+                    key={p.id}
+                    onClick={() => setExpandedDesc(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
+                    className={`relative rounded-2xl overflow-hidden transition-all cursor-pointer product-enter ${
+                      isUnavailable ? "opacity-40" : ""
+                    }`}
+                    style={{ animationDelay: `${Math.min(idx * 60, 400)}ms` }}
+                  >
+                    {/* Duży image */}
+                    <div className="relative w-full aspect-[16/10] bg-white/[0.03]">
+                      <ProductImg p={p} sizes="100vw" cover />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+
+                      {/* Badges na obrazku */}
+                      {lunchBlocked && (
+                        <div className="absolute top-3 left-3 px-2.5 py-1 text-[10px] font-semibold bg-black/60 text-amber-300 rounded-lg backdrop-blur-sm">
+                          ⏰ Do 16:00
+                        </div>
+                      )}
+                      {p.available === false && (
+                        <div className="absolute top-3 left-3 px-2.5 py-1 text-[10px] font-semibold bg-black/60 text-white/70 rounded-lg backdrop-blur-sm">
+                          Niedostępne
+                        </div>
+                      )}
+
+                      {/* Info overlay na dole obrazka */}
+                      <div className="absolute bottom-0 left-0 right-0 p-4">
+                        <div className="flex items-end justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            {tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mb-2">
+                                {tags.map((t) => (
+                                  <span key={t.label} className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ring-1 ${t.color}`}>
+                                    {t.label}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            <h3
+                              className="text-[17px] font-bold text-white leading-snug"
+                              style={{ fontFamily: "var(--font-display), serif" }}
+                            >
+                              {displayName}
+                            </h3>
+                            {!isExpanded && descItems.length > 0 && (
+                              <p className="text-[12px] text-white/50 mt-1 line-clamp-1">
+                                {descItems.slice(0, 3).join(" · ")}
+                              </p>
+                            )}
+                          </div>
+                          <span className="text-xl font-bold text-white shrink-0">
+                            {priceLabel(p)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Expandable description */}
+                    {isExpanded && descItems.length > 0 && (
+                      <div className="px-4 py-3 bg-white/[0.03] border-t border-white/[0.05]">
+                        <ul className="space-y-1.5">
+                          {descItems.map((item, i) => (
+                            <li key={i} className="flex items-start gap-2 text-[12px] text-white/45">
+                              <span className="w-1 h-1 rounded-full bg-[#a61b1b] mt-1.5 shrink-0" />
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Bottom bar: add button */}
+                    <div className="flex items-center justify-between px-4 py-3 bg-white/[0.03]">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setExpandedDesc(prev => ({ ...prev, [p.id]: !prev[p.id] })); }}
+                        className="text-[12px] text-white/40 font-medium flex items-center gap-1"
+                      >
+                        <svg className={`w-3.5 h-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                        {isExpanded ? "Zwiń" : "Skład"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleAdd(p); }}
+                        disabled={isUnavailable}
+                        aria-label={`Dodaj ${displayName}`}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all ${
+                          isAdded
+                            ? "bg-emerald-500 text-white cart-bounce"
+                            : "bg-[#a61b1b] text-white active:scale-[0.97] active:bg-[#8a1515]"
+                        } disabled:opacity-30 disabled:cursor-not-allowed`}
+                      >
+                        {isAdded ? (
+                          <>
+                            <svg className="w-4 h-4 cart-check-flash" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                            </svg>
+                            Dodano
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                            </svg>
+                            Dodaj
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </article>
+                );
+              }
+
+              // ─── COMPACT CARD (standardowe produkty) ───
               return (
                 <article
                   key={p.id}
                   onClick={() => setExpandedDesc(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
-                  className={`relative flex gap-4 p-4 bg-white/[0.03] rounded-2xl transition-all cursor-pointer active:bg-white/[0.05] ${
+                  className={`relative flex gap-3.5 p-3.5 rounded-2xl transition-all cursor-pointer product-enter ${
                     isUnavailable ? "opacity-40" : ""
-                  } ${isExpanded ? "bg-white/[0.05]" : ""}`}
+                  } ${
+                    isExpanded
+                      ? "bg-white/[0.05] ring-1 ring-white/[0.06]"
+                      : "bg-white/[0.025] active:bg-white/[0.05]"
+                  }`}
+                  style={{ animationDelay: `${Math.min(idx * 60, 400)}ms` }}
                 >
                   {/* Image */}
-                  <div className={`relative shrink-0 rounded-2xl overflow-hidden bg-white/[0.02] transition-all ${
-                    isExpanded ? "w-[110px] h-[110px]" : "w-[100px] h-[100px]"
-                  }`}>
-                    <ProductImg p={p} sizes="110px" />
+                  <div className="relative shrink-0 w-[88px] h-[88px] rounded-xl overflow-hidden bg-white/[0.03]">
+                    <ProductImg p={p} sizes="88px" cover />
                     {lunchBlocked && (
                       <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
-                        <span className="text-[10px] font-medium text-white/90 text-center px-2 py-1 bg-black/50 rounded-lg">
+                        <span className="text-[9px] font-semibold text-amber-300 text-center px-1.5 py-0.5 bg-black/50 rounded">
                           Do 16:00
                         </span>
                       </div>
@@ -642,72 +849,76 @@ export default function MobileMenuView() {
                   </div>
 
                   {/* Info */}
-                  <div className="flex-1 min-w-0 flex flex-col">
-                    <div className="flex items-start justify-between gap-3">
-                      <h3 className="text-[15px] font-semibold text-white leading-snug pr-1">
+                  <div className="flex-1 min-w-0 flex flex-col py-0.5">
+                    {/* Tags */}
+                    {tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mb-1">
+                        {tags.map((t) => (
+                          <span key={t.label} className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ring-1 ${t.color}`}>
+                            {t.label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="text-[14px] font-semibold text-white leading-snug">
                         {displayName}
                       </h3>
-                      {/* Expand indicator */}
                       {p.description && (
                         <svg 
-                          className={`w-4 h-4 text-white/20 shrink-0 mt-0.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} 
-                          fill="none" 
-                          stroke="currentColor" 
-                          viewBox="0 0 24 24"
+                          className={`w-3.5 h-3.5 text-white/15 shrink-0 mt-0.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} 
+                          fill="none" stroke="currentColor" viewBox="0 0 24 24"
                         >
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                         </svg>
                       )}
                     </div>
 
-                    {/* Description - collapsed or expanded */}
+                    {/* Description */}
                     {p.description && (
-                      <div className={`mt-2 overflow-hidden transition-all ${
-                        isExpanded ? "max-h-[500px]" : "max-h-12"
+                      <div className={`overflow-hidden transition-all ${
+                        isExpanded ? "max-h-[500px] mt-2" : "max-h-10 mt-1"
                       }`}>
                         {isExpanded ? (
-                          <ul className="space-y-1.5">
+                          <ul className="space-y-1">
                             {descItems.map((item, i) => (
-                              <li key={i} className="flex items-start gap-2 text-[13px] text-white/50">
-                                <span className="w-1 h-1 rounded-full bg-[#a61b1b] mt-2 shrink-0" />
+                              <li key={i} className="flex items-start gap-1.5 text-[12px] text-white/40">
+                                <span className="w-1 h-1 rounded-full bg-[#a61b1b]/60 mt-1.5 shrink-0" />
                                 <span>{item}</span>
                               </li>
                             ))}
                           </ul>
                         ) : (
-                          <p className="text-[13px] text-white/40 line-clamp-2 leading-relaxed">
+                          <p className="text-[12px] text-white/30 line-clamp-1">
                             {descItems.slice(0, 3).join(" · ")}
                           </p>
                         )}
                       </div>
                     )}
 
-                    <div className="mt-auto pt-3 flex items-center justify-between">
-                      <span className="text-lg font-bold text-white">
+                    {/* Price + Add */}
+                    <div className="mt-auto pt-2 flex items-center justify-between">
+                      <span className="text-[16px] font-bold text-white">
                         {priceLabel(p)}
                       </span>
-
-                      {/* Add button */}
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleAdd(p);
-                        }}
+                        onClick={(e) => { e.stopPropagation(); handleAdd(p); }}
                         disabled={isUnavailable}
                         aria-label={`Dodaj ${displayName}`}
-                        className={`h-11 w-11 shrink-0 rounded-xl flex items-center justify-center transition-all ${
+                        className={`h-9 w-9 shrink-0 rounded-lg flex items-center justify-center transition-all ${
                           isAdded
-                            ? "bg-emerald-500 text-white scale-105"
-                            : "bg-[#a61b1b] text-white active:scale-95 active:bg-[#8a1515]"
-                        } disabled:opacity-30 disabled:cursor-not-allowed`}
+                            ? "bg-emerald-500 text-white cart-bounce"
+                            : "bg-white/[0.08] text-white/70 ring-1 ring-white/[0.06] active:scale-95 active:bg-[#a61b1b] active:text-white active:ring-0"
+                        } disabled:opacity-25 disabled:cursor-not-allowed`}
                       >
                         {isAdded ? (
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 cart-check-flash" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                           </svg>
                         ) : (
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                           </svg>
                         )}
@@ -717,7 +928,7 @@ export default function MobileMenuView() {
 
                   {/* Unavailable badge */}
                   {p.available === false && (
-                    <div className="absolute top-3 left-3 px-2.5 py-1 text-[10px] font-semibold bg-white/10 text-white/70 rounded-lg">
+                    <div className="absolute top-3 left-3 px-2 py-0.5 text-[9px] font-semibold bg-black/60 text-white/60 rounded backdrop-blur-sm">
                       Niedostępne
                     </div>
                   )}

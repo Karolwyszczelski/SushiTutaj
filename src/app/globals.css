@@ -284,6 +284,118 @@ html,body{ touch-action:manipulation; }
   animation: tab-fade-in 0.2s ease-out forwards;
 }
 
+/* Badge pop animation for bottom nav cart count */
+@keyframes nav-badge-pop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  60%  { transform: scale(1.15); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.nav-badge-pop {
+  animation: nav-badge-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Add-to-cart bounce on product card button */
+@keyframes cart-bounce {
+  0%   { transform: scale(1); }
+  30%  { transform: scale(1.18); }
+  50%  { transform: scale(0.92); }
+  70%  { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+.cart-bounce {
+  animation: cart-bounce 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Add-to-cart check flash */
+@keyframes cart-check-flash {
+  0%   { opacity: 0; transform: scale(0.5) rotate(-10deg); }
+  50%  { opacity: 1; transform: scale(1.15) rotate(3deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+.cart-check-flash {
+  animation: cart-check-flash 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Skeleton accent pulse (red-tinted) */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.04; }
+  50%      { opacity: 0.08; }
+}
+.skeleton-pulse {
+  animation: skeleton-pulse 1.8s ease-in-out infinite;
+  background: linear-gradient(135deg, rgba(166,27,27,0.15) 0%, rgba(255,255,255,0.04) 50%, rgba(166,27,27,0.1) 100%);
+}
+
+/* Hero section staggered entrance */
+@keyframes hero-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.hero-stagger {
+  opacity: 0;
+  animation: hero-fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.hero-stagger-1 { animation-delay: 0.05s; }
+.hero-stagger-2 { animation-delay: 0.15s; }
+.hero-stagger-3 { animation-delay: 0.25s; }
+.hero-stagger-4 { animation-delay: 0.35s; }
+.hero-stagger-5 { animation-delay: 0.45s; }
+
+/* Product card staggered entrance */
+@keyframes product-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.product-enter {
+  opacity: 0;
+  animation: product-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Tab crossfade transition */
+@keyframes tab-crossfade {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.tab-crossfade {
+  animation: tab-crossfade 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .cart-bounce,
+  .cart-check-flash,
+  .hero-stagger,
+  .product-enter,
+  .tab-crossfade,
+  .nav-badge-pop {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .skeleton-pulse {
+    animation: none !important;
+  }
+}
+
 /* Blokada scrollowania body gdy sheet jest otwarty */
 body.sheet-open {
   overflow: hidden;

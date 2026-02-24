@@ -28,6 +28,9 @@ export interface CartItem {
   /** Zamiany składników / rolek w zestawie */
   swaps: { from: string; to: string }[];
 
+  /** URL obrazka produktu (display-only, nie wpływa na signature) */
+  image_url?: string;
+
   /** Podpis konfiguracji – do łączenia identycznych pozycji */
   signature: string;
 }
@@ -165,6 +168,7 @@ const normalizeItem = (
     quantity,
     addons,
     swaps,
+    image_url: raw.image_url ?? undefined,
     // cena zostawiamy jako number|string, ale pilnujemy czytelności
     price: typeof raw.price === "number" ? raw.price : String(raw.price),
     signature,

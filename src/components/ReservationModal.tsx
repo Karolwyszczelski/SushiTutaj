@@ -416,189 +416,171 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
 
       {/* Modal */}
       <div
-        className="relative z-[91] w-full h-full lg:h-auto lg:max-w-md lg:max-h-[90vh] bg-[#111111] lg:bg-white text-white lg:text-black
-                   rounded-t-3xl lg:rounded-3xl overflow-hidden flex flex-col"
+        className="relative z-[91] w-full h-full lg:h-auto lg:max-w-md lg:max-h-[90vh] bg-[#0e0e0e] lg:bg-white text-white lg:text-black
+                   lg:rounded-3xl overflow-hidden flex flex-col"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* Hero Header with gradient */}
-        <div className="shrink-0 relative overflow-hidden"
-             style={{ paddingTop: "max(env(safe-area-inset-top), 0px)" }}>
-          {/* Background gradient */}
-          <div className="absolute inset-0 bg-gradient-to-b from-[#a61b1b]/30 via-[#a61b1b]/10 to-transparent" />
-          
-          {/* Close button */}
-          <button
-            type="button"
-            onClick={onClose}
-            className="absolute top-4 left-4 z-10 w-10 h-10 flex items-center justify-center rounded-full bg-black/40 backdrop-blur-sm"
-            style={{ marginTop: "env(safe-area-inset-top, 0px)" }}
-            aria-label="Zamknij"
-          >
-            <X size={20} />
-          </button>
-          
-          {/* Header content */}
-          <div className="relative px-6 pt-16 pb-6 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-[#c41e1e] to-[#8a1414] shadow-lg mb-4">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold mb-1">Zarezerwuj stolik</h2>
-            <p className="text-sm text-white/60">Wybierz termin i uzupełnij dane</p>
+        {/* Header */}
+        <div className="shrink-0" style={{ paddingTop: "max(env(safe-area-inset-top), 0px)" }}>
+          <div className="flex justify-center pt-3 pb-1 lg:hidden">
+            <div className="w-10 h-1 rounded-full bg-white/20" />
+          </div>
+          <div className="flex items-center justify-between px-5 py-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-white/[0.08] active:bg-white/15 transition-colors"
+              aria-label="Zamknij"
+            >
+              <X size={18} strokeWidth={2.5} />
+            </button>
+            <h2 className="text-[17px] font-bold tracking-tight">Rezerwacja</h2>
+            <div className="w-9" />
           </div>
         </div>
 
         {/* Scroll area */}
         <div className="flex-1 overflow-y-auto overscroll-contain">
-          <form onSubmit={handleSubmit} className="px-4 pb-[200px] lg:pb-6 space-y-4">
+          <form onSubmit={handleSubmit} className="px-5 pb-[180px] lg:pb-6 space-y-5">
             
-            {/* Quick info bar */}
+            {/* Summary strip */}
             {(selectedDate || selectedTime || guestCount > 1) && (
-              <div className="flex items-center justify-center gap-4 py-3 px-4 rounded-2xl bg-white/5 border border-white/10">
+              <div className="flex items-center gap-3 py-2.5 px-4 rounded-xl bg-[#c41e1e]/[0.06] border border-[#c41e1e]/[0.12]">
                 {selectedDate && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <svg className="w-4 h-4 text-[#a61b1b]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span className="font-medium">{format(selectedDate, "d MMM", { locale: pl })}</span>
-                  </div>
+                  <span className="text-sm font-semibold text-[#e85d5d]">
+                    {format(selectedDate, "d MMM", { locale: pl })}
+                  </span>
                 )}
+                {selectedDate && selectedTime && <span className="text-white/20">·</span>}
                 {selectedTime && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <svg className="w-4 h-4 text-[#a61b1b]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="font-medium">{selectedTime}</span>
-                  </div>
+                  <span className="text-sm font-semibold text-[#e85d5d]">{selectedTime}</span>
                 )}
-                <div className="flex items-center gap-2 text-sm">
-                  <svg className="w-4 h-4 text-[#a61b1b]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <span className="font-medium">{guestCount}</span>
-                </div>
+                {(selectedDate || selectedTime) && <span className="text-white/20">·</span>}
+                <span className="text-sm text-white/50">{guestCount} {guestCount === 1 ? "osoba" : guestCount < 5 ? "osoby" : "osób"}</span>
               </div>
             )}
 
-            {/* Guests - always visible */}
-            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5">
+            {/* Guests */}
+            <div>
+              <label className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35 mb-3">Goście</label>
               <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold">Liczba gości</h3>
-                  <p className="text-xs text-white/50 mt-0.5">max. 10 osób</p>
-                </div>
-                <div className="flex items-center gap-3">
+                <p className="text-sm text-white/50">Liczba osób <span className="text-white/25">(max 10)</span></p>
+                <div className="flex items-center gap-0.5 bg-white/[0.04] rounded-full p-1 border border-white/[0.06]">
                   <button
                     type="button"
                     onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
-                    className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center text-xl font-medium hover:bg-white/20 transition-colors active:scale-95"
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-medium hover:bg-white/10 transition-colors active:scale-90"
                   >
                     −
                   </button>
-                  <span className="text-2xl font-bold w-8 text-center">{guestCount}</span>
+                  <span className="text-lg font-bold w-8 text-center tabular-nums">{guestCount}</span>
                   <button
                     type="button"
                     onClick={() => setGuestCount(Math.min(10, guestCount + 1))}
-                    className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center text-xl font-medium hover:bg-white/20 transition-colors active:scale-95"
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-medium hover:bg-white/10 transition-colors active:scale-90"
                   >
                     +
                   </button>
                 </div>
               </div>
             </div>
+            <div className="h-px bg-white/[0.06]" />
             
             {/* Calendar */}
-            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5">
-              <h3 className="font-semibold mb-3 flex items-center gap-2">
-                <span className="w-6 h-6 rounded-full bg-[#a61b1b] flex items-center justify-center text-xs font-bold">1</span>
-                Wybierz datę
-              </h3>
+            <div>
+              <label className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35 mb-3">Data</label>
               <style>{`
-                .rdp-mobile {
-                  --rdp-cell-size: 44px !important;
-                  --rdp-accent-color: #a61b1b !important;
+                .rdp-res {
+                  --rdp-cell-size: 42px !important;
+                  --rdp-accent-color: #c41e1e !important;
                   width: 100% !important;
                   margin: 0 auto !important;
                   font-family: inherit !important;
                 }
-                .rdp-mobile .rdp-months {
+                .rdp-res .rdp-months {
                   width: 100% !important;
                   justify-content: center !important;
                 }
-                .rdp-mobile .rdp-month {
+                .rdp-res .rdp-month {
                   width: 100% !important;
                 }
-                .rdp-mobile .rdp-table {
+                .rdp-res .rdp-table {
                   width: 100% !important;
                   border-collapse: separate !important;
-                  border-spacing: 2px !important;
+                  border-spacing: 2px 3px !important;
                 }
-                .rdp-mobile .rdp-caption {
+                .rdp-res .rdp-caption {
                   display: flex !important;
                   justify-content: space-between !important;
                   align-items: center !important;
-                  padding: 0 0 12px 0 !important;
+                  padding: 0 0 8px 0 !important;
                 }
-                .rdp-mobile .rdp-caption_label {
-                  font-size: 16px !important;
+                .rdp-res .rdp-caption_label {
+                  font-size: 15px !important;
                   font-weight: 700 !important;
                   text-transform: capitalize !important;
+                  letter-spacing: 0.01em !important;
                 }
-                .rdp-mobile .rdp-nav {
+                .rdp-res .rdp-nav {
                   display: flex !important;
-                  gap: 8px !important;
+                  gap: 4px !important;
                 }
-                .rdp-mobile .rdp-nav_button {
-                  width: 36px !important;
-                  height: 36px !important;
-                  border-radius: 10px !important;
-                  background: rgba(255,255,255,0.1) !important;
+                .rdp-res .rdp-nav_button {
+                  width: 32px !important;
+                  height: 32px !important;
+                  border-radius: 8px !important;
+                  background: rgba(255,255,255,0.06) !important;
                   display: flex !important;
                   align-items: center !important;
                   justify-content: center !important;
+                  transition: background 0.15s !important;
                 }
-                .rdp-mobile .rdp-nav_button:hover {
-                  background: rgba(255,255,255,0.15) !important;
+                .rdp-res .rdp-nav_button:hover {
+                  background: rgba(255,255,255,0.12) !important;
                 }
-                .rdp-mobile .rdp-head_cell {
-                  font-size: 11px !important;
-                  font-weight: 600 !important;
-                  color: rgba(255,255,255,0.4) !important;
+                .rdp-res .rdp-nav_button svg {
+                  width: 14px !important;
+                  height: 14px !important;
+                }
+                .rdp-res .rdp-head_cell {
+                  font-size: 10px !important;
+                  font-weight: 700 !important;
+                  color: rgba(255,255,255,0.3) !important;
                   text-transform: uppercase !important;
-                  padding: 8px 0 !important;
+                  letter-spacing: 0.08em !important;
+                  padding: 6px 0 !important;
                 }
-                .rdp-mobile .rdp-cell {
-                  padding: 1px !important;
+                .rdp-res .rdp-cell {
+                  padding: 0 !important;
                 }
-                .rdp-mobile .rdp-day {
-                  font-size: 15px !important;
+                .rdp-res .rdp-day {
+                  font-size: 14px !important;
                   font-weight: 500 !important;
-                  border-radius: 12px !important;
-                  transition: all 0.15s !important;
+                  border-radius: 10px !important;
+                  transition: all 0.15s ease !important;
+                  color: rgba(255,255,255,0.85) !important;
                 }
-                .rdp-mobile .rdp-day_selected {
-                  background: linear-gradient(135deg, #c41e1e 0%, #8a1414 100%) !important;
+                .rdp-res .rdp-day_selected {
+                  background: #c41e1e !important;
                   color: white !important;
                   font-weight: 700 !important;
-                  box-shadow: 0 4px 12px rgba(166,27,27,0.4) !important;
+                  box-shadow: 0 2px 12px rgba(196,30,30,0.35) !important;
                 }
-                .rdp-mobile .rdp-day_today:not(.rdp-day_selected) {
-                  background: rgba(166,27,27,0.2) !important;
-                  color: #ff6b6b !important;
+                .rdp-res .rdp-day_today:not(.rdp-day_selected) {
+                  color: #c41e1e !important;
                   font-weight: 700 !important;
                 }
-                .rdp-mobile .rdp-day:hover:not(.rdp-day_selected):not(.rdp-day_disabled) {
-                  background: rgba(255,255,255,0.1) !important;
+                .rdp-res .rdp-day:hover:not(.rdp-day_selected):not(.rdp-day_disabled) {
+                  background: rgba(255,255,255,0.08) !important;
                 }
-                .rdp-mobile .rdp-day_disabled {
-                  color: rgba(255,255,255,0.2) !important;
+                .rdp-res .rdp-day_disabled {
+                  color: rgba(255,255,255,0.15) !important;
                 }
               `}</style>
               <DayPicker
                 mode="single"
-                className="rdp rdp-mobile"
-                captionLayout="dropdown"
+                className="rdp rdp-res"
+                captionLayout="buttons"
                 month={currentMonth}
                 onMonthChange={setCurrentMonth}
                 selected={selectedDate}
@@ -613,93 +595,105 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
                 modifiersClassNames={modifiersClassNames as any}
               />
               {!restaurantId && (
-                <p className="mt-3 text-sm text-red-400 text-center">Nie wykryto lokalu.</p>
+                <p className="mt-3 text-xs text-red-400 text-center">Nie wykryto lokalu — wybierz miasto.</p>
               )}
             </div>
 
             {/* Time slots */}
             {selectedDate && (
-              <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5">
-                <h3 className="font-semibold mb-3 flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-[#a61b1b] flex items-center justify-center text-xs font-bold">2</span>
-                  Wybierz godzinę
-                </h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {generateSlots().map((slot) => {
-                    const dayKey = format(selectedDate, "yyyy-MM-dd");
-                    const full = (countsPerSlot[slot] || 0) >= MAX_PER_SLOT;
-                    const blocked = isSlotBlocked(dayKey, slot, blockedSlots);
-                    const disabled = full || blocked;
-                    const active = selectedTime === slot;
-                    return (
-                      <button
-                        key={slot}
-                        type="button"
-                        disabled={disabled}
-                        onClick={() => setSelectedTime(slot)}
-                        className={`relative h-12 rounded-xl text-sm font-semibold transition-all ${
-                          active
-                            ? "bg-gradient-to-r from-[#c41e1e] to-[#8a1414] text-white shadow-lg shadow-red-500/20"
-                            : "bg-white/5 text-white border border-white/10 hover:bg-white/10 hover:border-white/20"
-                        } ${disabled ? "opacity-30 cursor-not-allowed" : "active:scale-95"}`}
-                      >
-                        {slot}
-                      </button>
-                    );
-                  })}
+              <>
+                <div className="h-px bg-white/[0.06]" />
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35 mb-3">Godzina</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {generateSlots().map((slot) => {
+                      const dayKey = format(selectedDate, "yyyy-MM-dd");
+                      const full = (countsPerSlot[slot] || 0) >= MAX_PER_SLOT;
+                      const blocked = isSlotBlocked(dayKey, slot, blockedSlots);
+                      const disabled = full || blocked;
+                      const active = selectedTime === slot;
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => setSelectedTime(slot)}
+                          className={`h-11 rounded-xl text-sm font-semibold transition-all duration-150 ${
+                            active
+                              ? "bg-[#c41e1e] text-white shadow-[0_2px_12px_rgba(196,30,30,0.3)]"
+                              : "bg-white/[0.04] text-white/70 border border-white/[0.08] hover:bg-white/[0.08] hover:text-white"
+                          } ${disabled ? "opacity-20 cursor-not-allowed !border-transparent" : "active:scale-95"}`}
+                        >
+                          {slot}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {generateSlots().length === 0 && (
+                    <p className="text-sm text-white/40 text-center py-4">Brak dostępnych godzin</p>
+                  )}
                 </div>
-              </div>
+              </>
             )}
 
             {/* Contact form */}
             {selectedDate && selectedTime && (
-              <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5">
-                <h3 className="font-semibold mb-3 flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-[#a61b1b] flex items-center justify-center text-xs font-bold">3</span>
-                  Twoje dane
-                </h3>
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    placeholder="Imię i nazwisko"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3.5 outline-none focus:border-[#a61b1b]/50 focus:bg-white/[0.08] text-white placeholder:text-white/40 text-base transition-all"
-                  />
-                  <input
-                    type="tel"
-                    placeholder="Numer telefonu"
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3.5 outline-none focus:border-[#a61b1b]/50 focus:bg-white/[0.08] text-white placeholder:text-white/40 text-base transition-all"
-                  />
-                  <input
-                    type="email"
-                    placeholder="Adres e-mail"
-                    value={customerEmail}
-                    onChange={(e) => setCustomerEmail(e.target.value)}
-                    className={`w-full rounded-xl border bg-white/5 px-4 py-3.5 outline-none text-white placeholder:text-white/40 text-base transition-all ${
-                      customerEmail && !emailValid
-                        ? "border-red-500 focus:border-red-500"
-                        : "border-white/10 focus:border-[#a61b1b]/50 focus:bg-white/[0.08]"
-                    }`}
-                  />
-                  {!emailValid && customerEmail.length > 0 && (
-                    <p className="text-xs text-red-400">Nieprawidłowy adres e-mail</p>
-                  )}
-                  <textarea
-                    rows={2}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Uwagi do rezerwacji (opcjonalnie)"
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 outline-none focus:border-[#a61b1b]/50 focus:bg-white/[0.08] text-white placeholder:text-white/40 text-base resize-none transition-all"
-                  />
+              <>
+                <div className="h-px bg-white/[0.06]" />
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase tracking-[0.12em] text-white/35 mb-3">Dane kontaktowe</label>
+                  <div className="space-y-2.5">
+                    <div className="relative">
+                      <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/25" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+                      <input
+                        type="text"
+                        placeholder="Imię i nazwisko"
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] pl-10 pr-4 py-3 outline-none focus:border-[#c41e1e]/40 focus:bg-white/[0.06] text-white placeholder:text-white/30 text-[15px] transition-all"
+                      />
+                    </div>
+                    <div className="relative">
+                      <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/25" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                      <input
+                        type="tel"
+                        placeholder="Numer telefonu"
+                        value={customerPhone}
+                        onChange={(e) => setCustomerPhone(e.target.value)}
+                        className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] pl-10 pr-4 py-3 outline-none focus:border-[#c41e1e]/40 focus:bg-white/[0.06] text-white placeholder:text-white/30 text-[15px] transition-all"
+                      />
+                    </div>
+                    <div className="relative">
+                      <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/25" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                      <input
+                        type="email"
+                        placeholder="Adres e-mail"
+                        value={customerEmail}
+                        onChange={(e) => setCustomerEmail(e.target.value)}
+                        className={`w-full rounded-xl border bg-white/[0.03] pl-10 pr-4 py-3 outline-none text-white placeholder:text-white/30 text-[15px] transition-all ${
+                          customerEmail && !emailValid
+                            ? "border-red-500/60 focus:border-red-500"
+                            : "border-white/[0.08] focus:border-[#c41e1e]/40 focus:bg-white/[0.06]"
+                        }`}
+                      />
+                    </div>
+                    {!emailValid && customerEmail.length > 0 && (
+                      <p className="text-xs text-red-400 pl-1">Nieprawidłowy adres e-mail</p>
+                    )}
+                    <textarea
+                      rows={2}
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Uwagi (opcjonalnie)"
+                      className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 outline-none focus:border-[#c41e1e]/40 focus:bg-white/[0.06] text-white placeholder:text-white/30 text-[15px] resize-none transition-all"
+                    />
+                  </div>
                 </div>
-              </div>
+              </>
             )}
 
             {errorMsg && (
-              <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+              <div className="p-3.5 rounded-xl bg-red-500/[0.08] border border-red-500/[0.15] text-red-400 text-sm">
                 {errorMsg}
               </div>
             )}
@@ -707,14 +701,14 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
         </div>
 
         {/* Sticky CTA */}
-        <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-[#111111] via-[#111111] to-transparent pt-12"
-             style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)" }}>
+        <div className="absolute inset-x-0 bottom-0 p-5 bg-gradient-to-t from-[#0e0e0e] from-60% to-transparent pt-10"
+             style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)" }}>
           <button
             type="submit"
             onClick={handleSubmit}
             disabled={!isValid || loading}
-            className="w-full rounded-2xl py-4 text-base font-bold text-white disabled:opacity-40 transition-all active:scale-[0.98]
-                       bg-gradient-to-r from-[#c41e1e] to-[#8a1414] shadow-[0_8px_32px_rgba(166,27,27,0.4)]"
+            className="w-full rounded-xl py-3.5 text-[15px] font-bold text-white disabled:opacity-30 transition-all active:scale-[0.98]
+                       bg-[#c41e1e] shadow-[0_4px_20px_rgba(196,30,30,0.3)]"
           >
             {loading ? "Rezerwuję..." : isValid ? "Zarezerwuj stolik" : "Uzupełnij dane"}
           </button>
@@ -723,7 +717,7 @@ export default function ReservationModal({ isOpen, onClose, id }: Props) {
               type="button"
               onClick={handleSubmitAndGoToOrder}
               disabled={loading}
-              className="w-full mt-2 py-3 text-sm text-white/60 font-medium"
+              className="w-full mt-2.5 py-2.5 text-[13px] text-white/40 font-medium tracking-wide hover:text-white/60 transition-colors"
             >
               lub zarezerwuj i zamów jedzenie →
             </button>

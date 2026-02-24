@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { Manrope, Kaisei_Tokumin } from "next/font/google";
 import ClientWrapper from "@/components/ClientWrapper";
 import ClientProvider from "@/components/ClientProvider";
-import Footer from "@/components/Footer";
+
 import CookieBanner from "@/components/legal/CookieBanner";
 import AuthCookieSync from "@/components/AuthCookieSync";
 import AuthToast from "@/components/AuthToast";
@@ -91,7 +91,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             {children}
           </ClientWrapper>
         </ClientProvider>
-        <Footer />
         <CookieBanner />
 
         <noscript>

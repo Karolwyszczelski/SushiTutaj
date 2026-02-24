@@ -49,21 +49,21 @@ function getStatusColor(status?: string | null): string {
   switch ((status || "").toLowerCase()) {
     case "new":
     case "placed":
-      return "bg-blue-100 text-blue-700";
+      return "bg-blue-500/15 text-blue-400 lg:bg-blue-100 lg:text-blue-700";
     case "accepted":
-      return "bg-yellow-100 text-yellow-700";
+      return "bg-yellow-500/15 text-yellow-400 lg:bg-yellow-100 lg:text-yellow-700";
     case "preparing":
-      return "bg-orange-100 text-orange-700";
+      return "bg-orange-500/15 text-orange-400 lg:bg-orange-100 lg:text-orange-700";
     case "ready":
-      return "bg-green-100 text-green-700";
+      return "bg-green-500/15 text-green-400 lg:bg-green-100 lg:text-green-700";
     case "out_for_delivery":
-      return "bg-purple-100 text-purple-700";
+      return "bg-purple-500/15 text-purple-400 lg:bg-purple-100 lg:text-purple-700";
     case "completed":
-      return "bg-green-100 text-green-700";
+      return "bg-green-500/15 text-green-400 lg:bg-green-100 lg:text-green-700";
     case "cancelled":
-      return "bg-red-100 text-red-700";
+      return "bg-red-500/15 text-red-400 lg:bg-red-100 lg:text-red-700";
     default:
-      return "bg-gray-100 text-gray-700";
+      return "bg-white/10 text-white/60 lg:bg-gray-100 lg:text-gray-700";
   }
 }
 
@@ -91,8 +91,10 @@ function extractAddons(options?: any): string | null {
 }
 
 const inputCls =
-  "w-full rounded-xl bg-white border border-black/10 px-3 py-2 text-sm " +
-  "focus:outline-none focus:ring-2 focus:ring-[var(--accent-red,#a61b1b)] focus:border-transparent";
+  "w-full rounded-xl px-3.5 py-2.5 text-sm outline-none transition-all " +
+  "bg-white/[0.05] border border-white/[0.08] text-white placeholder:text-white/30 " +
+  "lg:bg-white lg:border-black/10 lg:text-black lg:placeholder:text-black/40 " +
+  "focus:ring-2 focus:ring-[var(--accent-red,#a61b1b)]/30 focus:border-[var(--accent-red,#a61b1b)]/40";
 
 type Tab = "auth" | "orders" | "loyalty" | "profile";
 type AuthMode = "login" | "register";
@@ -491,17 +493,14 @@ useEffect(() => {
         type="button"
         onClick={() => setTab(value)}
         className={clsx(
-          "flex-1 min-w-[110px] rounded-xl px-3 py-2 text-xs font-semibold border transition",
-          active ? gradBtn : "bg-white hover:bg-black/5 border-black/10"
+          "flex-1 rounded-xl px-3 py-2.5 text-xs font-semibold border transition-all",
+          active
+            ? "bg-[#c41e1e] border-[#c41e1e] text-white shadow-[0_2px_12px_rgba(196,30,30,0.25)]"
+            : "bg-white/[0.04] border-white/[0.06] text-white/60 hover:bg-white/[0.08]"
         )}
         aria-current={active ? "page" : undefined}
       >
-        <span
-          className={clsx(
-            "inline-flex items-center justify-center gap-2",
-            active ? "text-white" : "text-black"
-          )}
-        >
+        <span className="inline-flex items-center justify-center gap-1.5">
           {icon}
           <span className="whitespace-nowrap">{label}</span>
         </span>
@@ -511,7 +510,7 @@ useEffect(() => {
 
   return (
     <div
-      className="fixed inset-0 z-[70] bg-black/60 grid place-items-center px-4"
+      className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-end justify-center lg:items-center lg:px-4"
       role="dialog"
       aria-modal="true"
       onMouseDown={(e) => {
@@ -519,9 +518,29 @@ useEffect(() => {
       }}
     >
       <div
-        className="relative w-full max-w-3xl bg-white text-black shadow-2xl grid lg:grid-cols-2 rounded-2xl max-h-[92vh] overflow-hidden min-h-0"
+        className="relative w-full h-full bg-[#0e0e0e] text-white overflow-hidden flex flex-col
+                   lg:h-auto lg:max-w-3xl lg:max-h-[92vh] lg:bg-white lg:text-black lg:shadow-2xl lg:grid lg:grid-cols-2 lg:rounded-2xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
+        {/* Mobile header */}
+        <div className="shrink-0 lg:hidden" style={{ paddingTop: "max(env(safe-area-inset-top), 0px)" }}>
+          <div className="flex justify-center pt-3 pb-1">
+            <div className="w-10 h-1 rounded-full bg-white/20" />
+          </div>
+          <div className="flex items-center justify-between px-5 py-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-white/[0.08] active:bg-white/15 transition-colors"
+              aria-label="Zamknij"
+            >
+              <X size={18} strokeWidth={2.5} />
+            </button>
+            <h2 className="text-[17px] font-bold tracking-tight">Konto</h2>
+            <div className="w-9" />
+          </div>
+        </div>
+
         {/* LEWA: desktop tabs */}
         <aside className="hidden lg:flex flex-col gap-2 p-6 border-r border-black/10 overflow-y-auto">
           <h3 className="text-xl font-semibold mb-2">Konto</h3>
@@ -575,12 +594,12 @@ useEffect(() => {
         </aside>
 
         {/* PRAWA: treść */}
-        <div className="p-6 overflow-y-auto max-h-[85vh]">
-          {/* Zamknięcie */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 lg:p-6 lg:max-h-[85vh]">
+          {/* Zamknięcie (desktop only) */}
           <button
             onClick={onClose}
             aria-label="Zamknij"
-            className="absolute top-3 right-3 p-2 rounded-full hover:bg-black/5"
+            className="hidden lg:block absolute top-3 right-3 p-2 rounded-full hover:bg-black/5"
           >
             <X className="w-5 h-5" />
           </button>
@@ -589,10 +608,10 @@ useEffect(() => {
           {(err || msg) && (
             <div
               className={clsx(
-                "mb-3 rounded-xl px-3 py-2 text-sm",
+                "mb-4 rounded-xl px-3.5 py-2.5 text-sm",
                 err
-                  ? "bg-red-50 text-red-700 border border-red-200"
-                  : "bg-green-50 text-green-700 border border-green-200"
+                  ? "bg-red-500/10 text-red-400 border border-red-500/15 lg:bg-red-50 lg:text-red-700 lg:border-red-200"
+                  : "bg-green-500/10 text-green-400 border border-green-500/15 lg:bg-green-50 lg:text-green-700 lg:border-green-200"
               )}
             >
               {err || msg}
@@ -605,7 +624,7 @@ useEffect(() => {
               <h3 className="text-xl font-semibold mb-1">
                 Zaloguj się lub załóż konto
               </h3>
-              <p className="text-xs text-black/60 mb-4">
+              <p className="text-xs text-white/40 lg:text-black/60 mb-4">
                 Konto służy wyłącznie do obsługi zamówień w tym systemie. Hasła
                 są szyfrowane, nie wysyłamy spamu ani nie udostępniamy danych
                 dalej.
@@ -615,16 +634,16 @@ useEffect(() => {
                 <button
                   onClick={() => setAuthMode("login")}
                   className={clsx(
-                    "flex-1 rounded-xl px-3 py-2 text-sm border transition",
+                    "flex-1 rounded-xl px-3 py-2.5 text-sm border transition",
                     authMode === "login"
                       ? gradBtn
-                      : "bg-white hover:bg-black/5 border-black/10"
+                      : "bg-white/[0.06] hover:bg-white/10 border-white/[0.08] lg:bg-white lg:hover:bg-black/5 lg:border-black/10"
                   )}
                 >
                   <span
                     className={clsx(
-                      "inline-flex items-center justify-center gap-1",
-                      authMode === "login" ? "text-white" : "text-black"
+                      "inline-flex items-center justify-center gap-1.5",
+                      authMode === "login" ? "text-white" : "text-white/70 lg:text-black"
                     )}
                   >
                     <LogIn className="w-4 h-4" />
@@ -634,16 +653,16 @@ useEffect(() => {
                 <button
                   onClick={() => setAuthMode("register")}
                   className={clsx(
-                    "flex-1 rounded-xl px-3 py-2 text-sm border transition",
+                    "flex-1 rounded-xl px-3 py-2.5 text-sm border transition",
                     authMode === "register"
                       ? gradBtn
-                      : "bg-white hover:bg-black/5 border-black/10"
+                      : "bg-white/[0.06] hover:bg-white/10 border-white/[0.08] lg:bg-white lg:hover:bg-black/5 lg:border-black/10"
                   )}
                 >
                   <span
                     className={clsx(
-                      "inline-flex items-center justify-center gap-1",
-                      authMode === "register" ? "text-white" : "text-black"
+                      "inline-flex items-center justify-center gap-1.5",
+                      authMode === "register" ? "text-white" : "text-white/70 lg:text-black"
                     )}
                   >
                     <UserPlus className="w-4 h-4" />
@@ -654,7 +673,7 @@ useEffect(() => {
 
               {authMode === "login" ? (
                 <form onSubmit={handleLogin} className="space-y-3">
-                  <label className="text-xs text-black/70">
+                  <label className="text-xs text-white/50 lg:text-black/70">
                     E-mail
                     <input
                       className={clsx(inputCls, "mt-1")}
@@ -666,7 +685,7 @@ useEffect(() => {
                     />
                   </label>
 
-                  <label className="text-xs text-black/70">
+                  <label className="text-xs text-white/50 lg:text-black/70">
                     Hasło
                     <input
                       className={clsx(inputCls, "mt-1")}
@@ -678,7 +697,7 @@ useEffect(() => {
                     />
                   </label>
 
-                  <div className="flex items-center justify-between text-[11px] text-black/70">
+                  <div className="flex items-center justify-between text-[11px] text-white/40 lg:text-black/70">
                     <button
                       type="button"
                       onClick={handleSendReset}
@@ -700,7 +719,7 @@ useEffect(() => {
                     {busy ? "Logowanie…" : "Zaloguj się"}
                   </button>
 
-                  <p className="text-[11px] text-black/50 mt-2">
+                  <p className="text-[11px] text-white/30 lg:text-black/50 mt-2">
                     Logujesz się tylko do systemu zamówień tej restauracji. Nie
                     prosimy o żadne dane bankowe.
                   </p>
@@ -708,7 +727,7 @@ useEffect(() => {
               ) : (
                 <form onSubmit={handleRegister} className="space-y-3">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <label className="text-xs text-black/70 md:col-span-2">
+                    <label className="text-xs text-white/50 lg:text-black/70 md:col-span-2">
                       Imię i nazwisko (opcjonalnie)
                       <input
                         className={clsx(inputCls, "mt-1")}
@@ -719,7 +738,7 @@ useEffect(() => {
                       />
                     </label>
 
-                    <label className="text-xs text-black/70">
+                    <label className="text-xs text-white/50 lg:text-black/70">
                       Telefon (opcjonalnie)
                       <input
                         className={clsx(inputCls, "mt-1")}
@@ -730,7 +749,7 @@ useEffect(() => {
                       />
                     </label>
 
-                    <label className="text-xs text-black/70 md:col-span-2">
+                    <label className="text-xs text-white/50 lg:text-black/70 md:col-span-2">
                       E-mail (do logowania i potwierdzeń)
                       <input
                         className={clsx(inputCls, "mt-1")}
@@ -742,7 +761,7 @@ useEffect(() => {
                       />
                     </label>
 
-                    <label className="text-xs text-black/70">
+                    <label className="text-xs text-white/50 lg:text-black/70">
                       Hasło
                       <input
                         className={clsx(inputCls, "mt-1")}
@@ -754,7 +773,7 @@ useEffect(() => {
                       />
                     </label>
 
-                    <label className="text-xs text-black/70">
+                    <label className="text-xs text-white/50 lg:text-black/70">
                       Powtórz hasło
                       <input
                         className={clsx(inputCls, "mt-1")}
@@ -778,7 +797,7 @@ useEffect(() => {
                     {busy ? "Rejestracja…" : "Załóż konto"}
                   </button>
 
-                  <div className="mt-2 space-y-1 text-[11px] text-black/55">
+                  <div className="mt-2 space-y-1 text-[11px] text-white/30 lg:text-black/55">
                     <p>• Hasło jest przechowywane w postaci zaszyfrowanej (hash).</p>
                     <p>• Konto służy tylko do tej restauracji – nie łączymy go z innymi usługami.</p>
                     <p>• Zawsze możesz poprosić o usunięcie konta i danych.</p>
@@ -791,14 +810,14 @@ useEffect(() => {
           {/* ------ PANEL PO ZALOGOWANIU ------ */}
           {user && (
             <>
-              {/* MOBILE: zakładki jak na desktop */}
-              <div className="lg:hidden mb-3">
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <h3 className="text-lg font-semibold">Konto</h3>
+              {/* MOBILE: zakładki */}
+              <div className="lg:hidden mb-4">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <p className="text-xs text-white/35 font-medium truncate">{user.email}</p>
                   <button
                     type="button"
                     onClick={handleLogout}
-                    className="inline-flex items-center gap-2 rounded-full border border-black/10 px-3 py-1.5 text-xs text-red-700 hover:bg-red-50"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
                   >
                     <LogOut className="w-3 h-3" />
                     Wyloguj
@@ -830,11 +849,11 @@ useEffect(() => {
 
           {user && tab === "orders" && (
             <div>
-              <h3 className="text-xl font-semibold mb-3">Twoje zamówienia</h3>
+              <h3 className="text-lg font-bold mb-3 lg:text-xl">Twoje zamówienia</h3>
               {ordersLoading ? (
-                <p className="text-black/70 text-sm">Ładowanie…</p>
+                <p className="text-white/50 lg:text-black/70 text-sm">Ładowanie…</p>
               ) : orders.length === 0 ? (
-                <p className="text-black/70 text-sm">Brak zamówień.</p>
+                <p className="text-white/50 lg:text-black/70 text-sm">Brak zamówień.</p>
               ) : (
                 <div className="space-y-4">
                   {orders.map((o) => {
@@ -846,20 +865,20 @@ useEffect(() => {
                     return (
                       <div
                         key={String(o.id)}
-                        className="rounded-2xl border border-black/10 overflow-hidden bg-white shadow-sm"
+                        className="rounded-2xl border border-white/[0.06] overflow-hidden bg-white/[0.03] lg:border-black/10 lg:bg-white lg:shadow-sm"
                       >
                         {/* Nagłówek zamówienia */}
-                        <div className="px-4 py-3 bg-gradient-to-r from-black/[0.02] to-transparent border-b border-black/5">
+                        <div className="px-4 py-3 bg-gradient-to-r from-white/[0.02] to-transparent border-b border-white/[0.04] lg:from-black/[0.02] lg:border-black/5">
                           <div className="flex items-center justify-between gap-2 flex-wrap">
                             <div className="flex items-center gap-3">
-                              <span className="text-xs font-mono text-black/50">#{String(o.id).slice(-8)}</span>
+                              <span className="text-xs font-mono text-white/30 lg:text-black/50">#{String(o.id).slice(-8)}</span>
                               <span className={clsx(
                                 "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium",
                                 statusColor
                               )}>
                                 {statusLabel}
                               </span>
-                              <span className="text-xs text-black/60 bg-black/5 px-2 py-0.5 rounded-full">
+                              <span className="text-xs text-white/40 bg-white/[0.06] px-2 py-0.5 rounded-full lg:text-black/60 lg:bg-black/5">
                                 {optionLabel}
                               </span>
                             </div>
@@ -867,7 +886,7 @@ useEffect(() => {
                               {(o.total_price ?? 0).toFixed(2)} zł
                             </span>
                           </div>
-                          <div className="text-xs text-black/50 mt-1">
+                          <div className="text-xs text-white/30 lg:text-black/50 mt-1">
                             {o.created_at
                               ? new Date(o.created_at).toLocaleDateString("pl-PL", {
                                   weekday: "long",
@@ -884,7 +903,7 @@ useEffect(() => {
                         {/* Lista pozycji */}
                         {items.length > 0 && (
                           <div className="px-4 py-3">
-                            <div className="text-xs font-semibold text-black/40 uppercase tracking-wide mb-2">
+                            <div className="text-xs font-semibold text-white/25 lg:text-black/40 uppercase tracking-wide mb-2">
                               Co zamawiałeś
                             </div>
                             <ul className="space-y-2">
@@ -898,17 +917,17 @@ useEffect(() => {
                                     <div className="flex-1 min-w-0">
                                       <div className="font-medium text-sm truncate">{it.name}</div>
                                       {addons && (
-                                        <div className="text-xs text-black/50 truncate">{addons}</div>
+                                        <div className="text-xs text-white/35 lg:text-black/50 truncate">{addons}</div>
                                       )}
                                     </div>
-                                    <span className="text-sm text-black/70 shrink-0">
+                                    <span className="text-sm text-white/50 lg:text-black/70 shrink-0">
                                       {((it.unit_price || 0) * (it.quantity || 1)).toFixed(2)} zł
                                     </span>
                                   </li>
                                 );
                               })}
                               {items.length > 5 && (
-                                <li className="text-xs text-black/50 italic">
+                                <li className="text-xs text-white/30 lg:text-black/50 italic">
                                   +{items.length - 5} więcej pozycji…
                                 </li>
                               )}
@@ -917,7 +936,7 @@ useEffect(() => {
                         )}
 
                         {/* Przycisk zamów ponownie */}
-                        <div className="px-4 py-3 border-t border-black/5 bg-black/[0.01]">
+                        <div className="px-4 py-3 border-t border-white/[0.04] bg-white/[0.01] lg:border-black/5 lg:bg-black/[0.01]">
                           <button
                             onClick={() => reorder(o.id)}
                             className={clsx(
@@ -937,11 +956,11 @@ useEffect(() => {
               
               {/* Informacja o pełnej historii */}
               {orders.length >= 10 && (
-                <div className="mt-4 p-4 rounded-xl bg-black/5 text-center">
-                  <p className="text-sm text-black/70">
+                <div className="mt-4 p-4 rounded-xl bg-white/[0.03] lg:bg-black/5 text-center">
+                  <p className="text-sm text-white/50 lg:text-black/70">
                     Wyświetlamy tylko 10 ostatnich zamówień.
                   </p>
-                  <p className="text-sm text-black/70 mt-1">
+                  <p className="text-sm text-white/50 lg:text-black/70 mt-1">
                     Potrzebujesz pełnej historii? Napisz do nas:{" "}
                     <a 
                       href="mailto:kontakt@sushitutaj.pl" 
@@ -957,8 +976,8 @@ useEffect(() => {
 
           {user && tab === "loyalty" && (
             <div>
-              <h3 className="text-xl font-semibold mb-3">Program lojalnościowy</h3>
-              <p className="text-sm text-black/70 mb-3">
+              <h3 className="text-lg font-bold mb-3 lg:text-xl">Program lojalnościowy</h3>
+              <p className="text-sm text-white/50 lg:text-black/70 mb-3">
                Naklejki naliczamy za <b>zrealizowane</b> zamówienia wg kwoty wydanej:
   <br />• <b>od 50 zł</b> → 1 naklejka
   <br />• <b>od 200 zł</b> → 2 naklejki
@@ -968,7 +987,7 @@ useEffect(() => {
               </p>
 
                                           {loyaltyLoading ? (
-                <p className="text-sm text-black/70">Ładujemy stan programu…</p>
+                <p className="text-sm text-white/50 lg:text-black/70">Ładujemy stan programu…</p>
               ) : (
                 <LoyaltyProgress
                   stickers={loyaltyStickers ?? 0}
@@ -977,11 +996,11 @@ useEffect(() => {
               )}
 
               {/* UX: żeby user nie utknął — nagrody wybiera się w koszyku */}
-              <div className="mt-4 rounded-xl border border-black/10 bg-black/[0.02] p-3">
+              <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.03] p-3 lg:border-black/10 lg:bg-black/[0.02]">
                 <div className="text-sm font-semibold mb-1">
                   Jak odebrać nagrodę?
                 </div>
-                <p className="text-xs text-black/70 leading-relaxed">
+                <p className="text-xs text-white/50 lg:text-black/70 leading-relaxed">
                   Nagrody wybierasz <b>w koszyku</b> podczas składania zamówienia.
                   Jeśli masz ≥4 naklejki — zobaczysz opcję darmowej rolki (1× na cykl).
                   Jeśli masz 8 — zobaczysz opcję <b>−30%</b> (spala 8 naklejek).
@@ -1007,7 +1026,7 @@ useEffect(() => {
                         setTimeout(() => router.push(menuHref as any), 0);
 
                       }}
-                      className="rounded-xl px-4 py-2 font-semibold border border-black/10 hover:bg-black/5"
+                      className="rounded-xl px-4 py-2 font-semibold border border-white/[0.08] hover:bg-white/[0.06] lg:border-black/10 lg:hover:bg-black/5"
                     >
                       Dodaj coś jeszcze
                     </button>
@@ -1015,7 +1034,7 @@ useEffect(() => {
                 </div>
               </div>
 
-              <p className="text-xs text-black/50 mt-2">
+              <p className="text-xs text-white/30 lg:text-black/50 mt-2">
                 Promocje naliczamy przy składaniu zamówienia, po weryfikacji statusu poprzednich.
               </p>
             </div>
@@ -1023,7 +1042,7 @@ useEffect(() => {
 
           {user && tab === "profile" && (
             <div className="max-w-xl">
-              <h3 className="text-xl font-semibold mb-3">Profil i adres</h3>
+              <h3 className="text-lg font-bold mb-3 lg:text-xl">Profil i adres</h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <input
@@ -1073,7 +1092,7 @@ useEffect(() => {
                 </button>
               </div>
 
-              <h4 className="mt-6 mb-2 font-semibold">Zmiana hasła</h4>
+              <h4 className="mt-6 mb-2 font-bold text-sm">Zmiana hasła</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <input
                   className={inputCls}
@@ -1128,21 +1147,21 @@ function LoyaltyProgress({
 
   return (
     <div>
-      <div className="grid grid-cols-8 gap-1">
+      <div className="grid grid-cols-8 gap-1.5">
         {cells.map((filled, i) => (
           <div
             key={i}
             className={clsx(
-              "h-8 rounded-md border",
+              "h-8 rounded-lg border transition-colors",
               filled
-                ? "border-transparent bg-[var(--accent-red,#a61b1b)]"
-                : "border-black/15 bg-black/5"
+                ? "border-transparent bg-[#c41e1e] shadow-[0_1px_6px_rgba(196,30,30,0.25)]"
+                : "border-white/[0.08] bg-white/[0.04] lg:border-black/15 lg:bg-black/5"
             )}
           />
         ))}
       </div>
 
-      <div className="mt-2 text-sm">
+      <div className="mt-2.5 text-sm text-white/60 lg:text-black/70">
         {usable >= 8 ? (
           <span className="font-semibold">
             Masz {usable} naklejek — w koszyku możesz wybrać <b>−30%</b> (spalimy 8 naklejek).
