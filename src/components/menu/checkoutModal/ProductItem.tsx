@@ -126,16 +126,14 @@ export const ProductItem: React.FC<{
   const inferredCat = inferCategoryFromName(prodInfo?.name || prod.name);
   const subcat = (inferredCat || prodInfo?.subcategory || "").toLowerCase();
 
-  const isSet = subcat === "zestawy";
-  const isSpec = subcat === "specjały";
-
-  // Zestaw miesiąca: blokujemy zamiany w zestawie
-const isSetMonth =
-  isSet &&
-  (() => {
+  // Zestaw miesiąca: wykrywamy po nazwie NIEZALEŻNIE od kategorii
+  const isSetMonth = (() => {
     const n = normalizePlain(String(prodInfo?.name || prod.name || ""));
     return n.includes("zestaw miesiaca") || n.includes("zestaw miesiac");
   })();
+
+  const isSet = subcat === "zestawy" || isSetMonth;
+  const isSpec = subcat === "specjały";
 
 
   const productSubcat =
@@ -732,7 +730,7 @@ const showSauces = !isDrink && !isDessert;
               ))}
            </div>
         )}
-        {isSet && setRows.length > 0 && (
+        {isSet && !isSetMonth && setRows.length > 0 && (
           <div className="space-y-3">
             {/* Nagłówek sekcji składu */}
             <div className="flex items-center justify-between">
