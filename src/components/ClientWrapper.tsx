@@ -14,7 +14,9 @@ const CheckoutModal = dynamic(() => import("./menu/CheckoutModal"), {
 
 export default function ClientWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isAdminRoute = pathname.startsWith("/admin");  const shellActive = useMobileNavStore((s) => s.shellActive);  
+  const isAdminRoute = pathname.startsWith("/admin");
+  const isRootPage = pathname === "/";
+  const shellActive = useMobileNavStore((s) => s.shellActive);  
   // Wykryj mobile dla ukrycia FloatingQuickActions (na mobile mamy MobileBottomNav)
   const [isMobile, setIsMobile] = useState(false);
   
@@ -45,11 +47,11 @@ export default function ClientWrapper({ children }: { children: React.ReactNode 
 
   return (
     <>
-      {!isAdminRoute && !shellActive && <Header />}
+      {!isAdminRoute && !shellActive && !isRootPage && <Header />}
       {children}
       {/* Na mobile FloatingQuickActions jest zastąpiony przez MobileBottomNav w MobileAppShell */}
-      {!isAdminRoute && !isMobile && !shellActive && <FloatingQuickActions />}
-      {!isAdminRoute && !shellActive && <Footer />}
+      {!isAdminRoute && !isMobile && !shellActive && !isRootPage && <FloatingQuickActions />}
+      {!isAdminRoute && !shellActive && !isRootPage && <Footer />}
       {!isAdminRoute && <CheckoutModal />}
     </>
   );

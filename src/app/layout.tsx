@@ -1,7 +1,7 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
-import { Manrope, Kaisei_Tokumin } from "next/font/google";
+import { Manrope, Playfair_Display } from "next/font/google";
 import ClientWrapper from "@/components/ClientWrapper";
 import ClientProvider from "@/components/ClientProvider";
 
@@ -68,9 +68,9 @@ const sans = Manrope({
   variable: "--font-sans",
   display: "swap",
 });
-const display = Kaisei_Tokumin({
-  subsets: ["latin"],
-  weight: "400",
+const display = Playfair_Display({
+  subsets: ["latin", "latin-ext"],
+  weight: ["400", "700"],
   variable: "--font-display",
   display: "swap",
 });

@@ -197,10 +197,15 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        <div key={activeTab} className="tab-crossfade min-h-full">
-          {activeTab === "home" && <MobileHeroView onGoToMenu={goToMenu} />}
-          {activeTab === "menu" && <MobileMenuView />}
-          {activeTab === "set" && <MobileSetView />}
+        {/* Keep all tab views mounted but hidden — prevents re-import & re-render lag */}
+        <div className={activeTab === "home" ? "min-h-full" : "hidden"}>
+          <MobileHeroView onGoToMenu={goToMenu} />
+        </div>
+        <div className={activeTab === "menu" ? "min-h-full" : "hidden"}>
+          <MobileMenuView />
+        </div>
+        <div className={activeTab === "set" ? "min-h-full" : "hidden"}>
+          <MobileSetView />
         </div>
       </main>
 
