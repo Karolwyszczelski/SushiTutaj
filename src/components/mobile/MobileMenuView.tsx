@@ -555,8 +555,7 @@ export default function MobileMenuView() {
     <div className="flex flex-col min-h-full bg-[#0a0a0a]">
       {/* ── Sticky Header ── */}
       <div 
-        className="sticky top-0 z-20 bg-[#0a0a0a]/95 backdrop-blur-lg"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}
+        className="sticky top-0 z-20 bg-[#0a0a0a]/95 backdrop-blur-lg pt-2"
       >
         {/* Title row */}
         <div className="px-5 mb-3">
