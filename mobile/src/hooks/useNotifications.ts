@@ -4,7 +4,6 @@ import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import { Platform, AppState, AppStateStatus } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import Constants from "expo-constants";
 import {
   FCM_REGISTER_URL,
   NOTIFICATION_CHANNEL_ID,
@@ -75,26 +74,6 @@ export function useNotifications(): UseNotificationsReturn {
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   // ------------------------------------------------------------------
-  // Inicjalizacja kanału Android
-  // ------------------------------------------------------------------
-  useEffect(() => {
-    if (Platform.OS === "android") {
-      Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNEL_ID, {
-        name: NOTIFICATION_CHANNEL_NAME,
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 300, 100, 300, 100, 400],
-        lightColor: "#FF0000",
-        lockscreenVisibility:
-          Notifications.AndroidNotificationVisibility.PUBLIC,
-        bypassDnd: true, // Przebija tryb Nie Przeszkadzać
-        sound: "new_order.mp3", // Niestandardowy dźwięk (z assets)
-        enableVibrate: true,
-        enableLights: true,
-      });
-    }
-  }, []);
-
-  // ------------------------------------------------------------------
   // Uzyskaj token FCM
   // ------------------------------------------------------------------
   const getToken = useCallback(async (): Promise<string | null> => {
@@ -102,6 +81,27 @@ export function useNotifications(): UseNotificationsReturn {
     if (!Device.isDevice) {
       console.warn("[FCM] Push notifications nie działają na symulatorze");
       return null;
+    }
+
+    // KRYTYCZNE: Na Androidzie 13+ (API 33) kanał powiadomień MUSI istnieć
+    // PRZED żądaniem uprawnień i tokena. Bez kanału dialog uprawnień się
+    // nie pojawi. Docs Expo:
+    //   "setNotificationChannelAsync must be called before
+    //    getDevicePushTokenAsync or getExpoPushTokenAsync"
+    if (Platform.OS === "android") {
+      await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNEL_ID, {
+        name: NOTIFICATION_CHANNEL_NAME,
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 300, 100, 300, 100, 400],
+        lightColor: "#FF0000",
+        lockscreenVisibility:
+          Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: true,
+        sound: "new_order.mp3",
+        enableVibrate: true,
+        enableLights: true,
+      });
+      console.log("[FCM] ✅ Kanał powiadomień '" + NOTIFICATION_CHANNEL_ID + "' gotowy");
     }
 
     // Sprawdź uprawnienia
@@ -120,44 +120,24 @@ export function useNotifications(): UseNotificationsReturn {
       return null;
     }
 
-    // Uzyskaj Expo Push Token (wrapper na FCM/APNs)
+    // Uzyskaj NATYWNY FCM token (bezpośrednio, bez pośrednictwa Expo Push API)
+    // Dzięki temu serwer wysyła powiadomienia bezpośrednio przez FCM HTTP v1 API
+    // (nie potrzeba konfiguracji FCM V1 credentials w EAS Dashboard).
+    // expo-notifications i tak przechwytuje wszystkie FCM wiadomości dzięki
+    // wbudowanemu FirebaseMessagingService → handleNotification działa normalnie.
     try {
-      const easProjectId = Constants.expoConfig?.extra?.eas?.projectId;
-      if (!easProjectId) {
-        console.error("[FCM] Brak projectId w app.config.js → extra.eas.projectId");
-        setError("Brak konfiguracji push (projectId)");
-        return null;
-      }
-
-      console.log("[FCM] Requesting Expo Push Token, projectId:", easProjectId);
-
-      const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: easProjectId,
-      });
-
-      const token = tokenData.data;
-      console.log("[FCM] ✅ Token uzyskany:", token.slice(0, 30) + "...");
+      console.log("[FCM] Requesting native FCM device token...");
+      const deviceToken = await Notifications.getDevicePushTokenAsync();
+      const token = deviceToken.data as string;
+      console.log("[FCM] ✅ FCM token uzyskany:", token.slice(0, 30) + "...");
 
       await AsyncStorage.setItem(STORAGE_KEY_TOKEN, token);
       setPushToken(token);
       return token;
     } catch (err: any) {
-      console.error("[FCM] getExpoPushTokenAsync failed:", err?.message || err);
-      // Fallback: spróbuj natywny Device Push Token (FCM bezpośrednio)
-      try {
-        console.log("[FCM] Trying fallback getDevicePushTokenAsync...");
-        const deviceToken = await Notifications.getDevicePushTokenAsync();
-        const token = deviceToken.data as string;
-        console.log("[FCM] ✅ Device token uzyskany:", token.slice(0, 30) + "...");
-        
-        await AsyncStorage.setItem(STORAGE_KEY_TOKEN, token);
-        setPushToken(token);
-        return token;
-      } catch (deviceErr: any) {
-        console.error("[FCM] ❌ Nie udało się uzyskać tokena:", deviceErr?.message || deviceErr);
-        setError("Nie udało się uzyskać tokena push: " + (deviceErr?.message || "unknown"));
-        return null;
-      }
+      console.error("[FCM] ❌ Nie udało się uzyskać tokena FCM:", err?.message || err);
+      setError("Nie udało się uzyskać tokena push: " + (err?.message || "unknown"));
+      return null;
     }
   }, []);
 

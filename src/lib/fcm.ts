@@ -194,10 +194,11 @@ async function sendExpoPush(
     for (let i = 0; i < tickets.length; i++) {
       const ticket = tickets[i];
       if (ticket?.status === "error") {
-        if (
-          ticket.details?.error === "DeviceNotRegistered" ||
-          ticket.details?.error === "InvalidCredentials"
-        ) {
+        // Usuń token TYLKO gdy urządzenie jest wyrejestrowane — to oznacza
+        // że token jest naprawdę martwy i nie ma sensu go trzymać.
+        // NIE usuwaj przy InvalidCredentials — to błąd konfiguracji serwera
+        // (brak FCM V1 credentials w EAS), a nie problem z urządzeniem.
+        if (ticket.details?.error === "DeviceNotRegistered") {
           deadTokens.push(tokens[i]);
         }
         console.error(
