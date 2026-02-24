@@ -371,7 +371,6 @@ export default function App() {
 
   const [restaurantSlug, setRestaurantSlug] = useState<string | null>(null);
   const [hasAuthToken, setHasAuthToken] = useState(false);
-  const [debugLog, setDebugLog] = useState<string[]>([]);
 
   // ------------------------------------------------------------------
   // Ukryj NATYWNY splash od razu → nasz loading overlay przejmuje
@@ -446,13 +445,9 @@ export default function App() {
   useEffect(() => {
     if (pushToken && restaurantSlug && hasAuthToken) {
       console.log("[App] Rejestruję FCM token dla:", restaurantSlug, "pushToken:", pushToken?.slice(0, 25) + "...");
-      setDebugLog((prev) => [...prev.slice(-4), "REG → " + restaurantSlug]);
-      void registerToken(restaurantSlug).then(() => {
-        setDebugLog((prev) => [...prev.slice(-4), "REG DONE state=" + registrationState]);
-      });
+      void registerToken(restaurantSlug);
     } else {
       console.log("[App] FCM wait: token=" + !!pushToken + " slug=" + !!restaurantSlug + " auth=" + !!hasAuthToken);
-      setDebugLog((prev) => [...prev.slice(-4), "WAIT tk=" + !!pushToken + " sl=" + !!restaurantSlug + " au=" + !!hasAuthToken]);
     }
   }, [pushToken, restaurantSlug, hasAuthToken, registerToken]);
 
@@ -482,7 +477,6 @@ export default function App() {
           case "AUTH_TOKEN":
             if (msg.token) {
               console.log("[App] Auth token z WebView (Supabase access_token), len=" + msg.token.length);
-              setDebugLog((prev) => [...prev.slice(-4), "AUTH ✓ len=" + msg.token.length]);
               void AsyncStorage.setItem("@sushi_auth_token", msg.token).then(() => {
                 setHasAuthToken(true);
               });
@@ -492,7 +486,6 @@ export default function App() {
           case "RESTAURANT_SLUG":
             if (msg.slug && msg.slug !== restaurantSlug) {
               console.log("[App] Restaurant slug z WebView:", msg.slug);
-              setDebugLog((prev) => [...prev.slice(-4), "SLUG ✓ " + msg.slug]);
               setRestaurantSlug(msg.slug);
             }
             break;
@@ -503,7 +496,6 @@ export default function App() {
 
           case "DEBUG":
             console.log("[App] DEBUG z WebView:", msg.message);
-            setDebugLog((prev) => [...prev.slice(-4), "WV: " + msg.message.substring(0, 60)]);
             break;
 
           default:
@@ -691,18 +683,6 @@ export default function App() {
         </View>
       )}
 
-      {/* DEBUG: Tymczasowy banner — pokaż stan FCM */}
-      {isReady && (
-        <View style={styles.debugBanner}>
-          <Text style={styles.debugText}>
-            FCM: {registrationState} | tk={pushToken ? "✓" : "✗"} sl={restaurantSlug || "✗"} au={hasAuthToken ? "✓" : "✗"}
-          </Text>
-          {debugLog.slice(-3).map((line, i) => (
-            <Text key={i} style={styles.debugText}>{line}</Text>
-          ))}
-          {pushError && <Text style={[styles.debugText, { color: "#f87171" }]}>ERR: {pushError}</Text>}
-        </View>
-      )}
     </SafeAreaView>
   );
 }
@@ -800,20 +780,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: "center",
   },
-  debugBanner: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "rgba(0,0,0,0.85)",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    zIndex: 100,
-    elevation: 100,
-  },
-  debugText: {
-    color: "#4ade80",
-    fontSize: 10,
-    fontFamily: Platform.OS === "android" ? "monospace" : "Menlo",
-  },
+
 });
