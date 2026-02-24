@@ -20,7 +20,7 @@ export default function RotatingPlate() {
   }, []);
 
   return (
-    <div className="pointer-events-none select-none relative mx-auto mt-10 sm:mt-16 w-[260px] sm:w-[420px] aspect-square">
+    <div className="pointer-events-none select-none relative mx-auto w-[260px] sm:w-[380px] lg:w-[420px] xl:w-[480px] aspect-square">
       <Image
         src="/assets/plate.png"
         alt="Zestaw sushi"
