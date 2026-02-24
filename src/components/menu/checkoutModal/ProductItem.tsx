@@ -1097,8 +1097,12 @@ if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
                   </button>
                 )}
 
-                {/* Dodatki */}
-                {EXTRAS.filter(ex => canUseExtraForRow(ex) || (prod.addons ?? []).includes(extraKey(ex))).map((ex) => {
+                {/* Dodatki — exclude "Ryba pieczona" when row bake button is already shown */}
+                {EXTRAS.filter(ex => {
+                  // Jeśli pieczenie (rowBake) jest już pokazane osobnym przyciskiem, nie pokazuj "Ryba pieczona"
+                  if (ex === "Ryba pieczona" && rawRow && rowBakePossible) return false;
+                  return canUseExtraForRow(ex) || (prod.addons ?? []).includes(extraKey(ex));
+                }).map((ex) => {
                   const key = extraKey(ex);
                   const on = (prod.addons ?? []).includes(key);
 
