@@ -247,25 +247,39 @@ async function sendFcmNative(
 
   await Promise.allSettled(
     tokens.map(async (token) => {
+      // =====================================================================
+      // KRYTYCZNE: DATA-ONLY MESSAGE (brak klucza "notification"!)
+      // =====================================================================
+      // Firebase docs: gdy apka jest w tle/zabita, wiadomości z kluczem
+      // "notification" → Android SAM wyświetla powiadomienie z domyślnym
+      // dźwiękiem (ignorując nasz new_order.mp3!), a onMessageReceived
+      // NIE jest wywoływane.
+      //
+      // Data-only message → onMessageReceived ZAWSZE się odpala →
+      // expo-notifications ma pełną kontrolę nad dźwiękiem, wibracją,
+      // kanałem i wyświetlaniem. To standard w apkach delivery/POS.
+      // =====================================================================
       const message = {
         message: {
           token,
-          notification: {
+          // BRAK "notification" — celowo! Patrz komentarz wyżej.
+          data: {
+            // expo-notifications rozpoznaje te klucze i buduje powiadomienie:
             title: payload.title || "Nowe zamówienie",
             body: payload.body || "Pojawiło się nowe zamówienie.",
-          },
-          data: {
+            // Dodatkowe dane dla naszej apki:
             type: payload.type || "order",
             url: payload.url || "/admin/pickup-order",
+            channelId: "orders",
+            sound: "new_order",
             timestamp: String(Date.now()),
           },
           android: {
             priority: "HIGH" as const,
-            // KRYTYCZNE: direct_boot_ok = true → powiadomienie dociera
-            // nawet gdy tablet jest zablokowany PIN-em/wzorem.
-            // Bez tego flaga — Android trzyma powiadomienie w kolejce
-            // aż użytkownik odblokuje urządzenie!
+            // direct_boot_ok → dociera na zablokowany tablet (PIN/wzór)
             direct_boot_ok: true,
+            // TTL 4h — FCM trzyma wiadomość jeśli urządzenie offline
+            ttl: "14400s",
             notification: {
               channel_id: "orders",
               sound: "new_order",
@@ -273,9 +287,21 @@ async function sendFcmNative(
               vibrate_timings: ["0s", "0.3s", "0.1s", "0.3s", "0.1s", "0.4s"],
               visibility: "PUBLIC" as const,
               notification_priority: "PRIORITY_MAX" as const,
+              // sticky: true → powiadomienie NIE znika po kliknięciu
+              // (ważne na tablecie restauracyjnym — pracownik może kliknąć
+              // przypadkowo i stracić powiadomienie o zamówieniu)
+              sticky: true,
+              // LED miganie — na tabletach z LED
+              default_light_settings: false,
+              light_settings: {
+                color: { red: 1, green: 0, blue: 0, alpha: 1 },
+                light_on_duration: "0.5s",
+                light_off_duration: "0.5s",
+              },
+              // DENY proxy — Google Play Services NIE przechwytuje
+              // powiadomienia (unikamy opóźnień/modyfikacji)
+              proxy: "DENY" as const,
             },
-            // TTL 4 godziny — FCM trzyma wiadomość jeśli urządzenie offline
-            ttl: "14400s",
           },
         },
       };
