@@ -1986,7 +1986,7 @@ const TimeQuickSet: React.FC<{
 
   const dirtyRef = useRef(false);
   const orderIdRef = useRef(order.id);
-  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [val, setVal] = useState<string>(initial || "");
   const [localErr, setLocalErr] = useState<string | null>(null);
 
