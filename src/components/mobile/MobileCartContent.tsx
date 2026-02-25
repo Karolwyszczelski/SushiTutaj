@@ -12,7 +12,7 @@ interface MobileCartContentProps {
 }
 
 /* ── helpers ── */
-const MIN_ORDER = 50; // minimum order value for delivery (zł)
+const MIN_ORDER = 50; // informational minimum (delivery only, enforced in CheckoutModal)
 
 const slugify = (s: string) =>
   s
@@ -141,8 +141,8 @@ export default function MobileCartContent({ onClose }: MobileCartContentProps) {
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11px] text-white/50 font-medium">
             {remaining > 0
-              ? `Brakuje ${remaining.toFixed(0)} zł do minimum`
-              : "Minimum zamówienia osiągnięte ✓"}
+              ? `Brakuje ${remaining.toFixed(0)} zł do min. dostawy`
+              : "Minimum dostawy osiągnięte ✓"}
           </span>
           <span className="text-[11px] text-white/40">
             {total.toFixed(0)} / {MIN_ORDER} zł
@@ -210,8 +210,7 @@ export default function MobileCartContent({ onClose }: MobileCartContentProps) {
           <button
             type="button"
             onClick={handleCheckout}
-            disabled={remaining > 0}
-            className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-br from-[#b31217] to-[#7a0b0b] text-white text-[15px] font-semibold rounded-full shadow-[0_4px_20px_rgba(179,18,23,0.35)] active:scale-[0.97] transition-all disabled:opacity-40 disabled:active:scale-100"
+            className="flex items-center gap-2 px-6 py-3.5 bg-gradient-to-br from-[#b31217] to-[#7a0b0b] text-white text-[15px] font-semibold rounded-full shadow-[0_4px_20px_rgba(179,18,23,0.35)] active:scale-[0.97] transition-all"
           >
             Zamów
             <ChevronRight className="w-4 h-4 opacity-70" />

@@ -20,7 +20,6 @@ import {
 } from "react-native";
 import { WebView, WebViewNavigation } from "react-native-webview";
 import * as SplashScreen from "expo-splash-screen";
-import { activateKeepAwakeAsync } from "expo-keep-awake";
 import { registerRootComponent } from "expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -32,12 +31,6 @@ import {
 
 // Nie ukrywaj splash screena automatycznie
 try { SplashScreen.preventAutoHideAsync(); } catch {}
-
-// KRYTYCZNE: Trzymaj ekran tabletu włączony!
-// Tablet leży na ladzie restauracji — ekran MUSI być zawsze aktywny.
-// Bez tego Android/MIUI usypia proces → powiadomienia nie dochodzą
-// dopóki użytkownik nie odblokuje ekranu.
-activateKeepAwakeAsync("admin-kiosk").catch(() => {});
 
 // =============================================================================
 // JavaScript wstrzykiwany do WebView
