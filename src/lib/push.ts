@@ -325,8 +325,7 @@ export async function sendPushForRestaurant(
       .insert(webPushLogs)
       .then(({ error: logErr }) => {
         if (logErr) console.error("[push] delivery log error:", logErr.message);
-      })
-      .catch(() => {});
+      });
   }
 
   // =========================================================================

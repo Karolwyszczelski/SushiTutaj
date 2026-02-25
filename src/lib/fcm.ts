@@ -255,8 +255,7 @@ async function sendExpoPush(
           } else if (!e) {
             console.log(`[fcm/expo] 📝 Zapisano ${receiptRows.length} ticket(ów) do sprawdzenia`);
           }
-        })
-        .catch(() => {});
+        });
     }
   } catch (err: any) {
     console.error("[fcm/expo] send error:", err?.message || err);
@@ -659,7 +658,7 @@ export async function sendFcmForRestaurant(
   // =========================================================================
   // BATCH DB OPERATIONS
   // =========================================================================
-  const dbOps: Promise<any>[] = [];
+  const dbOps: PromiseLike<any>[] = [];
 
   // Reset failure_count dla tokenów które pomyślnie otrzymały push
   if (idsToResetFailure.length > 0) {
