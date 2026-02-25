@@ -91,6 +91,9 @@ export async function POST(req: NextRequest) {
     }
 
     // 5) Upsert FCM token (on conflict on token kolumna)
+    //    KRYTYCZNE: Resetujemy failure_count na 0 przy każdej rejestracji!
+    //    Heartbeat co 5 min z tabletu resetuje counter →
+    //    nawet jeśli token miał chwilowy UNREGISTERED, apka żyje.
     const { error: upsertErr } = await supabaseAdmin
       .from("admin_fcm_tokens")
       .upsert(
@@ -101,6 +104,9 @@ export async function POST(req: NextRequest) {
           token,
           token_type: tokenType,
           device_info: deviceInfo,
+          failure_count: 0,
+          last_failure_at: null,
+          last_failure_reason: null,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "token" }

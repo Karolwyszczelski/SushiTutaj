@@ -36,6 +36,11 @@ export type PushPayload = {
   url?: string;
 };
 
+export type PushOptions = {
+  /** Klucz idempotentności — jeśli podany, zapobiega duplikatom */
+  idempotencyKey?: string;
+};
+
 type AdminPushSubscriptionRow = {
   id: string;
   endpoint: string | null;
@@ -57,9 +62,37 @@ function maskEndpoint(endpoint?: string | null) {
 
 export async function sendPushForRestaurant(
   restaurantId: string,
-  payload: PushPayload
+  payload: PushPayload,
+  options?: PushOptions
 ): Promise<void> {
-  console.log("[push] Wysyłam dla restauracji:", restaurantId);
+  console.log("[push] Wysyłam dla restauracji:", restaurantId, options?.idempotencyKey ? `(key: ${options.idempotencyKey})` : "");
+
+  // =========================================================================
+  // IDEMPOTENTNOŚĆ — zapobiega duplikatom powiadomień
+  // Jeśli ten sam klucz już był przetworzony, pomijamy
+  // =========================================================================
+  if (options?.idempotencyKey) {
+    try {
+      const { error: insertErr } = await supabaseAdmin
+        .from("notification_idempotency")
+        .insert({
+          key: options.idempotencyKey,
+          restaurant_id: restaurantId,
+        });
+
+      if (insertErr) {
+        // Unique constraint violation = duplikat!
+        if (insertErr.code === "23505") {
+          console.log("[push] ⚡ Idempotency hit — pomijam duplikat:", options.idempotencyKey);
+          return;
+        }
+        // Inny błąd — loguj ale kontynuuj (lepiej wysłać duplikat niż nic)
+        console.warn("[push] idempotency check error (kontynuuję):", insertErr.message);
+      }
+    } catch (e: any) {
+      console.warn("[push] idempotency check failed (kontynuuję):", e?.message);
+    }
+  }
 
   // =========================================================================
   // KRYTYCZNE: Uruchom FCM NATYCHMIAST równolegle z web-push!
@@ -130,6 +163,8 @@ export async function sendPushForRestaurant(
   const payloadJson = JSON.stringify(basePayload);
 
   const deadIds: string[] = [];
+  // Śledzenie rzeczywistych wyników wysyłki per subskrypcja (dla delivery log)
+  const webPushResults: { rowId: string; endpoint: string | null; status: "sent" | "failed" | "dead_token"; errorCode?: string; errorMessage?: string }[] = [];
 
   const results = await Promise.allSettled(
     subs.map(async (row) => {
@@ -141,12 +176,14 @@ export async function sendPushForRestaurant(
             sub = JSON.parse(sub);
           } catch {
             deadIds.push(row.id);
+            webPushResults.push({ rowId: row.id, endpoint: row.endpoint, status: "dead_token", errorCode: "INVALID_JSON" });
             return;
           }
         }
 
         if (!sub || typeof sub !== "object" || !sub.endpoint) {
           deadIds.push(row.id);
+          webPushResults.push({ rowId: row.id, endpoint: row.endpoint, status: "dead_token", errorCode: "INVALID_SUB" });
           return;
         }
 
@@ -173,6 +210,7 @@ export async function sendPushForRestaurant(
             });
             // Sukces - przerywamy pętlę
             lastError = null;
+            webPushResults.push({ rowId: row.id, endpoint: row.endpoint, status: "sent" });
             break;
           } catch (err: any) {
             lastError = err;
@@ -183,6 +221,7 @@ export async function sendPushForRestaurant(
             // 404/410 = unsubscribed/expired - nie ma sensu ponawiać
             if (status === 404 || status === 410) {
               deadIds.push(row.id);
+              webPushResults.push({ rowId: row.id, endpoint: row.endpoint, status: "dead_token", errorCode: `HTTP_${status}`, errorMessage: err?.message });
               return;
             }
             
@@ -204,6 +243,14 @@ export async function sendPushForRestaurant(
           const status = Number(
             lastError?.statusCode ?? lastError?.status ?? lastError?.status_code ?? NaN
           );
+          // Nie udało się po retries — zapisz jako failed
+          webPushResults.push({
+            rowId: row.id,
+            endpoint: row.endpoint,
+            status: "failed",
+            errorCode: Number.isFinite(status) ? `HTTP_${status}` : "UNKNOWN",
+            errorMessage: (lastError?.message || String(lastError)).slice(0, 200),
+          });
           console.error(
             "[push] send error after retries ->",
             maskEndpoint(row.endpoint),
@@ -219,9 +266,17 @@ export async function sendPushForRestaurant(
 
         if (status === 404 || status === 410) {
           deadIds.push(row.id);
+          webPushResults.push({ rowId: row.id, endpoint: row.endpoint, status: "dead_token", errorCode: `HTTP_${status}` });
           return;
         }
 
+        webPushResults.push({
+          rowId: row.id,
+          endpoint: row.endpoint,
+          status: "failed",
+          errorCode: "UNEXPECTED",
+          errorMessage: (err?.message || String(err)).slice(0, 200),
+        });
         console.error(
           "[push] unexpected error ->",
           maskEndpoint(row.endpoint),
@@ -247,6 +302,31 @@ export async function sendPushForRestaurant(
     if (delErr) {
       console.error("[push] cleanup delete error:", delErr.message);
     }
+  }
+
+  // =========================================================================
+  // DELIVERY LOGGING — rzeczywiste wyniki per subskrypcja (nie założenia!)
+  // Fire-and-forget: nie blokuje odpowiedzi
+  // =========================================================================
+  if (webPushResults.length > 0) {
+    const webPushLogs = webPushResults.map((r) => ({
+      restaurant_id: restaurantId,
+      idempotency_key: options?.idempotencyKey || null,
+      channel: "web_push",
+      status: r.status,
+      target_token_suffix: maskEndpoint(r.endpoint),
+      error_code: r.errorCode || null,
+      error_message: r.errorMessage || null,
+      payload_title: basePayload.title.slice(0, 120),
+      payload_type: basePayload.type,
+    }));
+    supabaseAdmin
+      .from("notification_delivery_log")
+      .insert(webPushLogs)
+      .then(({ error: logErr }) => {
+        if (logErr) console.error("[push] delivery log error:", logErr.message);
+      })
+      .catch(() => {});
   }
 
   // =========================================================================

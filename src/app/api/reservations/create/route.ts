@@ -16,7 +16,7 @@ async function pushAdminNotification(
   type: NotificationType,
   title: string,
   message?: string | null,
-  opts?: { url?: string }
+  opts?: { url?: string; idempotencyKey?: string }
 ) {
   try {
     // 1) zapis do admin_notifications
@@ -27,14 +27,22 @@ async function pushAdminNotification(
       message: message ?? null,
     });
 
-    // 2) web-push (do tabletu)
+    // 2) web-push + FCM (do tabletu)
     const url = opts?.url || "/admin";
-    await sendPushForRestaurant(restaurant_id, {
-      type,
-      title,
-      body: message || title,
-      url,
-    });
+    await sendPushForRestaurant(
+      restaurant_id,
+      {
+        type,
+        title,
+        body: message || title,
+        url,
+      },
+      {
+        // KRYTYCZNE: klucz MUSI być deterministyczny!
+        // Bez klucza lepiej nie ustawiać — idempotency check jest pomijany.
+        idempotencyKey: opts?.idempotencyKey,
+      }
+    );
   } catch (e: any) {
     apiLogger.error("admin_notifications.insert/push error", { error: e?.message || e });
   }
@@ -340,7 +348,10 @@ await pushAdminNotification(
   "reservation",
   `Nowa rezerwacja #${ins.id}`,
   `${day} ${timeHHMM} • ${guests} os.`,
-  { url: adminUrl }
+  {
+    url: adminUrl,
+    idempotencyKey: `reservation-${ins.id}-${rid}`,
+  }
 );
 
     return NextResponse.json({ ok: true, id: ins?.id }, { status: 201 });

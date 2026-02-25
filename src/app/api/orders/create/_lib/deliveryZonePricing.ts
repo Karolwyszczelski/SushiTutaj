@@ -45,7 +45,8 @@ export async function enforceDeliveryZonePricing(
       restaurant_id,
       "error",
       "Błąd stref dostawy",
-      zErr?.message || "Brak konfiguracji stref dostawy."
+      zErr?.message || "Brak konfiguracji stref dostawy.",
+      { idempotencyKey: `delivery-zone-error-${restaurant_id}-${new Date().toISOString().slice(0, 10)}` }
     );
 
     return NextResponse.json(
@@ -62,7 +63,8 @@ export async function enforceDeliveryZonePricing(
       restaurant_id,
       "error",
       "Brak współrzędnych restauracji",
-      "Uzupełnij współrzędne lokalu, aby działała dostawa."
+      "Uzupełnij współrzędne lokalu, aby działała dostawa.",
+      { idempotencyKey: `coordinates-error-${restaurant_id}-${new Date().toISOString().slice(0, 10)}` }
     );
 
     return NextResponse.json(

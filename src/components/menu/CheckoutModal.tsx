@@ -2147,7 +2147,7 @@ return (
 
                       {/* START: lista pozycji koszyka */}
 {/* START: lista pozycji koszyka */}
-<div className="space-y-3 pb-[calc(10rem+env(safe-area-inset-bottom))] checkout-stagger">
+<div className="space-y-3 pb-[calc(10rem+env(safe-area-inset-bottom))] lg:pb-2 checkout-stagger">
   {items.map((item: any, idx: number) => {
     const itemKey = getItemKey(item, idx);
     return (
@@ -2202,15 +2202,17 @@ return (
   </div>
 </div>
 
-{/* DESKTOP: przycisk Dalej (bo mobile footer ma lg:hidden) */}
-<div className="hidden lg:flex justify-end pt-4">
-  <button
-    onClick={nextStep}
-    disabled={items.length === 0}
-    className={`px-6 py-3 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
-  >
-    Dalej →
-  </button>
+{/* DESKTOP: sticky footer – zawsze widoczny (żeby user nie myślał że nie może zamówić) */}
+<div className="-mx-6 sticky bottom-0 z-30 mt-4 border-t checkout-divider bg-white/95 backdrop-blur px-6 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] hidden lg:block">
+  <div className="flex items-center justify-end">
+    <button
+      onClick={nextStep}
+      disabled={items.length === 0}
+      className={`min-w-[220px] py-3 rounded-xl font-semibold ${accentBtn} disabled:opacity-50`}
+    >
+      Dalej →
+    </button>
+  </div>
 </div>
 
 

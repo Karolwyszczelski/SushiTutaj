@@ -139,10 +139,25 @@ export type FcmPayload = {
   url?: string;
 };
 
+/**
+ * Rezultat wysyłki dla pojedynczego tokena.
+ * Używane do inteligentnego zarządzania cyklem życia tokenów:
+ * - "sent" → token działa, resetuj failure_count
+ * - "failed" + UNREGISTERED → inkrementuj failure_count, usuń po >= 3
+ * - "failed" + INVALID_ARGUMENT → NIE usuwaj (błąd payloadu, nie tokena!)
+ * - "failed" + inne → loguj, nie usuwaj
+ */
+export type TokenSendResult = {
+  token: string;
+  status: "sent" | "failed";
+  errorCode?: string;
+};
+
 type FcmTokenRow = {
   id: string;
   token: string;
   token_type: "fcm" | "expo";
+  failure_count: number;
 };
 
 // =============================================================================
@@ -151,11 +166,12 @@ type FcmTokenRow = {
 
 async function sendExpoPush(
   tokens: string[],
-  payload: FcmPayload
-): Promise<string[]> {
+  payload: FcmPayload,
+  restaurantId?: string
+): Promise<TokenSendResult[]> {
   if (tokens.length === 0) return [];
 
-  const deadTokens: string[] = [];
+  const results: TokenSendResult[] = [];
 
   // Expo Push API — batch do 100
   const messages = tokens.map((token) => ({
@@ -185,34 +201,72 @@ async function sendExpoPush(
 
     if (!res.ok) {
       console.error("[fcm/expo] Push API error:", res.status);
-      return deadTokens;
+      // Serwer Expo niedostępny → wszystkie tokeny oznacz jako failed
+      // ALE NIE usuwaj — to problem po stronie Expo, nie urządzenia!
+      for (const token of tokens) {
+        results.push({ token, status: "failed", errorCode: `EXPO_HTTP_${res.status}` });
+      }
+      return results;
     }
 
     const result = await res.json();
     const tickets = result?.data || [];
 
-    for (let i = 0; i < tickets.length; i++) {
+    // =====================================================================
+    // EXPO PUSH RECEIPTS — zapisz ticket IDs do bazy
+    // Expo wymaga sprawdzenia ticketów po 15-30 min żeby wykryć
+    // DeviceNotRegistered które nie przychodzą natychmiast.
+    // Bez tego martwe tokeny Expo żyją w bazie tygodniami!
+    // =====================================================================
+    const receiptRows: { ticket_id: string; expo_token: string; restaurant_id: string }[] = [];
+
+    for (let i = 0; i < tokens.length; i++) {
       const ticket = tickets[i];
-      if (ticket?.status === "error") {
-        // Usuń token TYLKO gdy urządzenie jest wyrejestrowane — to oznacza
-        // że token jest naprawdę martwy i nie ma sensu go trzymać.
-        // NIE usuwaj przy InvalidCredentials — to błąd konfiguracji serwera
-        // (brak FCM V1 credentials w EAS), a nie problem z urządzeniem.
-        if (ticket.details?.error === "DeviceNotRegistered") {
-          deadTokens.push(tokens[i]);
-        }
+      if (!ticket || ticket?.status === "error") {
+        const errCode = ticket?.details?.error || "UNKNOWN";
+        results.push({ token: tokens[i], status: "failed", errorCode: errCode });
         console.error(
           "[fcm/expo] ticket error:",
-          ticket.details?.error,
+          errCode,
           tokens[i].slice(0, 30)
         );
+      } else {
+        results.push({ token: tokens[i], status: "sent" });
+        // Zapisz ticket ID do późniejszego sprawdzenia receiptu
+        if (ticket.id && restaurantId) {
+          receiptRows.push({
+            ticket_id: ticket.id,
+            expo_token: tokens[i],
+            restaurant_id: restaurantId,
+          });
+        }
       }
+    }
+
+    // Fire-and-forget: zapisz tickety do sprawdzenia później
+    // UNIQUE(ticket_id) chroni przed duplikatami — ignorujemy 23505
+    if (receiptRows.length > 0) {
+      supabaseAdmin
+        .from("expo_push_receipts")
+        .insert(receiptRows)
+        .then(({ error: e }) => {
+          if (e && e.code !== "23505") {
+            console.error("[fcm/expo] receipt insert error:", e.message);
+          } else if (!e) {
+            console.log(`[fcm/expo] 📝 Zapisano ${receiptRows.length} ticket(ów) do sprawdzenia`);
+          }
+        })
+        .catch(() => {});
     }
   } catch (err: any) {
     console.error("[fcm/expo] send error:", err?.message || err);
+    // Błąd sieci → oznacz wszystkie jako failed, NIE usuwaj
+    for (const token of tokens) {
+      results.push({ token, status: "failed", errorCode: "NETWORK_ERROR" });
+    }
   }
 
-  return deadTokens;
+  return results;
 }
 
 // =============================================================================
@@ -222,10 +276,10 @@ async function sendExpoPush(
 async function sendFcmNative(
   tokens: string[],
   payload: FcmPayload
-): Promise<string[]> {
+): Promise<TokenSendResult[]> {
   if (tokens.length === 0 || !HAS_FCM) return [];
 
-  const deadTokens: string[] = [];
+  const results: TokenSendResult[] = [];
 
   // Retry getAccessToken — przy cold start lub expiracji tokena OAuth
   let accessToken: string;
@@ -235,8 +289,13 @@ async function sendFcmNative(
       break;
     } catch (err: any) {
       console.error(`[fcm] getAccessToken attempt ${attempt}/3 failed:`, err?.message || err);
-      if (attempt === 3) return deadTokens;
-      // Wymuś odświeżenie cache'owanego tokena
+      if (attempt === 3) {
+        // OAuth failed → oznacz wszystkie tokeny jako failed (NIE usuwaj!)
+        for (const token of tokens) {
+          results.push({ token, status: "failed", errorCode: "OAUTH_FAILED" });
+        }
+        return results;
+      }
       cachedAccessToken = null;
       tokenExpiresAt = 0;
       await new Promise((r) => setTimeout(r, 500 * attempt));
@@ -322,23 +381,39 @@ async function sendFcmNative(
 
           if (res.ok) {
             // Sukces — powiadomienie wysłane do FCM
+            results.push({ token, status: "sent" });
             break;
           }
 
           const errBody = await res.json().catch(() => ({}));
           const errCode = errBody?.error?.details?.[0]?.errorCode || "";
+          const errMsg = errBody?.error?.message || "";
 
-          // Token martwy — nie próbuj ponownie
-          if (
-            errCode === "UNREGISTERED" ||
-            errCode === "INVALID_ARGUMENT" ||
-            res.status === 404
-          ) {
-            deadTokens.push(token);
-            console.error(
-              "[fcm] dead token:",
+          // =================================================================
+          // UNREGISTERED = token naprawdę martwy (odinstalowana apka, etc.)
+          // Ale NIE usuwamy natychmiast! Inkrementujemy failure_count.
+          // Usunięcie dopiero po >= 3 kolejnych UNREGISTERED.
+          // =================================================================
+          if (errCode === "UNREGISTERED" || res.status === 404) {
+            results.push({ token, status: "failed", errorCode: "UNREGISTERED" });
+            console.warn(
+              "[fcm] ⚠️ UNREGISTERED token (nie usuwam od razu!):",
               res.status,
-              errCode,
+              token.slice(0, 20) + "..."
+            );
+            break;
+          }
+
+          // =================================================================
+          // INVALID_ARGUMENT = problem z PAYLOADEM, NIE z tokenem!
+          // Token jest prawidłowy, ale wiadomość ma zły format.
+          // NIGDY nie usuwaj tokena! To nasz bug, nie problem urządzenia.
+          // =================================================================
+          if (errCode === "INVALID_ARGUMENT") {
+            results.push({ token, status: "failed", errorCode: "INVALID_ARGUMENT" });
+            console.error(
+              "[fcm] 🐛 INVALID_ARGUMENT (bug w payloadzie, token OK!):",
+              errMsg.slice(0, 200),
               token.slice(0, 20) + "..."
             );
             break;
@@ -363,8 +438,10 @@ async function sendFcmNative(
             continue;
           }
 
+          // Ostateczny błąd po retries — NIE usuwaj tokena!
+          results.push({ token, status: "failed", errorCode: errCode || `HTTP_${res.status}` });
           console.error(
-            "[fcm] send error after retries:",
+            "[fcm] send error after retries (token zachowany):",
             res.status,
             errCode,
             token.slice(0, 20) + "..."
@@ -378,14 +455,81 @@ async function sendFcmNative(
           );
           if (attempt < MAX_RETRIES) {
             await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt - 1)));
+          } else {
+            // Wyczerpane retries z powodu sieci — NIE usuwaj tokena!
+            results.push({ token, status: "failed", errorCode: "NETWORK_ERROR" });
           }
         }
       }
     })
   );
 
-  return deadTokens;
+  return results;
 }
+
+// =============================================================================
+// DELIVERY LOGGING — fire-and-forget do notification_delivery_log
+// =============================================================================
+
+async function logDeliveries(
+  restaurantId: string,
+  results: TokenSendResult[],
+  payload: FcmPayload,
+  channel: string
+): Promise<void> {
+  try {
+    if (results.length === 0) return;
+    const rows = results.map((r) => ({
+      restaurant_id: restaurantId,
+      channel,
+      status: r.status,
+      target_token_suffix: r.token.slice(-20),
+      error_code: r.errorCode || null,
+      error_message: r.errorCode && r.errorCode !== "sent" ? `Token failure: ${r.errorCode}` : null,
+      payload_title: (payload.title || "").slice(0, 120),
+      payload_type: payload.type || "order",
+    }));
+    const { error } = await supabaseAdmin
+      .from("notification_delivery_log")
+      .insert(rows);
+    if (error) {
+      console.error("[fcm] delivery log insert error:", error.message);
+    }
+  } catch (err: any) {
+    // Delivery logging NIGDY nie powinno blokować wysyłki
+    console.error("[fcm] delivery log error (non-fatal):", err?.message);
+  }
+}
+
+// =============================================================================
+// Kody błędów które oznaczają DEFINITYWNIE martwy token
+// Tylko te mogą inkrementować failure_count
+// =============================================================================
+const DEAD_TOKEN_ERROR_CODES = new Set([
+  "UNREGISTERED",        // FCM: token wyrejestrowany (odinstalowana apka)
+  "DeviceNotRegistered", // Expo: token wyrejestrowany
+  "NOT_FOUND",           // FCM HTTP 404
+]);
+
+// Kody błędów które NIGDY nie powinny wpływać na token
+// (problem po stronie serwera lub payloadu, nie urządzenia)
+const SAFE_ERROR_CODES = new Set([
+  "INVALID_ARGUMENT",    // Zły format wiadomości — nasz bug!
+  "SENDER_ID_MISMATCH", // Zła konfiguracja Firebase
+  "QUOTA_EXCEEDED",     // Rate limit — chwilowy
+  "INTERNAL",           // Błąd Google — chwilowy
+  "UNAVAILABLE",        // FCM niedostępne — chwilowy
+  "OAUTH_FAILED",       // Nasz OAuth nie działa
+  "NETWORK_ERROR",      // Nasz problem z siecią
+  "InvalidCredentials", // Expo: zła konfiguracja serwera
+]);
+
+// Ile kolejnych UNREGISTERED/DeviceNotRegistered musi wystąpić
+// zanim token zostanie usunięty. Chroni przed:
+// - Chwilowymi problemami FCM
+// - Temporary UNREGISTERED podczas aktualizacji Play Services
+// - Race conditions między wysyłką a re-rejestracją
+const FAILURE_THRESHOLD = 3;
 
 // =============================================================================
 // GŁÓWNA FUNKCJA — wysyłanie do wszystkich natywnych urządzeń restauracji
@@ -395,10 +539,10 @@ export async function sendFcmForRestaurant(
   restaurantId: string,
   payload: FcmPayload
 ): Promise<void> {
-  // Pobierz wszystkie tokeny FCM dla restauracji
+  // Pobierz wszystkie tokeny FCM dla restauracji (Z failure_count!)
   const { data, error } = await supabaseAdmin
     .from("admin_fcm_tokens")
-    .select("id, token, token_type")
+    .select("id, token, token_type, failure_count")
     .eq("restaurant_id", restaurantId)
     .limit(200);
 
@@ -430,10 +574,11 @@ export async function sendFcmForRestaurant(
   const fcmTokens = rows.filter((r) => r.token_type === "fcm");
 
   // Wysyłaj równolegle
-  const [deadExpo, deadFcm] = await Promise.all([
+  const [expoResults, fcmResults] = await Promise.all([
     sendExpoPush(
       expoTokens.map((r) => r.token),
-      payload
+      payload,
+      restaurantId
     ),
     sendFcmNative(
       fcmTokens.map((r) => r.token),
@@ -441,24 +586,149 @@ export async function sendFcmForRestaurant(
     ),
   ]);
 
-  // Wyczyść martwe tokeny
-  const allDeadTokens = [...deadExpo, ...deadFcm];
-  if (allDeadTokens.length > 0) {
-    const deadIds = rows
-      .filter((r) => allDeadTokens.includes(r.token))
-      .map((r) => r.id);
+  const allResults = [...expoResults, ...fcmResults];
 
-    if (deadIds.length > 0) {
-      const { error: delErr } = await supabaseAdmin
-        .from("admin_fcm_tokens")
-        .delete()
-        .in("id", deadIds);
+  // =========================================================================
+  // INTELIGENTNE ZARZĄDZANIE CYKLEM ŻYCIA TOKENÓW
+  // Zamiast natychmiastowego usuwania, używamy systemu failure counting:
+  // - Sukces → reset failure_count do 0
+  // - UNREGISTERED/DeviceNotRegistered → increment failure_count
+  // - failure_count >= 3 → dopiero WTEDY usuń token
+  // - INVALID_ARGUMENT/NETWORK_ERROR → NIE ruszaj tokena!
+  // =========================================================================
 
-      if (delErr) {
-        console.error("[fcm] cleanup error:", delErr.message);
+  const tokenToRow = new Map(rows.map((r) => [r.token, r]));
+
+  const idsToResetFailure: string[] = [];
+  const tokensToIncrement: { id: string; newCount: number; reason: string }[] = [];
+  const idsToDelete: string[] = [];
+
+  for (const result of allResults) {
+    const row = tokenToRow.get(result.token);
+    if (!row) continue;
+
+    if (result.status === "sent") {
+      // ✅ Sukces! Jeśli token miał wcześniejsze błędy, zresetuj counter
+      if (row.failure_count > 0) {
+        idsToResetFailure.push(row.id);
+      }
+    } else {
+      // ❌ Błąd wysyłki
+      const code = result.errorCode || "UNKNOWN";
+
+      if (DEAD_TOKEN_ERROR_CODES.has(code)) {
+        // Token MOŻE być martwy — inkrementuj counter
+        const newCount = (row.failure_count || 0) + 1;
+
+        if (newCount >= FAILURE_THRESHOLD) {
+          // Przekroczony próg → token naprawdę martwy, usuń
+          idsToDelete.push(row.id);
+          console.warn(
+            `[fcm] 🗑️ Token TRWALE martwy po ${newCount} failures:`,
+            code,
+            row.token.slice(0, 20) + "..."
+          );
+        } else {
+          // Jeszcze nie osiągnął progu → inkrementuj i czekaj
+          tokensToIncrement.push({ id: row.id, newCount, reason: code });
+          console.warn(
+            `[fcm] ⚠️ Token failure ${newCount}/${FAILURE_THRESHOLD}:`,
+            code,
+            row.token.slice(0, 20) + "...",
+            "(NIE usuwam — czekam na więcej dowodów)"
+          );
+        }
+      } else if (SAFE_ERROR_CODES.has(code)) {
+        // Bezpieczny błąd — problem po naszej stronie, NIE ruszaj tokena
+        console.warn(
+          "[fcm] ℹ️ Bezpieczny błąd (token OK):",
+          code,
+          row.token.slice(0, 20) + "..."
+        );
       } else {
-        console.log(`[fcm] Usunięto ${deadIds.length} martwych tokenów`);
+        // Nieznany błąd — loguj ale NIE usuwaj
+        console.warn(
+          "[fcm] ❓ Nieznany błąd (token zachowany):",
+          code,
+          row.token.slice(0, 20) + "..."
+        );
       }
     }
+  }
+
+  // =========================================================================
+  // BATCH DB OPERATIONS
+  // =========================================================================
+  const dbOps: Promise<any>[] = [];
+
+  // Reset failure_count dla tokenów które pomyślnie otrzymały push
+  if (idsToResetFailure.length > 0) {
+    dbOps.push(
+      supabaseAdmin
+        .from("admin_fcm_tokens")
+        .update({
+          failure_count: 0,
+          last_failure_at: null,
+          last_failure_reason: null,
+          updated_at: new Date().toISOString(),
+        })
+        .in("id", idsToResetFailure)
+        .then(({ error: e }) => {
+          if (e) console.error("[fcm] reset failure_count error:", e.message);
+          else if (idsToResetFailure.length > 0)
+            console.log(`[fcm] ✅ Reset failure_count dla ${idsToResetFailure.length} tokenów`);
+        })
+    );
+  }
+
+  // Inkrementuj failure_count dla potencjalnie martwych tokenów
+  for (const { id, newCount, reason } of tokensToIncrement) {
+    dbOps.push(
+      supabaseAdmin
+        .from("admin_fcm_tokens")
+        .update({
+          failure_count: newCount,
+          last_failure_at: new Date().toISOString(),
+          last_failure_reason: reason,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .then(({ error: e }) => {
+          if (e) console.error("[fcm] increment failure_count error:", e.message);
+        })
+    );
+  }
+
+  // Usuń TYLKO tokeny które przekroczyły próg failure_count
+  if (idsToDelete.length > 0) {
+    dbOps.push(
+      supabaseAdmin
+        .from("admin_fcm_tokens")
+        .delete()
+        .in("id", idsToDelete)
+        .then(({ error: e }) => {
+          if (e) console.error("[fcm] delete dead tokens error:", e.message);
+          else console.log(`[fcm] 🗑️ Usunięto ${idsToDelete.length} trwale martwych tokenów`);
+        })
+    );
+  }
+
+  // Delivery logging (fire-and-forget — nie blokuje odpowiedzi)
+  dbOps.push(
+    logDeliveries(restaurantId, fcmResults, payload, "fcm"),
+    logDeliveries(restaurantId, expoResults, payload, "expo")
+  );
+
+  // Wykonaj wszystkie operacje DB równolegle
+  await Promise.allSettled(dbOps);
+
+  // Podsumowanie
+  const sentCount = allResults.filter((r) => r.status === "sent").length;
+  const failedCount = allResults.filter((r) => r.status === "failed").length;
+  if (failedCount > 0) {
+    console.warn(
+      `[fcm] Podsumowanie: ${sentCount} sent, ${failedCount} failed,`,
+      `${idsToDelete.length} usunięte, ${tokensToIncrement.length} z inkrementowanym failure_count`
+    );
   }
 }

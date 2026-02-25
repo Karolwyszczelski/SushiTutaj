@@ -435,7 +435,10 @@ loyalty_applied: n.loyalty_applied ?? false,
       `Kwota: ${n.total_price.toFixed(2)} zł, opcja: ${optLabel(
         n.selected_option
       )}`,
-      { url: `/admin/pickup-order?restaurant=${restaurantSlug}` }
+      {
+        url: `/admin/pickup-order?restaurant=${restaurantSlug}`,
+        idempotencyKey: `order-${newOrderId}-${restaurant_id}`,
+      }
     );
 
     // NOWE: Jeśli zamówienie ma reservation_id, zaktualizuj rezerwację z powiązaniem
