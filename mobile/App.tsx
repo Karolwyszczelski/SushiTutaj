@@ -16,6 +16,7 @@ import {
   Platform,
   Linking,
   TouchableOpacity,
+  AppState,
 } from "react-native";
 import { WebView, WebViewNavigation } from "react-native-webview";
 import * as SplashScreen from "expo-splash-screen";
@@ -278,6 +279,7 @@ const INJECTED_JS = `
       var match = document.cookie.match(/restaurant_slug=([^;]+)/);
       if (match) slug = decodeURIComponent(match[1]);
       if (!slug) slug = localStorage.getItem('restaurant_slug');
+      if (!slug) { try { slug = new URLSearchParams(window.location.search).get('restaurant'); } catch(eu) {} }
       
       if (slug) {
         window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -298,7 +300,7 @@ const INJECTED_JS = `
     }
   }
   sendSlug();
-  setInterval(sendSlug, 10000);
+  setInterval(sendSlug, 3000);
 
   // --- 4. Ukryj elementy niepotrzebne w natywnej apce ---
   try {
@@ -371,6 +373,8 @@ export default function App() {
 
   const [restaurantSlug, setRestaurantSlug] = useState<string | null>(null);
   const [hasAuthToken, setHasAuthToken] = useState(false);
+  // Counter: inkrementowany gdy app wraca z tła → wymusza re-rejestrację FCM
+  const [foregroundCount, setForegroundCount] = useState(0);
 
   // ------------------------------------------------------------------
   // Ukryj NATYWNY splash od razu → nasz loading overlay przejmuje
@@ -420,6 +424,21 @@ export default function App() {
   }, [canGoBack]);
 
   // ------------------------------------------------------------------
+  // Foreground detection: wymusza re-rejestrację FCM po powrocie z tła
+  // KRYTYCZNE: Gdy tablet jest zablokowany dłuższy czas, auth token
+  // mógł wygasnąć. Po odblokowaniu musimy wymusić ponowną rejestrację.
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        console.log("[App] Foreground detected — wymuszam re-rejestrację FCM");
+        setForegroundCount((c) => c + 1);
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  // ------------------------------------------------------------------
   // Nawigacja po kliknięciu powiadomienia
   // ------------------------------------------------------------------
   useEffect(() => {
@@ -441,14 +460,32 @@ export default function App() {
 
   // ------------------------------------------------------------------
   // Zarejestruj FCM token gdy mamy slug restauracji I auth token
+  // foregroundCount wymusza re-rejestrację po powrocie z tła/odblok.
   // ------------------------------------------------------------------
   useEffect(() => {
     if (pushToken && restaurantSlug && hasAuthToken) {
-      console.log("[App] Rejestruję FCM token dla:", restaurantSlug, "pushToken:", pushToken?.slice(0, 25) + "...");
+      console.log("[App] Rejestruję FCM token dla:", restaurantSlug, "fg:", foregroundCount);
       void registerToken(restaurantSlug);
     } else {
       console.log("[App] FCM wait: token=" + !!pushToken + " slug=" + !!restaurantSlug + " auth=" + !!hasAuthToken);
     }
+  }, [pushToken, restaurantSlug, hasAuthToken, foregroundCount, registerToken]);
+
+  // ------------------------------------------------------------------
+  // Heartbeat: re-rejestruj FCM token co 5 minut
+  // KRYTYCZNE dla tabletów z zablokowanym ekranem!
+  // Chroni przed: usunięciem tokena z serwera, wygaśnięciem sesji,
+  // zmianą tokena FCM, Android Doze mode, battery optimization.
+  // Gdy ekran jest zablokowany setInterval może być opóźniony,
+  // ale wykona się natychmiast po odblokowaniu.
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    if (!pushToken || !restaurantSlug || !hasAuthToken) return;
+    const interval = setInterval(() => {
+      console.log("[App] Heartbeat: re-rejestruję FCM token dla:", restaurantSlug);
+      void registerToken(restaurantSlug);
+    }, 5 * 60 * 1000); // co 5 minut
+    return () => clearInterval(interval);
   }, [pushToken, restaurantSlug, hasAuthToken, registerToken]);
 
   // ------------------------------------------------------------------

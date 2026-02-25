@@ -130,7 +130,15 @@ export default function CheckoutModal() {
 const [notes, setNotes] = useState<Record<string, string>>({});
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [phoneTouched, setPhoneTouched] = useState(false);
   const [contactEmail, setContactEmail] = useState("");
+
+  /** Wyciąga same cyfry z numeru (pomija +48 prefix jeśli jest) */
+  const phoneDigits = useMemo(() => {
+    const raw = phone.replace(/[^\d]/g, "");
+    return raw.startsWith("48") && raw.length >= 11 ? raw.slice(2) : raw;
+  }, [phone]);
+  const phoneValid = phoneDigits.length === 9;
 
  // START: getItemKey NEW (stabilny)
 const getItemKey = (it: any, idx: number) => {
@@ -1478,6 +1486,11 @@ const totalWithDelivery = Math.max(0, subtotal + deliveryCost - totalDiscount);
       setErrorMessage("Potwierdź miasto restauracji przed złożeniem zamówienia.");
       return;
     }
+    if (!phoneValid) {
+      setPhoneTouched(true);
+      setErrorMessage("Numer telefonu musi mieć dokładnie 9 cyfr.");
+      return;
+    }
 
     // Wymagaj wyboru futomaki przy 4 naklejkach
     if (canUseLoyalty4 && !selectedFreeRoll) {
@@ -2516,11 +2529,27 @@ return (
       />
       <input
         type="tel"
-        placeholder="Telefon"
-        className="checkout-input"
+        inputMode="numeric"
+        placeholder="Telefon (9 cyfr)"
+        maxLength={15}
+        className={`checkout-input ${
+          phoneTouched && phone && !phoneValid
+            ? "!border-red-500 !ring-red-500/30"
+            : ""
+        }`}
         value={phone}
-        onChange={(e) => setPhone(e.target.value)}
+        onChange={(e) => {
+          // Pozwól tylko na cyfry, spacje i + na początku
+          const v = e.target.value.replace(/[^\d+ ]/g, "");
+          setPhone(v);
+        }}
+        onBlur={() => setPhoneTouched(true)}
       />
+      {phoneTouched && phone && !phoneValid && (
+        <p className="text-xs text-red-600 -mt-1">
+          Numer telefonu musi mieć dokładnie 9 cyfr{phoneDigits.length > 0 && ` (masz ${phoneDigits.length}).`}
+        </p>
+      )}
       {selectedOption === "takeaway" && (
         <input
           type="text"
@@ -2557,6 +2586,7 @@ return (
       disabled={
         !name ||
         !phone ||
+        !phoneValid ||
         !validEmail ||
         (selectedOption === "delivery" &&
           (!street || !postalCode || !city || (requireAutocomplete && !custCoords)))

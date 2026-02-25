@@ -226,13 +226,21 @@ async function sendFcmNative(
   if (tokens.length === 0 || !HAS_FCM) return [];
 
   const deadTokens: string[] = [];
-  let accessToken: string;
 
-  try {
-    accessToken = await getAccessToken();
-  } catch (err: any) {
-    console.error("[fcm] getAccessToken failed:", err?.message || err);
-    return deadTokens;
+  // Retry getAccessToken — przy cold start lub expiracji tokena OAuth
+  let accessToken: string;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      accessToken = await getAccessToken();
+      break;
+    } catch (err: any) {
+      console.error(`[fcm] getAccessToken attempt ${attempt}/3 failed:`, err?.message || err);
+      if (attempt === 3) return deadTokens;
+      // Wymuś odświeżenie cache'owanego tokena
+      cachedAccessToken = null;
+      tokenExpiresAt = 0;
+      await new Promise((r) => setTimeout(r, 500 * attempt));
+    }
   }
 
   const fcmUrl = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
@@ -253,6 +261,11 @@ async function sendFcmNative(
           },
           android: {
             priority: "HIGH" as const,
+            // KRYTYCZNE: direct_boot_ok = true → powiadomienie dociera
+            // nawet gdy tablet jest zablokowany PIN-em/wzorem.
+            // Bez tego flaga — Android trzyma powiadomienie w kolejce
+            // aż użytkownik odblokuje urządzenie!
+            direct_boot_ok: true,
             notification: {
               channel_id: "orders",
               sound: "new_order",
@@ -261,47 +274,86 @@ async function sendFcmNative(
               visibility: "PUBLIC" as const,
               notification_priority: "PRIORITY_MAX" as const,
             },
-            // TTL 4 godziny
+            // TTL 4 godziny — FCM trzyma wiadomość jeśli urządzenie offline
             ttl: "14400s",
           },
         },
       };
 
-      try {
-        const res = await fetch(fcmUrl, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(message),
-        });
+      // Retry logic: 3 próby z exponential backoff
+      // Chroni przed: chwilowe błędy sieci, 5xx FCM, rate limiting
+      const MAX_RETRIES = 3;
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const res = await fetch(fcmUrl, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${accessToken!}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(message),
+          });
 
-        if (!res.ok) {
+          if (res.ok) {
+            // Sukces — powiadomienie wysłane do FCM
+            break;
+          }
+
           const errBody = await res.json().catch(() => ({}));
           const errCode = errBody?.error?.details?.[0]?.errorCode || "";
 
+          // Token martwy — nie próbuj ponownie
           if (
             errCode === "UNREGISTERED" ||
             errCode === "INVALID_ARGUMENT" ||
             res.status === 404
           ) {
             deadTokens.push(token);
+            console.error(
+              "[fcm] dead token:",
+              res.status,
+              errCode,
+              token.slice(0, 20) + "..."
+            );
+            break;
+          }
+
+          // 401 = OAuth token wygasł w trakcie — odśwież i spróbuj ponownie
+          if (res.status === 401 && attempt < MAX_RETRIES) {
+            console.warn("[fcm] 401 — odświeżam OAuth token...");
+            cachedAccessToken = null;
+            tokenExpiresAt = 0;
+            try {
+              accessToken = await getAccessToken();
+            } catch {}
+            await new Promise((r) => setTimeout(r, 300));
+            continue;
+          }
+
+          // 429/5xx = serwer FCM chwilowo niedostępny — retry
+          if (attempt < MAX_RETRIES && (res.status === 429 || res.status >= 500)) {
+            console.warn(`[fcm] ${res.status} — retry ${attempt}/${MAX_RETRIES}...`);
+            await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt - 1)));
+            continue;
           }
 
           console.error(
-            "[fcm] send error:",
+            "[fcm] send error after retries:",
             res.status,
             errCode,
             token.slice(0, 20) + "..."
           );
+          break;
+        } catch (err: any) {
+          console.error(
+            `[fcm] network error attempt ${attempt}/${MAX_RETRIES}:`,
+            err?.message,
+            token.slice(0, 20) + "..."
+          );
+          if (attempt < MAX_RETRIES) {
+            await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt - 1)));
+          }
         }
-      } catch (err: any) {
-        console.error(
-          "[fcm] network error:",
-          err?.message,
-          token.slice(0, 20) + "..."
-        );
       }
     })
   );
@@ -331,12 +383,19 @@ export async function sendFcmForRestaurant(
 
   const rows = (data as FcmTokenRow[]) || [];
   if (!rows.length) {
-    // Brak natywnych urządzeń — to normalne, nie loguj jako warning
+    console.error(
+      "[fcm] ❌ BRAK tokenów FCM dla restauracji:",
+      restaurantId,
+      "— powiadomienie natywne NIE zostanie wysłane!",
+      "Sprawdź tabelę admin_fcm_tokens i czy tablet jest zarejestrowany."
+    );
     return;
   }
 
+  const fcmCount = rows.filter((r) => r.token_type === "fcm").length;
+  const expoCount = rows.filter((r) => r.token_type === "expo").length;
   console.log(
-    `[fcm] Wysyłam do ${rows.length} natywnych urządzeń dla restauracji:`,
+    `[fcm] ✅ Wysyłam do ${rows.length} urządzeń (FCM: ${fcmCount}, Expo: ${expoCount}) dla restauracji:`,
     restaurantId
   );
 

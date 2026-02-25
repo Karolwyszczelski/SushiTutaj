@@ -62,6 +62,21 @@ export async function sendPushForRestaurant(
   console.log("[push] Wysyłam dla restauracji:", restaurantId);
 
   // =========================================================================
+  // KRYTYCZNE: Uruchom FCM NATYCHMIAST równolegle z web-push!
+  // Na Vercel serverless (limit 10-25s) web-push retry może zająć cały czas
+  // → FCM w ogóle by się nie wykonało gdyby było sekwencyjne.
+  // Promise jest await'owany na końcu funkcji.
+  // =========================================================================
+  const fcmPromise = sendFcmForRestaurant(restaurantId, {
+    type: payload.type ?? "order",
+    title: payload.title ?? "Nowe zamówienie",
+    body: payload.body ?? payload.title ?? "Pojawiło się nowe zamówienie.",
+    url: payload.url ?? "/admin/pickup-order",
+  }).catch((fcmErr: any) => {
+    console.error("[push] FCM send error (non-fatal):", fcmErr?.message || fcmErr);
+  });
+
+  // =========================================================================
   // WEB PUSH (VAPID)
   // =========================================================================
   let subs: AdminPushSubscriptionRow[] = [];
@@ -235,17 +250,7 @@ export async function sendPushForRestaurant(
   }
 
   // =========================================================================
-  // FCM / Expo Push — wysyłaj równolegle do natywnych urządzeń
-  // Niezależne od web-push; błędy FCM nie blokują web-push i odwrotnie
+  // Poczekaj na FCM (uruchomione równolegle na początku funkcji)
   // =========================================================================
-  try {
-    await sendFcmForRestaurant(restaurantId, {
-      type: basePayload.type,
-      title: basePayload.title,
-      body: basePayload.body,
-      url: basePayload.url,
-    });
-  } catch (fcmErr: any) {
-    console.error("[push] FCM send error (non-fatal):", fcmErr?.message || fcmErr);
-  }
+  await fcmPromise;
 }

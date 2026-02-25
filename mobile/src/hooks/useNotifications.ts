@@ -162,7 +162,7 @@ export function useNotifications(): UseNotificationsReturn {
         }
 
         // Pobierz access token Supabase z WebView (Bearer auth)
-        const authToken =
+        let authToken =
           (await AsyncStorage.getItem(STORAGE_KEY_AUTH)) || "";
 
         if (!authToken) {
@@ -182,6 +182,9 @@ export function useNotifications(): UseNotificationsReturn {
         });
 
         // Retry logic — 3 próby z rosnącym opóźnieniem
+        // KRYTYCZNE: 401 (expired auth token) NIE przerywa natychmiast!
+        // Po odblokowaniu ekranu WebView odświeża auth token co 5s.
+        // Czekamy i próbujemy ponownie ze świeżym tokenem z AsyncStorage.
         let res: Response | null = null;
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
@@ -200,7 +203,17 @@ export function useNotifications(): UseNotificationsReturn {
                 device_info: `${Platform.OS} | ${Device.modelName || "unknown"} | ${Device.osVersion || "?"}`,
               }),
             });
-            if (res.ok || res.status === 401 || res.status === 403) break;
+            if (res.ok || res.status === 403) break;
+            // 401 = auth token wygasł → poczekaj aż WebView odświeży sesję
+            if (res.status === 401 && attempt < 3) {
+              console.warn(`[FCM] 401 — auth token wygasł, czekam ${attempt * 3}s na odświeżenie z WebView...`);
+              await new Promise(r => setTimeout(r, attempt * 3000));
+              // Pobierz potencjalnie odświeżony token z AsyncStorage
+              const freshAuth = (await AsyncStorage.getItem(STORAGE_KEY_AUTH)) || "";
+              if (freshAuth) authToken = freshAuth;
+              continue;
+            }
+            if (res.status === 401) break; // 3 próby wyczerpane
           } catch (fetchErr: any) {
             console.warn(`[FCM] Próba ${attempt}/3 nieudana:`, fetchErr?.message);
             if (attempt < 3) await new Promise(r => setTimeout(r, attempt * 2000));
@@ -288,12 +301,14 @@ export function useNotifications(): UseNotificationsReturn {
         appStateRef.current.match(/inactive|background/) &&
         nextState === "active"
       ) {
-        console.log("[FCM] App wróciła na pierwszy plan — token zostanie odświeżony z WebView (czekam na AUTH_TOKEN)");
-        // NIE rejestruj od razu — token w AsyncStorage mógł wygasnąć.
-        // INJECTED_JS odświeża auth token co 5s → poczekaj aż 
-        // App.tsx dostanie świeży AUTH_TOKEN z WebView, zaktualizuje
-        // AsyncStorage i ustawi hasAuthToken → wtedy useEffect
-        // z [pushToken, restaurantSlug, hasAuthToken] odpali registerToken().
+        console.log("[FCM] App wróciła na pierwszy plan — odświeżam FCM token + kanał");
+        // KRYTYCZNE: Po długim czasie z zablokowanym ekranem:
+        // 1. Token FCM mógł się zmienić (Google Play Services update)
+        // 2. Kanał powiadomień mógł zostać zresetowany (Android OEM)
+        // 3. Uprawnienia mogły się zmienić
+        // getToken() re-tworzy kanał + sprawdza uprawnienia + pobiera token
+        // Jeśli token nowy → setPushToken → App.tsx useEffect odpali registerToken
+        void getToken();
       }
       appStateRef.current = nextState;
     };
@@ -303,7 +318,7 @@ export function useNotifications(): UseNotificationsReturn {
       handleAppStateChange
     );
     return () => subscription.remove();
-  }, [registerToken]);
+  }, [getToken]);
 
   // ------------------------------------------------------------------
   // Inicjalizacja — uzyskaj token na starcie
@@ -311,6 +326,25 @@ export function useNotifications(): UseNotificationsReturn {
   useEffect(() => {
     void getToken();
   }, [getToken]);
+
+  // ------------------------------------------------------------------
+  // Listener: FCM token się zmienił
+  // Token może się zmienić po: aktualizacji Google Play Services,
+  // reinstalacji, czyszczeniu danych, wewnętrznym odświeżeniu Firebase.
+  // BEZ tego listenera stary token zostaje na serwerze → push nie dociera!
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    const subscription = Notifications.addPushTokenListener((tokenData) => {
+      const newToken = typeof tokenData.data === "string"
+        ? tokenData.data
+        : String(tokenData.data);
+      console.log("[FCM] 🔄 Token FCM się zmienił:", newToken.slice(0, 30) + "...");
+      void AsyncStorage.setItem(STORAGE_KEY_TOKEN, newToken);
+      setPushToken(newToken);
+      // Nowy pushToken w state → App.tsx useEffect odpali registerToken()
+    });
+    return () => subscription.remove();
+  }, []);
 
   const clearLastNotificationUrl = useCallback(() => {
     setLastNotificationUrl(null);

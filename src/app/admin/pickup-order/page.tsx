@@ -41,6 +41,20 @@ function urlBase64ToUint8Array(base64String: string) {
   return outputArray;
 }
 
+/** Formatuje numer telefonu: +48515234542 → +48 515 234 542 */
+function formatPhone(raw: string): string {
+  // Usuwamy wszystko poza cyframi i wiodącym +
+  const cleaned = raw.replace(/[^\d+]/g, "");
+  // Polski numer z prefixem +48 (11 znaków: +48 + 9 cyfr)
+  const m = cleaned.match(/^(\+?48)(\d{3})(\d{3})(\d{3})$/);
+  if (m) return `${m[1]} ${m[2]} ${m[3]} ${m[4]}`;
+  // Dowolny inny numer – grupuj po 3 cyfry od końca
+  const digits = cleaned.replace(/^\+/, "");
+  const prefix = cleaned.startsWith("+") ? "+" : "";
+  const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return prefix + grouped;
+}
+
 const DBMOD_PREFIX = "DBMOD|"; // DBMOD|<groupId>|<modifierId>|<priceCents>|<name>
 const DBVAR_PREFIX = "DBVAR|"; // DBVAR|<variantId>|<priceCents>|<name>
 
@@ -1755,7 +1769,7 @@ const ReservationCard: React.FC<{
         </div>
         {r.phone && (
           <div>
-            <b>Telefon:</b> {r.phone}
+            <b>Telefon:</b> {formatPhone(r.phone)}
           </div>
         )}
         {r.email && (
@@ -1947,7 +1961,9 @@ const TimeQuickSet: React.FC<{
   mode: "accept" | "set";
   disabled?: boolean;
   onApply: (hhmm: string) => Promise<void> | void;
-}> = ({ order, mode, disabled, onApply }) => {
+  onEditStart?: () => void;
+  onEditEnd?: () => void;
+}> = ({ order, mode, disabled, onApply, onEditStart, onEditEnd }) => {
   // UWAGA: używamy konkretnych pól zamiast całego obiektu order,
   // żeby useMemo nie przeliczał się przy każdym pollingu (nowa referencja order)
   const requested = useMemo(
@@ -1970,8 +1986,18 @@ const TimeQuickSet: React.FC<{
 
   const dirtyRef = useRef(false);
   const orderIdRef = useRef(order.id);
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const [val, setVal] = useState<string>(initial || "");
   const [localErr, setLocalErr] = useState<string | null>(null);
+
+  // Cleanup blur timeout on unmount + signal edit end
+  useEffect(() => {
+    return () => {
+      clearTimeout(blurTimeoutRef.current);
+      if (dirtyRef.current) onEditEnd?.();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // reset TYLKO przy zmianie zamówienia (order.id) - nie przy każdym renderze
   useEffect(() => {
@@ -2001,6 +2027,9 @@ const TimeQuickSet: React.FC<{
 
   const applyDisabled = !!disabled || !norm;
 
+  /** Anuluj opóźniony blur – np. gdy user kliknął przycisk zamiast wyjść z inputa */
+  const cancelBlurTimeout = () => clearTimeout(blurTimeoutRef.current);
+
   return (
     <div className="inline-flex flex-wrap items-start gap-2">
       <div className="flex flex-col">
@@ -2010,6 +2039,10 @@ const TimeQuickSet: React.FC<{
           autoComplete="off"
           placeholder="HH:MM"
           value={val}
+          onFocus={() => {
+            cancelBlurTimeout();
+            onEditStart?.();
+          }}
           onChange={(e) => {
             dirtyRef.current = true;
             setLocalErr(null);
@@ -2019,15 +2052,20 @@ const TimeQuickSet: React.FC<{
             const raw = (val || "").trim();
             if (!raw) {
               setLocalErr(null);
-              return;
-            }
-            const n = normalizeTimeLoose(raw);
-            if (n) {
-              setVal(n);
-              setLocalErr(null);
             } else {
-              setLocalErr("Wpisz godzinę w formacie HH:MM (np. 19:30).");
+              const n = normalizeTimeLoose(raw);
+              if (n) {
+                setVal(n);
+                setLocalErr(null);
+              } else {
+                setLocalErr("Wpisz godzinę w formacie HH:MM (np. 19:30).");
+              }
             }
+            // Opóźnij onEditEnd – user mógł kliknąć przycisk (Apply / Czas klienta)
+            blurTimeoutRef.current = setTimeout(() => {
+              dirtyRef.current = false;
+              onEditEnd?.();
+            }, 400);
           }}
           disabled={disabled}
           className={clsx(
@@ -2044,10 +2082,13 @@ const TimeQuickSet: React.FC<{
         <button
           type="button"
           disabled={disabled}
+          onMouseDown={cancelBlurTimeout}
           onClick={() => {
+            cancelBlurTimeout();
             dirtyRef.current = true;
             setLocalErr(null);
             setVal(requested);
+            onEditStart?.();
           }}
           className="h-10 rounded-md border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50 disabled:opacity-50"
           title="Ustaw na czas wybrany przez klienta"
@@ -2059,13 +2100,17 @@ const TimeQuickSet: React.FC<{
       <button
         type="button"
         disabled={applyDisabled}
+        onMouseDown={cancelBlurTimeout}
         onClick={() => {
+          cancelBlurTimeout();
           const n = normalizeTimeLoose(val);
           if (!n) {
             setLocalErr("Wpisz godzinę w formacie HH:MM (np. 19:30).");
             return;
           }
+          dirtyRef.current = false;
           onApply(n);
+          // onApply (acceptAndSetAbsoluteTime / setAbsoluteTime) samo zarządza editingOrderId
         }}
         className="h-10 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow hover:bg-emerald-600 disabled:opacity-50"
         title={
@@ -4295,7 +4340,7 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
               )}
             {o.phone && (
               <div>
-                <b>Telefon:</b> {o.phone}
+                <b>Telefon:</b> {formatPhone(o.phone)}
               </div>
             )}
 
@@ -4410,6 +4455,8 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
     mode="accept"
     disabled={editingOrderId === o.id}
     onApply={(hhmm) => acceptAndSetAbsoluteTime(o, hhmm)}
+    onEditStart={() => setEditingOrderId(o.id)}
+    onEditEnd={() => setEditingOrderId(null)}
   />
 ) : (
   <AcceptButton
@@ -4449,6 +4496,8 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
       mode="set"
       disabled={editingOrderId === o.id}
       onApply={(hhmm) => setAbsoluteTime(o, hhmm)}
+      onEditStart={() => setEditingOrderId(o.id)}
+      onEditEnd={() => setEditingOrderId(null)}
     />
 
     {[20, 40, 60, 80].map((m) => (
