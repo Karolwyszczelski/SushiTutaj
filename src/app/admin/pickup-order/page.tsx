@@ -4453,7 +4453,7 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
   <TimeQuickSet
     order={o}
     mode="accept"
-    disabled={editingOrderId === o.id}
+    disabled={!!editingOrderId && editingOrderId !== o.id}
     onApply={(hhmm) => acceptAndSetAbsoluteTime(o, hhmm)}
     onEditStart={() => setEditingOrderId(o.id)}
     onEditEnd={() => setEditingOrderId(null)}
@@ -4494,7 +4494,7 @@ if (lbl !== "-" && lbl !== "Jak najszybciej") {
     <TimeQuickSet
       order={o}
       mode="set"
-      disabled={editingOrderId === o.id}
+      disabled={!!editingOrderId && editingOrderId !== o.id}
       onApply={(hhmm) => setAbsoluteTime(o, hhmm)}
       onEditStart={() => setEditingOrderId(o.id)}
       onEditEnd={() => setEditingOrderId(null)}
