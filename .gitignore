@@ -53,3 +53,4 @@ mobile/android/
 mobile/ios/
 mobile/.expo/
 .env*.local
+mobile/build-*.apk
