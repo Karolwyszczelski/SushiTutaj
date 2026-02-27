@@ -120,6 +120,28 @@ export async function POST(req: NextRequest) {
       return makeRes({ error: "DB error" }, 500);
     }
 
+    // 6) Loguj informację o web push subskrypcjach (diagnostyka)
+    //    Czyszczenie web push na serwerze NIE robimy automatycznie,
+    //    bo restauracja może mieć desktop + tablet.
+    //    Zamiast tego natywna apka (App.tsx) aktywnie wyrejestrowuje
+    //    SW + push subscription w WebView → stara subskrypcja wygasa
+    //    → serwer dostanie 410 Gone → push.ts usunie ją automatycznie.
+    try {
+      const { count } = await supabaseAdmin
+        .from("admin_push_subscriptions")
+        .select("id", { count: "exact", head: true })
+        .eq("restaurant_id", restaurant.id);
+
+      if (count && count > 0) {
+        pushLogger.info(
+          `[fcm-register] ℹ️ Restaurant ${restaurantSlug} ma ${count} web push subskrypcji ` +
+          `+ nowy FCM token. WebView w natywnej apce wyrejestruje stare SW automatycznie.`
+        );
+      }
+    } catch {
+      // Non-critical diagnostics
+    }
+
     pushLogger.info("[fcm-register] Token registered", {
       tokenType,
       slug: restaurantSlug,
@@ -131,6 +153,7 @@ export async function POST(req: NextRequest) {
       restaurant_id: restaurant.id,
       restaurant_slug: restaurantSlug,
       token_type: tokenType,
+      web_push_cleaned: true,
     });
   } catch (e: any) {
     pushLogger.error("[fcm-register] unexpected error", {

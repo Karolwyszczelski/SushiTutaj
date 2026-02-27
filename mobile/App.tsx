@@ -20,6 +20,7 @@ import {
 } from "react-native";
 import { WebView, WebViewNavigation } from "react-native-webview";
 import * as SplashScreen from "expo-splash-screen";
+import { activateKeepAwakeAsync } from "expo-keep-awake";
 import { registerRootComponent } from "expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -28,9 +29,19 @@ import {
   useNotifications,
   saveCookiesFromWebView,
 } from "./src/hooks/useNotifications";
+import { stopAlarm } from "./src/utils/alarmSound";
 
 // Nie ukrywaj splash screena automatycznie
 try { SplashScreen.preventAutoHideAsync(); } catch {}
+
+// =============================================================================
+// KRYTYCZNE: Trzymaj ekran tabletu włączony!
+// Tablet leży na ladzie restauracji — ekran MUSI być zawsze aktywny.
+// Bez tego Android usypia ekran → Doze mode → FCM HIGH priority może
+// być opóźnione nawet o 15+ minut na niektórych tabletach.
+// activateKeepAwakeAsync trzyma WAKE_LOCK → ekran i CPU nie zasypiają.
+// =============================================================================
+activateKeepAwakeAsync("admin-kiosk").catch(() => {});
 
 // =============================================================================
 // JavaScript wstrzykiwany do WebView
@@ -316,6 +327,42 @@ const INJECTED_JS = `
   window.__NATIVE_APP__ = true;
   window.__NATIVE_FCM__ = true;
 
+  // --- 5b. KRYTYCZNE: Aktywnie wyrejestruj istniejące web push subskrypcje! ---
+  // Sama flaga __NATIVE_FCM__ blokuje NOWE rejestracje, ale stare subskrypcje
+  // z Chrome (sprzed instalacji apki natywnej) wciąż żyją w przeglądarce
+  // i w bazie admin_push_subscriptions → restauracja dostaje PODWÓJNE
+  // powiadomienia (FCM natywny + web push z SW Chrome).
+  // Rozwiązanie: wyrejestruj push subscription + SW → serwer dostanie
+  // 410 Gone przy następnej próbie wysyłki i wyczyści z bazy.
+  try {
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        registrations.forEach(function(reg) {
+          // Wyrejestruj push subscription
+          reg.pushManager.getSubscription().then(function(sub) {
+            if (sub) {
+              sub.unsubscribe().then(function() {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'DEBUG',
+                  message: 'Web push unsubscribed (native app takes over)'
+                }));
+              });
+            }
+          });
+          // Wyrejestruj cały Service Worker
+          reg.unregister().then(function() {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'DEBUG',
+              message: 'Service worker unregistered (native app)'
+            }));
+          });
+        });
+      });
+    }
+  } catch(e) {
+    // Non-critical — SW może nie być dostępny w WebView
+  }
+
   // --- 6. Nasłuchuj na wiadomości od React Native ---
   document.addEventListener('message', function(event) {
     try {
@@ -342,6 +389,13 @@ const INJECTED_JS = `
       lastHref = window.location.href;
       readySent = false;
       trySignalReady();
+      // Powiadom RN o zmianie URL (do zatrzymania alarmu na stronie zamówień)
+      try {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'URL_CHANGED',
+          url: window.location.href,
+        }));
+      } catch(e) {}
     }
   }, 500);
 
@@ -443,6 +497,9 @@ export default function App() {
   // ------------------------------------------------------------------
   useEffect(() => {
     if (lastNotificationUrl && webViewRef.current) {
+      // Zatrzymaj zapętlony alarm — pracownik reaguje na powiadomienie
+      stopAlarm().catch(() => {});
+
       const fullUrl = lastNotificationUrl.startsWith("http")
         ? lastNotificationUrl
         : `${ADMIN_URL}${lastNotificationUrl}`;
@@ -533,6 +590,19 @@ export default function App() {
 
           case "DEBUG":
             console.log("[App] DEBUG z WebView:", msg.message);
+            break;
+
+          case "URL_CHANGED":
+            // Zatrzymaj zapętlony alarm gdy pracownik nawiguje do zamówień
+            // (zarówno przez kliknięcie powiadomienia jak i ręcznie)
+            if (msg.url && (
+              msg.url.includes("/pickup-order") ||
+              msg.url.includes("/orders") ||
+              msg.url.includes("/admin/order")
+            )) {
+              console.log("[App] Order page detected — stopping alarm");
+              stopAlarm().catch(() => {});
+            }
             break;
 
           default:

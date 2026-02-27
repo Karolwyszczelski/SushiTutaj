@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
-import { Platform, AppState, AppStateStatus } from "react-native";
+import { Platform, AppState, AppStateStatus, Vibration } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   FCM_REGISTER_URL,
@@ -10,6 +10,7 @@ import {
   NOTIFICATION_CHANNEL_NAME,
   ADMIN_URL,
 } from "../config";
+import { startAlarm, stopAlarm } from "../utils/alarmSound";
 
 // ============================================================================
 // KONFIGURACJA POWIADOMIEŃ
@@ -290,6 +291,50 @@ export function useNotifications(): UseNotificationsReturn {
       Notifications.addNotificationReceivedListener((notification) => {
         const data = notification.request.content.data || {};
         console.log("[FCM] Powiadomienie otrzymane:", data);
+
+        // =================================================================
+        // BELT & SUSPENDERS: Dodatkowa wibracja jako backup
+        // Nawet jeśli dźwięk kanału nie zadziała (Android bug, DND mode,
+        // głośność media na 0), wibracja ZAWSZE jest wyczuwalna.
+        // Pattern: krótka-pauza-długa-pauza-krótka (jak dzwonek)
+        // =================================================================
+        try {
+          Vibration.vibrate([0, 400, 200, 600, 200, 400]);
+        } catch {
+          // Wibracja niedostępna — ignoruj
+        }
+
+        // =================================================================
+        // LOOPING ALARM — jak Glovo, Pyszne.pl, Uber Eats Merchant
+        // Pojedynczy dźwięk notification channel łatwo przeoczyć w kuchni.
+        // Zapętlony alarm gra dopóki pracownik nie kliknie powiadomienia
+        // lub nie wejdzie na stronę zamówień. Auto-stop po 2 min.
+        // =================================================================
+        if (!data.type || data.type === "order") {
+          startAlarm().catch(() => {});
+        }
+
+        // =================================================================
+        // DELIVERY ACK: Potwierdź serwerowi że powiadomienie dotarło
+        // Bez tego serwer widzi tylko "sent" (= Google przyjął wiadomość)
+        // ale nie wie czy tablet NAPRAWDĘ je wyświetlił.
+        // ACK = "tak, dostałem, wyświetliłem, zawibrował"
+        // =================================================================
+        AsyncStorage.getItem(STORAGE_KEY_TOKEN).then((token) => {
+          if (!token) return;
+          fetch(`${ADMIN_URL}/api/admin/push/delivery-ack`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              token,
+              notification_id: data.timestamp || notification.request.identifier,
+              received_at: Date.now(),
+              app_state: "foreground",
+            }),
+          }).catch(() => {
+            // Non-critical — nie blokuj obsługi powiadomienia
+          });
+        }).catch(() => {});
       });
 
     // Gdy użytkownik kliknie powiadomienie
@@ -299,6 +344,25 @@ export function useNotifications(): UseNotificationsReturn {
         const url = (data.url as string) || "/admin/pickup-order";
         console.log("[FCM] Kliknięto powiadomienie, URL:", url);
         setLastNotificationUrl(url);
+
+        // Zatrzymaj zapętlony alarm — pracownik potwierdził zamówienie
+        stopAlarm().catch(() => {});
+
+        // ACK: kliknięcie = pewne potwierdzenie dostarczenia
+        // (powiadomienie musiało się wyświetlić żeby user mógł kliknąć)
+        AsyncStorage.getItem(STORAGE_KEY_TOKEN).then((token) => {
+          if (!token) return;
+          fetch(`${ADMIN_URL}/api/admin/push/delivery-ack`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              token,
+              notification_id: data.timestamp || response.notification.request.identifier,
+              received_at: Date.now(),
+              app_state: "background_click",
+            }),
+          }).catch(() => {});
+        }).catch(() => {});
       });
 
     return () => {

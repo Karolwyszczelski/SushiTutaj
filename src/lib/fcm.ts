@@ -195,6 +195,7 @@ async function sendExpoPush(
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
+        "Accept-Encoding": "gzip, deflate",
       },
       body: JSON.stringify(messages),
     });
@@ -342,6 +343,11 @@ async function sendFcmNative(
             channelId: "orders",
             sound: "new_order.mp3",
             categoryId: "order",
+            // KRYTYCZNE: Flagi expo-notifications dla data-only messages
+            // _displayInForeground → ExpoFirebaseMessagingService wywołuje
+            // handleNotification callback (shouldPlaySound:true, shouldShowAlert:true)
+            // Bez tego expo może potraktować wiadomość jako cichą data-only.
+            _displayInForeground: "true",
             timestamp: String(Date.now()),
           },
           android: {
