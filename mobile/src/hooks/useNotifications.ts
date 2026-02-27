@@ -89,6 +89,28 @@ export function useNotifications(): UseNotificationsReturn {
     //   "setNotificationChannelAsync must be called before
     //    getDevicePushTokenAsync or getExpoPushTokenAsync"
     if (Platform.OS === "android") {
+      // =================================================================
+      // KRYTYCZNE: Usuń kanał przed ponownym utworzeniem!
+      // Na Androidzie 8+ (API 26+) ustawienia kanału — dźwięk, wibracje,
+      // importance — są NIEZMIENNE po utworzeniu. Wywołanie
+      // setNotificationChannelAsync na istniejącym kanale NIE aktualizuje
+      // dźwięku! Jedyny sposób to delete + create.
+      //
+      // Bez tego: jeśli kanał był kiedykolwiek utworzony bez dźwięku
+      // (stara wersja apki, bug, reset OEM), dźwięk NIGDY nie zadziała
+      // na tym urządzeniu — nawet po aktualizacji apki.
+      //
+      // Profesjonalne apki POS (Square, Toast) robią to samo.
+      // Dla tabletu restauracyjnego to bezpieczne — restauracja nie
+      // customizuje ustawień powiadomień.
+      // =================================================================
+      try {
+        await Notifications.deleteNotificationChannelAsync(NOTIFICATION_CHANNEL_ID);
+        console.log("[FCM] 🗑️ Stary kanał '" + NOTIFICATION_CHANNEL_ID + "' usunięty (force recreation)");
+      } catch {
+        // Kanał nie istniał — OK, pierwszy start
+      }
+
       await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNEL_ID, {
         name: NOTIFICATION_CHANNEL_NAME,
         importance: Notifications.AndroidImportance.MAX,
@@ -100,8 +122,9 @@ export function useNotifications(): UseNotificationsReturn {
         sound: "new_order.mp3",
         enableVibrate: true,
         enableLights: true,
+        showBadge: true,
       });
-      console.log("[FCM] ✅ Kanał powiadomień '" + NOTIFICATION_CHANNEL_ID + "' gotowy");
+      console.log("[FCM] ✅ Kanał powiadomień '" + NOTIFICATION_CHANNEL_ID + "' utworzony z dźwiękiem new_order.mp3");
     }
 
     // Sprawdź uprawnienia

@@ -306,21 +306,31 @@ async function sendFcmNative(
   await Promise.allSettled(
     tokens.map(async (token) => {
       // =====================================================================
-      // KRYTYCZNE: DATA-ONLY MESSAGE (brak klucza "notification"!)
+      // PRAWDZIWA DATA-ONLY MESSAGE
       // =====================================================================
-      // Firebase docs: gdy apka jest w tle/zabita, wiadomości z kluczem
-      // "notification" → Android SAM wyświetla powiadomienie z domyślnym
-      // dźwiękiem (ignorując nasz new_order.mp3!), a onMessageReceived
-      // NIE jest wywoływane.
+      // BRAK klucza "notification" ORAZ BRAK "android.notification"!
       //
-      // Data-only message → onMessageReceived ZAWSZE się odpala →
-      // expo-notifications ma pełną kontrolę nad dźwiękiem, wibracją,
-      // kanałem i wyświetlaniem. To standard w apkach delivery/POS.
+      // Dlaczego to KRYTYCZNE:
+      // Obecność android.notification sprawia że Android System Handler
+      // przejmuje kontrolę nad powiadomieniem gdy apka jest w tle/zabita.
+      // System Handler IGNORUJE expo-notifications i jego callback
+      // handleNotification (shouldPlaySound: true) — zamiast tego używa
+      // ustawień kanału systemowego. Jeśli kanał był kiedykolwiek
+      // utworzony bez dźwięku lub zresetowany przez OEM → CISZA.
+      //
+      // Prawdziwa data-only message (TYLKO pole "data", BEZ notification):
+      // → ExpoFirebaseMessagingService.onMessageReceived() ZAWSZE się odpala
+      //   (foreground + background + killed)
+      // → expo-notifications buduje powiadomienie z pól data.*
+      // → handleNotification callback jest konsultowany
+      // → shouldPlaySound: true → dźwięk ZAWSZE gra
+      //
+      // Tak robią profesjonalne apki POS: Square, Uber Eats Merchant,
+      // DoorDash Merchant — data-only + HIGH priority + foreground service.
       // =====================================================================
       const message = {
         message: {
           token,
-          // BRAK "notification" — celowo! Patrz komentarz wyżej.
           data: {
             // expo-notifications rozpoznaje te klucze i buduje powiadomienie:
             title: payload.title || "Nowe zamówienie",
@@ -328,38 +338,23 @@ async function sendFcmNative(
             // Dodatkowe dane dla naszej apki:
             type: payload.type || "order",
             url: payload.url || "/admin/pickup-order",
+            // Kanał + dźwięk — expo-notifications używa tych wartości:
             channelId: "orders",
-            sound: "new_order",
+            sound: "new_order.mp3",
+            categoryId: "order",
             timestamp: String(Date.now()),
           },
           android: {
+            // HIGH priority = FCM dostarcza natychmiast, budzi urządzenie z Doze mode
             priority: "HIGH" as const,
             // direct_boot_ok → dociera na zablokowany tablet (PIN/wzór)
             direct_boot_ok: true,
             // TTL 4h — FCM trzyma wiadomość jeśli urządzenie offline
             ttl: "14400s",
-            notification: {
-              channel_id: "orders",
-              sound: "new_order",
-              default_vibrate_timings: false,
-              vibrate_timings: ["0s", "0.3s", "0.1s", "0.3s", "0.1s", "0.4s"],
-              visibility: "PUBLIC" as const,
-              notification_priority: "PRIORITY_MAX" as const,
-              // sticky: true → powiadomienie NIE znika po kliknięciu
-              // (ważne na tablecie restauracyjnym — pracownik może kliknąć
-              // przypadkowo i stracić powiadomienie o zamówieniu)
-              sticky: true,
-              // LED miganie — na tabletach z LED
-              default_light_settings: false,
-              light_settings: {
-                color: { red: 1, green: 0, blue: 0, alpha: 1 },
-                light_on_duration: "0.5s",
-                light_off_duration: "0.5s",
-              },
-              // DENY proxy — Google Play Services NIE przechwytuje
-              // powiadomienia (unikamy opóźnień/modyfikacji)
-              proxy: "DENY" as const,
-            },
+            // ❌ BRAK notification {} — to GWARANTUJE data-only behavior!
+            // Z notification {} Android System Handler przejmuje kontrolę
+            // w tle i dźwięk zależy od kanału systemowego (zawodny).
+            // Bez notification {} → expo-notifications ZAWSZE kontroluje dźwięk.
           },
         },
       };
