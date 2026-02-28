@@ -160,18 +160,26 @@ export async function GET(req: Request) {
       const uniqueDeadTokens = [...new Set(deadTokens)];
 
       for (const token of uniqueDeadTokens) {
-        // Pobierz aktualny failure_count
+        // Pobierz aktualny failure_count I updated_at
         const { data: tokenRow } = await supabaseAdmin
           .from("admin_fcm_tokens")
-          .select("id, failure_count")
+          .select("id, failure_count, updated_at")
           .eq("token", token)
           .maybeSingle();
 
         if (tokenRow) {
           const newCount = (tokenRow.failure_count || 0) + 1;
 
-          if (newCount >= FAILURE_THRESHOLD) {
-            // Przekroczony próg → usuń
+          // =====================================================================
+          // KRYTYCZNA OCHRONA: taka sama jak w fcm.ts
+          // NIE usuwaj tokenów które były aktywne w ciągu ostatnich 15 minut!
+          // Apka robi heartbeat co 5 min → jeśli updated_at świeże, tablet żyje.
+          // =====================================================================
+          const tokenAge = Date.now() - new Date(tokenRow.updated_at).getTime();
+          const isRecentlyActive = tokenAge < 15 * 60 * 1000; // 15 minut
+
+          if (newCount >= FAILURE_THRESHOLD && !isRecentlyActive) {
+            // Przekroczony próg I token nieaktywny → naprawdę martwy, usuń
             dbOps.push(
               supabaseAdmin
                 .from("admin_fcm_tokens")
@@ -180,7 +188,28 @@ export async function GET(req: Request) {
                 .then(({ error: e }) => {
                   if (!e) {
                     console.log(
-                      `[expo-receipts] 🗑️ Usunięto martwy Expo token po ${newCount} failures:`,
+                      `[expo-receipts] 🗑️ Usunięto martwy Expo token po ${newCount} failures (ostatnia aktywność ${Math.floor(tokenAge/60000)}min temu):`,
+                      token.slice(0, 30)
+                    );
+                  }
+                })
+            );
+          } else if (newCount >= FAILURE_THRESHOLD && isRecentlyActive) {
+            // Przekroczony próg ALE token aktywny → OCHRONA!
+            dbOps.push(
+              supabaseAdmin
+                .from("admin_fcm_tokens")
+                .update({
+                  failure_count: newCount,
+                  last_failure_at: new Date().toISOString(),
+                  last_failure_reason: "DeviceNotRegistered (receipt)",
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", tokenRow.id)
+                .then(({ error: e }) => {
+                  if (!e) {
+                    console.warn(
+                      `[expo-receipts] 🛡️ OCHRONA: Expo token ma ${newCount} failures ALE był aktywny ${Math.floor(tokenAge/60000)}min temu — NIE usuwam!`,
                       token.slice(0, 30)
                     );
                   }

@@ -158,6 +158,7 @@ type FcmTokenRow = {
   token: string;
   token_type: "fcm" | "expo";
   failure_count: number;
+  updated_at: string;  // KRYTYCZNE: potrzebujemy updated_at żeby chronić aktywne tokeny
 };
 
 // =============================================================================
@@ -539,10 +540,10 @@ export async function sendFcmForRestaurant(
   restaurantId: string,
   payload: FcmPayload
 ): Promise<void> {
-  // Pobierz wszystkie tokeny FCM dla restauracji (Z failure_count!)
+  // Pobierz wszystkie tokeny FCM dla restauracji (Z failure_count I updated_at!)
   const { data, error } = await supabaseAdmin
     .from("admin_fcm_tokens")
-    .select("id, token, token_type, failure_count")
+    .select("id, token, token_type, failure_count, updated_at")
     .eq("restaurant_id", restaurantId)
     .limit(200);
 
@@ -620,13 +621,34 @@ export async function sendFcmForRestaurant(
         // Token MOŻE być martwy — inkrementuj counter
         const newCount = (row.failure_count || 0) + 1;
 
-        if (newCount >= FAILURE_THRESHOLD) {
-          // Przekroczony próg → token naprawdę martwy, usuń
+        // =====================================================================
+        // KRYTYCZNA OCHRONA: NIE usuwaj tokenów które były aktywne w ciągu
+        // ostatnich 15 minut! Apka robi heartbeat co 5 min → jeśli updated_at
+        // jest świeże, tablet żyje i tylko FCM/Doze ma chwilowy problem.
+        // Przykład: tablet zablokowany → Doze mode → FCM może zwrócić
+        // UNREGISTERED chociaż token jest OK. Po odblokowaniu heartbeat
+        // resetuje failure_count → token się ratuje.
+        // =====================================================================
+        const tokenAge = Date.now() - new Date(row.updated_at).getTime();
+        const isRecentlyActive = tokenAge < 15 * 60 * 1000; // 15 minut
+
+        if (newCount >= FAILURE_THRESHOLD && !isRecentlyActive) {
+          // Przekroczony próg I token nieaktywny → naprawdę martwy, usuń
           idsToDelete.push(row.id);
           console.warn(
-            `[fcm] 🗑️ Token TRWALE martwy po ${newCount} failures:`,
+            `[fcm] 🗑️ Token TRWALE martwy po ${newCount} failures (ostatnia aktywność ${Math.floor(tokenAge/60000)}min temu):`,
             code,
             row.token.slice(0, 20) + "..."
+          );
+        } else if (newCount >= FAILURE_THRESHOLD && isRecentlyActive) {
+          // Przekroczony próg ALE token aktywny → OCHRONA!
+          // Inkrementuj counter ale NIE usuwaj — daj szansę na recovery
+          tokensToIncrement.push({ id: row.id, newCount, reason: code });
+          console.warn(
+            `[fcm] 🛡️ OCHRONA: Token ma ${newCount} failures ALE był aktywny ${Math.floor(tokenAge/60000)}min temu — NIE usuwam!`,
+            code,
+            row.token.slice(0, 20) + "...",
+            "(tablet prawdopodobnie w Doze mode, czekam na heartbeat)"
           );
         } else {
           // Jeszcze nie osiągnął progu → inkrementuj i czekaj
