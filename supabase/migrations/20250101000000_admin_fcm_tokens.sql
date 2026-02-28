@@ -46,8 +46,15 @@ CREATE POLICY "Users can manage own FCM tokens"
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
--- Polityka: service role ma pełny dostęp (domyślnie w Supabase)
--- Nie trzeba tworzyć osobnej polityki — service role omija RLS
+-- Polityka: service role ma pełny dostęp
+-- Service role domyślnie omija RLS w Supabase, ale dodajemy jawną politykę
+-- jako safety net — krytyczne dla 3 restauracji z osobnymi loginami.
+DROP POLICY IF EXISTS "Service role full access to FCM tokens" ON admin_fcm_tokens;
+CREATE POLICY "Service role full access to FCM tokens"
+  ON admin_fcm_tokens
+  FOR ALL
+  USING (true)
+  WITH CHECK (true);
 
 -- =============================================================================
 -- OPCJONALNIE: Automatyczne czyszczenie starych tokenów (> 90 dni)

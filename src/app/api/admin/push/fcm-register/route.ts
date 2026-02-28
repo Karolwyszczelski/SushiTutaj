@@ -143,8 +143,10 @@ export async function POST(req: NextRequest) {
       pushLogger.error("[fcm-register] Upsert failed", {
         error: upsertErr.message,
         code: upsertErr.code,
+        slug: restaurantSlug,
+        userId,
       });
-      return makeRes({ error: "DB error" }, 500);
+      return makeRes({ error: "DB error", detail: upsertErr.message, code: upsertErr.code }, 500);
     }
 
     // 5b) Sprawdź czy token był już w bazie (create vs update)

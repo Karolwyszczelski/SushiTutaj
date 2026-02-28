@@ -62,6 +62,18 @@ export async function POST(req: NextRequest) {
       return makeRes({ ok: true, warning: "token_not_found" });
     }
 
+    // KRYTYCZNE: ACK = dowód że token ŻYJE!
+    // Odśwież updated_at → przedłuża 15-minutowe okno ochronne w fcm.ts
+    // Dzięki temu nawet jeśli heartbeat nie zdążył (tablet zablokowany),
+    // sam fakt że notification dotarło chroni token przed usunięciem.
+    await supabaseAdmin
+      .from("admin_fcm_tokens")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("token", token)
+      .then(({ error: e }) => {
+        if (e) console.error("[delivery-ack] updated_at refresh error:", e.message);
+      });
+
     // Zapisz ACK w delivery_log
     const { error: logErr } = await supabaseAdmin
       .from("notification_delivery_log")
