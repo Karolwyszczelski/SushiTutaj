@@ -543,18 +543,13 @@ export async function sendFcmForRestaurant(
   // Pobierz wszystkie tokeny FCM dla restauracji (Z failure_count I updated_at!)
   // FALLBACK: Jeśli kolumna failure_count nie istnieje (migracja 20260225000000
   // nie została zastosowana), ponów SELECT bez niej — push MUSI być wysłany!
-  let data: any[] | null = null;
-  let error: { message: string; code?: string } | null = null;
-
-  {
-    const res = await supabaseAdmin
-      .from("admin_fcm_tokens")
-      .select("id, token, token_type, failure_count, updated_at")
-      .eq("restaurant_id", restaurantId)
-      .limit(200);
-    data = res.data;
-    error = res.error;
-  }
+  const res = await supabaseAdmin
+    .from("admin_fcm_tokens")
+    .select("id, token, token_type, failure_count, updated_at")
+    .eq("restaurant_id", restaurantId)
+    .limit(200);
+  let data: any[] | null = res.data;
+  let error: { message: string; code?: string } | null = res.error;
 
   // Fallback: kolumna failure_count może nie istnieć
   if (error && (error.code === "42703" || error.message?.includes("does not exist"))) {
