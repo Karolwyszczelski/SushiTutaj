@@ -530,7 +530,9 @@ const SAFE_ERROR_CODES = new Set([
 // - Chwilowymi problemami FCM
 // - Temporary UNREGISTERED podczas aktualizacji Play Services
 // - Race conditions między wysyłką a re-rejestracją
-const FAILURE_THRESHOLD = 3;
+// Ustawione na 5 (zamiast 3) — restauracje mają mało zamówień
+// i fałszywe UNREGISTERED od Firebase są znane.
+const FAILURE_THRESHOLD = 5;
 
 // =============================================================================
 // GŁÓWNA FUNKCJA — wysyłanie do wszystkich natywnych urządzeń restauracji
@@ -642,14 +644,16 @@ export async function sendFcmForRestaurant(
 
         // =====================================================================
         // KRYTYCZNA OCHRONA: NIE usuwaj tokenów które były aktywne w ciągu
-        // ostatnich 15 minut! Apka robi heartbeat co 5 min → jeśli updated_at
+        // ostatnich 30 minut! Apka robi heartbeat co 5 min → jeśli updated_at
         // jest świeże, tablet żyje i tylko FCM/Doze ma chwilowy problem.
         // Przykład: tablet zablokowany → Doze mode → FCM może zwrócić
         // UNREGISTERED chociaż token jest OK. Po odblokowaniu heartbeat
         // resetuje failure_count → token się ratuje.
+        // 30 minut (zamiast 15) daje więcej czasu na recovery z Doze mode
+        // i aggressive battery optimization na tabletach chińskich OEM.
         // =====================================================================
         const tokenAge = Date.now() - new Date(row.updated_at).getTime();
-        const isRecentlyActive = tokenAge < 15 * 60 * 1000; // 15 minut
+        const isRecentlyActive = tokenAge < 30 * 60 * 1000; // 30 minut
 
         if (newCount >= FAILURE_THRESHOLD && !isRecentlyActive) {
           // Przekroczony próg I token nieaktywny → naprawdę martwy, usuń
@@ -723,6 +727,9 @@ export async function sendFcmForRestaurant(
   }
 
   // Inkrementuj failure_count dla potencjalnie martwych tokenów
+  // WAŻNE: NIE aktualizujemy updated_at — to pole odzwierciedla ostatni
+  // "dowód życia" (heartbeat, rejestracja, delivery ACK).
+  // Failure increment NIE jest dowodem życia — jest dowodem AWARII.
   for (const { id, newCount, reason } of tokensToIncrement) {
     dbOps.push(
       supabaseAdmin
@@ -731,7 +738,6 @@ export async function sendFcmForRestaurant(
           failure_count: newCount,
           last_failure_at: new Date().toISOString(),
           last_failure_reason: reason,
-          updated_at: new Date().toISOString(),
         })
         .eq("id", id)
         .then(({ error: e }) => {
@@ -741,12 +747,18 @@ export async function sendFcmForRestaurant(
   }
 
   // Usuń TYLKO tokeny które przekroczyły próg failure_count
+  // KRYTYCZNE: Dodatkowy warunek failure_count >= FAILURE_THRESHOLD chroni
+  // przed race condition: jeśli heartbeat zdążył zresetować failure_count
+  // do 0 (via upsert w fcm-register) MIĘDZY naszym SELECT a tym DELETE,
+  // token NIE zostanie usunięty. Bez tego warunku token mógłby być usunięty
+  // mimo że apka właśnie potwierdziła swoją żywotność.
   if (idsToDelete.length > 0) {
     dbOps.push(
       supabaseAdmin
         .from("admin_fcm_tokens")
         .delete()
         .in("id", idsToDelete)
+        .gte("failure_count", FAILURE_THRESHOLD)
         .then(({ error: e }) => {
           if (e) console.error("[fcm] delete dead tokens error:", e.message);
           else console.log(`[fcm] 🗑️ Usunięto ${idsToDelete.length} trwale martwych tokenów`);

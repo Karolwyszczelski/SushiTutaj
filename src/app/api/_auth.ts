@@ -17,11 +17,38 @@ async function readAccessTokenFromCookies(): Promise<string | null> {
     .map((c) => c.value);
   const raw = parts.length ? parts.join("") : (all.find((c) => /sb-.*-auth-token$/.test(c.name))?.value ?? "");
   if (!raw) return null;
-  let text = raw; try { text = decodeURIComponent(raw); } catch {}
+
+  // Attempt 1: raw JSON (cookieEncoding='raw' or older versions)
   try {
-    const p = JSON.parse(text);
-    return p?.access_token || p?.currentSession?.access_token || p?.data?.session?.access_token || null;
-  } catch { return null; }
+    const p = JSON.parse(raw);
+    const t = p?.access_token || p?.currentSession?.access_token || p?.data?.session?.access_token;
+    if (t) return t;
+  } catch {}
+
+  // Attempt 2: URI-encoded JSON
+  try {
+    const decoded = decodeURIComponent(raw);
+    if (decoded !== raw) {
+      const p = JSON.parse(decoded);
+      const t = p?.access_token || p?.currentSession?.access_token || p?.data?.session?.access_token;
+      if (t) return t;
+    }
+  } catch {}
+
+  // Attempt 3: base64url encoded JSON (@supabase/ssr >=0.5 default)
+  // Format: "base64-<base64url_encoded_json>"
+  try {
+    let b64 = raw;
+    if (b64.startsWith("base64-")) b64 = b64.slice(7);
+    b64 = b64.replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4 !== 0) b64 += "=";
+    const decoded = Buffer.from(b64, "base64").toString("utf-8");
+    const p = JSON.parse(decoded);
+    const t = p?.access_token || p?.currentSession?.access_token || p?.data?.session?.access_token;
+    if (t) return t;
+  } catch {}
+
+  return null;
 }
 
 export async function getUserIdFromRequest(req: Request): Promise<string | null> {

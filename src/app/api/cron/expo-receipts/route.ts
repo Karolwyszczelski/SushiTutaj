@@ -26,7 +26,7 @@ const supabaseAdmin = createClient(
 const CRON_SECRET = process.env.CRON_SECRET;
 
 // Ile kolejnych failures żeby usunąć token
-const FAILURE_THRESHOLD = 3;
+const FAILURE_THRESHOLD = 5;
 
 export async function GET(req: Request) {
   // Weryfikacja — tylko Vercel Cron lub dev
@@ -184,19 +184,22 @@ export async function GET(req: Request) {
 
           // =====================================================================
           // KRYTYCZNA OCHRONA: taka sama jak w fcm.ts
-          // NIE usuwaj tokenów które były aktywne w ciągu ostatnich 15 minut!
+          // NIE usuwaj tokenów które były aktywne w ciągu ostatnich 30 minut!
           // Apka robi heartbeat co 5 min → jeśli updated_at świeże, tablet żyje.
           // =====================================================================
           const tokenAge = Date.now() - new Date(tokenRow.updated_at).getTime();
-          const isRecentlyActive = tokenAge < 15 * 60 * 1000; // 15 minut
+          const isRecentlyActive = tokenAge < 30 * 60 * 1000; // 30 minut
 
           if (newCount >= FAILURE_THRESHOLD && !isRecentlyActive) {
             // Przekroczony próg I token nieaktywny → naprawdę martwy, usuń
+            // Conditional delete: failure_count >= FAILURE_THRESHOLD chroni
+            // przed race condition z heartbeatem (który resetuje failure_count)
             dbOps.push(
               supabaseAdmin
                 .from("admin_fcm_tokens")
                 .delete()
                 .eq("id", tokenRow.id)
+                .gte("failure_count", FAILURE_THRESHOLD)
                 .then(({ error: e }) => {
                   if (!e) {
                     console.log(
@@ -208,6 +211,7 @@ export async function GET(req: Request) {
             );
           } else if (newCount >= FAILURE_THRESHOLD && isRecentlyActive) {
             // Przekroczony próg ALE token aktywny → OCHRONA!
+            // NIE aktualizujemy updated_at — failure NIE jest dowodem życia
             dbOps.push(
               supabaseAdmin
                 .from("admin_fcm_tokens")
@@ -215,7 +219,6 @@ export async function GET(req: Request) {
                   failure_count: newCount,
                   last_failure_at: new Date().toISOString(),
                   last_failure_reason: "DeviceNotRegistered (receipt)",
-                  updated_at: new Date().toISOString(),
                 })
                 .eq("id", tokenRow.id)
                 .then(({ error: e }) => {
@@ -228,7 +231,7 @@ export async function GET(req: Request) {
                 })
             );
           } else {
-            // Inkrementuj
+            // Inkrementuj — NIE aktualizujemy updated_at
             dbOps.push(
               supabaseAdmin
                 .from("admin_fcm_tokens")
@@ -236,7 +239,6 @@ export async function GET(req: Request) {
                   failure_count: newCount,
                   last_failure_at: new Date().toISOString(),
                   last_failure_reason: "DeviceNotRegistered (receipt)",
-                  updated_at: new Date().toISOString(),
                 })
                 .eq("id", tokenRow.id)
                 .then(({ error: e }) => {

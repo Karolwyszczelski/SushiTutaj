@@ -206,8 +206,14 @@ export async function POST(req: NextRequest) {
 }
 
 // DELETE — wyrejestrowanie tokena (np. logout)
+// Wymaga autoryzacji — zapobiega przypadkowemu/złośliwemu usuwaniu tokenów
 export async function DELETE(req: NextRequest) {
   try {
+    const userId = await getUserIdFromRequest(req);
+    if (!userId) {
+      return makeRes({ error: "Unauthorized" }, 401);
+    }
+
     const body = await req.json().catch(() => null);
     const token = typeof body?.token === "string" ? body.token.trim() : null;
 
@@ -215,10 +221,12 @@ export async function DELETE(req: NextRequest) {
       return makeRes({ error: "Missing token" }, 400);
     }
 
+    // Usuń tylko tokeny należące do tego użytkownika
     const { error } = await supabaseAdmin
       .from("admin_fcm_tokens")
       .delete()
-      .eq("token", token);
+      .eq("token", token)
+      .eq("user_id", userId);
 
     if (error) {
       return makeRes({ error: "DB error" }, 500);
