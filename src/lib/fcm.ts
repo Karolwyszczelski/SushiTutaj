@@ -525,14 +525,6 @@ const SAFE_ERROR_CODES = new Set([
   "InvalidCredentials", // Expo: zła konfiguracja serwera
 ]);
 
-// Ile kolejnych UNREGISTERED/DeviceNotRegistered musi wystąpić
-// zanim token zostanie usunięty. Chroni przed:
-// - Chwilowymi problemami FCM
-// - Temporary UNREGISTERED podczas aktualizacji Play Services
-// - Race conditions między wysyłką a re-rejestracją
-// Ustawione na 5 (zamiast 3) — restauracje mają mało zamówień
-// i fałszywe UNREGISTERED od Firebase są znane.
-const FAILURE_THRESHOLD = 5;
 
 // =============================================================================
 // GŁÓWNA FUNKCJA — wysyłanie do wszystkich natywnych urządzeń restauracji
@@ -611,11 +603,13 @@ export async function sendFcmForRestaurant(
   const allResults = [...expoResults, ...fcmResults];
 
   // =========================================================================
-  // INTELIGENTNE ZARZĄDZANIE CYKLEM ŻYCIA TOKENÓW
-  // Zamiast natychmiastowego usuwania, używamy systemu failure counting:
+  // ZARZĄDZANIE CYKLEM ŻYCIA TOKENÓW — NIGDY NIE USUWAMY!
+  // Tokeny NIGDY nie są automatycznie usuwane. Restauracja może nie mieć
+  // zamówień przez wiele godzin — usunięcie tokena oznaczałoby utratę
+  // powiadomień po wznowieniu zamówień. Zamiast tego:
   // - Sukces → reset failure_count do 0
-  // - UNREGISTERED/DeviceNotRegistered → increment failure_count
-  // - failure_count >= 3 → dopiero WTEDY usuń token
+  // - UNREGISTERED/DeviceNotRegistered → increment failure_count (tracking)
+  // - Heartbeat co 5 min resetuje failure_count → token się regeneruje
   // - INVALID_ARGUMENT/NETWORK_ERROR → NIE ruszaj tokena!
   // =========================================================================
 
@@ -623,7 +617,6 @@ export async function sendFcmForRestaurant(
 
   const idsToResetFailure: string[] = [];
   const tokensToIncrement: { id: string; newCount: number; reason: string }[] = [];
-  const idsToDelete: string[] = [];
 
   for (const result of allResults) {
     const row = tokenToRow.get(result.token);
@@ -639,50 +632,17 @@ export async function sendFcmForRestaurant(
       const code = result.errorCode || "UNKNOWN";
 
       if (DEAD_TOKEN_ERROR_CODES.has(code)) {
-        // Token MOŻE być martwy — inkrementuj counter
+        // Token MOŻE mieć problem — inkrementuj counter, ale NIGDY nie usuwaj.
+        // Restauracja może nie mieć zamówień przez godziny — token musi przetrwać.
+        // Heartbeat co 5 min zresetuje failure_count gdy tablet wróci online.
         const newCount = (row.failure_count || 0) + 1;
-
-        // =====================================================================
-        // KRYTYCZNA OCHRONA: NIE usuwaj tokenów które były aktywne w ciągu
-        // ostatnich 30 minut! Apka robi heartbeat co 5 min → jeśli updated_at
-        // jest świeże, tablet żyje i tylko FCM/Doze ma chwilowy problem.
-        // Przykład: tablet zablokowany → Doze mode → FCM może zwrócić
-        // UNREGISTERED chociaż token jest OK. Po odblokowaniu heartbeat
-        // resetuje failure_count → token się ratuje.
-        // 30 minut (zamiast 15) daje więcej czasu na recovery z Doze mode
-        // i aggressive battery optimization na tabletach chińskich OEM.
-        // =====================================================================
-        const tokenAge = Date.now() - new Date(row.updated_at).getTime();
-        const isRecentlyActive = tokenAge < 30 * 60 * 1000; // 30 minut
-
-        if (newCount >= FAILURE_THRESHOLD && !isRecentlyActive) {
-          // Przekroczony próg I token nieaktywny → naprawdę martwy, usuń
-          idsToDelete.push(row.id);
-          console.warn(
-            `[fcm] 🗑️ Token TRWALE martwy po ${newCount} failures (ostatnia aktywność ${Math.floor(tokenAge/60000)}min temu):`,
-            code,
-            row.token.slice(0, 20) + "..."
-          );
-        } else if (newCount >= FAILURE_THRESHOLD && isRecentlyActive) {
-          // Przekroczony próg ALE token aktywny → OCHRONA!
-          // Inkrementuj counter ale NIE usuwaj — daj szansę na recovery
-          tokensToIncrement.push({ id: row.id, newCount, reason: code });
-          console.warn(
-            `[fcm] 🛡️ OCHRONA: Token ma ${newCount} failures ALE był aktywny ${Math.floor(tokenAge/60000)}min temu — NIE usuwam!`,
-            code,
-            row.token.slice(0, 20) + "...",
-            "(tablet prawdopodobnie w Doze mode, czekam na heartbeat)"
-          );
-        } else {
-          // Jeszcze nie osiągnął progu → inkrementuj i czekaj
-          tokensToIncrement.push({ id: row.id, newCount, reason: code });
-          console.warn(
-            `[fcm] ⚠️ Token failure ${newCount}/${FAILURE_THRESHOLD}:`,
-            code,
-            row.token.slice(0, 20) + "...",
-            "(NIE usuwam — czekam na więcej dowodów)"
-          );
-        }
+        tokensToIncrement.push({ id: row.id, newCount, reason: code });
+        console.warn(
+          `[fcm] ⚠️ Token failure ${newCount} (zachowuję — nigdy nie usuwam):`,
+          code,
+          row.token.slice(0, 20) + "...",
+          "(heartbeat zresetuje po powrocie online)"
+        );
       } else if (SAFE_ERROR_CODES.has(code)) {
         // Bezpieczny błąd — problem po naszej stronie, NIE ruszaj tokena
         console.warn(
@@ -746,26 +706,6 @@ export async function sendFcmForRestaurant(
     );
   }
 
-  // Usuń TYLKO tokeny które przekroczyły próg failure_count
-  // KRYTYCZNE: Dodatkowy warunek failure_count >= FAILURE_THRESHOLD chroni
-  // przed race condition: jeśli heartbeat zdążył zresetować failure_count
-  // do 0 (via upsert w fcm-register) MIĘDZY naszym SELECT a tym DELETE,
-  // token NIE zostanie usunięty. Bez tego warunku token mógłby być usunięty
-  // mimo że apka właśnie potwierdziła swoją żywotność.
-  if (idsToDelete.length > 0) {
-    dbOps.push(
-      supabaseAdmin
-        .from("admin_fcm_tokens")
-        .delete()
-        .in("id", idsToDelete)
-        .gte("failure_count", FAILURE_THRESHOLD)
-        .then(({ error: e }) => {
-          if (e) console.error("[fcm] delete dead tokens error:", e.message);
-          else console.log(`[fcm] 🗑️ Usunięto ${idsToDelete.length} trwale martwych tokenów`);
-        })
-    );
-  }
-
   // Delivery logging (fire-and-forget — nie blokuje odpowiedzi)
   dbOps.push(
     logDeliveries(restaurantId, fcmResults, payload, "fcm"),
@@ -781,7 +721,7 @@ export async function sendFcmForRestaurant(
   if (failedCount > 0) {
     console.warn(
       `[fcm] Podsumowanie: ${sentCount} sent, ${failedCount} failed,`,
-      `${idsToDelete.length} usunięte, ${tokensToIncrement.length} z inkrementowanym failure_count`
+      `${tokensToIncrement.length} z inkrementowanym failure_count (tokeny NIGDY nie usuwane)`
     );
   }
 }
