@@ -94,6 +94,10 @@ export async function POST(req: NextRequest) {
     //    KRYTYCZNE: Resetujemy failure_count na 0 przy każdej rejestracji!
     //    Heartbeat co 5 min z tabletu resetuje counter →
     //    nawet jeśli token miał chwilowy UNREGISTERED, apka żyje.
+    //
+    //    WAŻNE: ignoreDuplicates: false gwarantuje że przy konflikcie
+    //    wszystkie pola (włącznie z updated_at) zostaną zaktualizowane!
+    //    Bez tego Supabase może pominąć update jeśli row już istnieje.
     const { error: upsertErr } = await supabaseAdmin
       .from("admin_fcm_tokens")
       .upsert(
@@ -109,7 +113,7 @@ export async function POST(req: NextRequest) {
           last_failure_reason: null,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: "token" }
+        { onConflict: "token", ignoreDuplicates: false }
       );
 
     if (upsertErr) {
@@ -119,6 +123,25 @@ export async function POST(req: NextRequest) {
       });
       return makeRes({ error: "DB error" }, 500);
     }
+
+    // 5b) Sprawdź czy token był już w bazie (create vs update)
+    //     Pomaga debugować czy heartbeat działa prawidłowo
+    const { data: tokenCheck } = await supabaseAdmin
+      .from("admin_fcm_tokens")
+      .select("id, created_at, updated_at")
+      .eq("token", token)
+      .maybeSingle();
+
+    const isNewToken = tokenCheck && 
+      new Date(tokenCheck.created_at).getTime() > Date.now() - 5000; // created < 5s ago
+    
+    pushLogger.info("[fcm-register] Token " + (isNewToken ? "CREATED" : "UPDATED"), {
+      tokenType,
+      slug: restaurantSlug,
+      tokenSuffix: token.slice(-20),
+      isNew: isNewToken,
+      updatedAt: tokenCheck?.updated_at,
+    });
 
     // 6) Loguj informację o web push subskrypcjach (diagnostyka)
     //    Czyszczenie web push na serwerze NIE robimy automatycznie,
@@ -141,12 +164,6 @@ export async function POST(req: NextRequest) {
     } catch {
       // Non-critical diagnostics
     }
-
-    pushLogger.info("[fcm-register] Token registered", {
-      tokenType,
-      slug: restaurantSlug,
-      tokenSuffix: token.slice(-20),
-    });
 
     return makeRes({
       ok: true,
