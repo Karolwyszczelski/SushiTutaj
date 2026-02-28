@@ -98,30 +98,55 @@ export async function POST(req: NextRequest) {
     //    WAŻNE: ignoreDuplicates: false gwarantuje że przy konflikcie
     //    wszystkie pola (włącznie z updated_at) zostaną zaktualizowane!
     //    Bez tego Supabase może pominąć update jeśli row już istnieje.
-    const { error: upsertErr } = await supabaseAdmin
+    //
+    //    FALLBACK: Jeśli kolumny failure_count/last_failure_at/last_failure_reason
+    //    nie istnieją (migracja 20260225000000 nie została zastosowana),
+    //    ponawiamy upsert bez tych kolumn — token MUSI być zapisany!
+    const baseData = {
+      user_id: userId,
+      restaurant_id: restaurant.id,
+      restaurant_slug: restaurantSlug,
+      token,
+      token_type: tokenType,
+      device_info: deviceInfo,
+      updated_at: new Date().toISOString(),
+    };
+
+    let { error: upsertErr } = await supabaseAdmin
       .from("admin_fcm_tokens")
       .upsert(
         {
-          user_id: userId,
-          restaurant_id: restaurant.id,
-          restaurant_slug: restaurantSlug,
-          token,
-          token_type: tokenType,
-          device_info: deviceInfo,
+          ...baseData,
           failure_count: 0,
           last_failure_at: null,
           last_failure_reason: null,
-          updated_at: new Date().toISOString(),
         },
         { onConflict: "token", ignoreDuplicates: false }
       );
+
+    // Fallback: jeśli upsert nie powiódł się (np. brak kolumn failure_count),
+    // ponów bez kolumn failure tracking — rejestracja tokena jest ważniejsza!
+    if (upsertErr) {
+      pushLogger.warn("[fcm-register] Upsert with failure tracking failed, retrying without", {
+        error: upsertErr.message,
+        code: upsertErr.code,
+      });
+
+      const { error: retryErr } = await supabaseAdmin
+        .from("admin_fcm_tokens")
+        .upsert(baseData, { onConflict: "token", ignoreDuplicates: false });
+
+      upsertErr = retryErr;
+    }
 
     if (upsertErr) {
       pushLogger.error("[fcm-register] Upsert failed", {
         error: upsertErr.message,
         code: upsertErr.code,
+        slug: restaurantSlug,
+        userId,
       });
-      return makeRes({ error: "DB error" }, 500);
+      return makeRes({ error: "DB error", detail: upsertErr.message, code: upsertErr.code }, 500);
     }
 
     // 5b) Sprawdź czy token był już w bazie (create vs update)

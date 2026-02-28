@@ -541,18 +541,37 @@ export async function sendFcmForRestaurant(
   payload: FcmPayload
 ): Promise<void> {
   // Pobierz wszystkie tokeny FCM dla restauracji (Z failure_count I updated_at!)
-  const { data, error } = await supabaseAdmin
+  // FALLBACK: Jeśli kolumna failure_count nie istnieje (migracja 20260225000000
+  // nie została zastosowana), ponów SELECT bez niej — push MUSI być wysłany!
+  const res = await supabaseAdmin
     .from("admin_fcm_tokens")
     .select("id, token, token_type, failure_count, updated_at")
     .eq("restaurant_id", restaurantId)
     .limit(200);
+  let data: any[] | null = res.data;
+  let error: { message: string; code?: string } | null = res.error;
+
+  // Fallback: kolumna failure_count może nie istnieć
+  if (error && (error.code === "42703" || error.message?.includes("does not exist"))) {
+    console.warn("[fcm] failure_count column missing, retrying SELECT without it");
+    const fallback = await supabaseAdmin
+      .from("admin_fcm_tokens")
+      .select("id, token, token_type, updated_at")
+      .eq("restaurant_id", restaurantId)
+      .limit(200);
+    data = fallback.data;
+    error = fallback.error;
+  }
 
   if (error) {
     console.error("[fcm] błąd pobierania tokenów:", error.message);
     return;
   }
 
-  const rows = (data as FcmTokenRow[]) || [];
+  const rows: FcmTokenRow[] = ((data || []) as any[]).map((r) => ({
+    ...r,
+    failure_count: r.failure_count ?? 0,
+  }));
   if (!rows.length) {
     console.error(
       "[fcm] ❌ BRAK tokenów FCM dla restauracji:",
