@@ -25,9 +25,6 @@ const supabaseAdmin = createClient(
 // Ochrona endpointu — Vercel CRON_SECRET lub brak w dev
 const CRON_SECRET = process.env.CRON_SECRET;
 
-// Ile kolejnych failures żeby usunąć token
-const FAILURE_THRESHOLD = 3;
-
 export async function GET(req: Request) {
   // Weryfikacja — tylko Vercel Cron lub dev
   if (CRON_SECRET) {
@@ -155,7 +152,8 @@ export async function GET(req: Request) {
     }
 
     // 5) Inkrementuj failure_count dla dead tokenów (DeviceNotRegistered)
-    //    Używamy tego samego FAILURE_THRESHOLD co FCM
+    //    Tokeny NIGDY nie są usuwane — failure_count służy do diagnostyki.
+    //    Heartbeat z tabletu zresetuje failure_count do 0 przy powrocie online.
     if (deadTokens.length > 0) {
       const uniqueDeadTokens = [...new Set(deadTokens)];
 
@@ -182,73 +180,27 @@ export async function GET(req: Request) {
         if (tokenRow) {
           const newCount = (tokenRow.failure_count || 0) + 1;
 
-          // =====================================================================
-          // KRYTYCZNA OCHRONA: taka sama jak w fcm.ts
-          // NIE usuwaj tokenów które były aktywne w ciągu ostatnich 15 minut!
-          // Apka robi heartbeat co 5 min → jeśli updated_at świeże, tablet żyje.
-          // =====================================================================
-          const tokenAge = Date.now() - new Date(tokenRow.updated_at).getTime();
-          const isRecentlyActive = tokenAge < 15 * 60 * 1000; // 15 minut
-
-          if (newCount >= FAILURE_THRESHOLD && !isRecentlyActive) {
-            // Przekroczony próg I token nieaktywny → naprawdę martwy, usuń
-            dbOps.push(
-              supabaseAdmin
-                .from("admin_fcm_tokens")
-                .delete()
-                .eq("id", tokenRow.id)
-                .then(({ error: e }) => {
-                  if (!e) {
-                    console.log(
-                      `[expo-receipts] 🗑️ Usunięto martwy Expo token po ${newCount} failures (ostatnia aktywność ${Math.floor(tokenAge/60000)}min temu):`,
-                      token.slice(0, 30)
-                    );
-                  }
-                })
-            );
-          } else if (newCount >= FAILURE_THRESHOLD && isRecentlyActive) {
-            // Przekroczony próg ALE token aktywny → OCHRONA!
-            dbOps.push(
-              supabaseAdmin
-                .from("admin_fcm_tokens")
-                .update({
-                  failure_count: newCount,
-                  last_failure_at: new Date().toISOString(),
-                  last_failure_reason: "DeviceNotRegistered (receipt)",
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("id", tokenRow.id)
-                .then(({ error: e }) => {
-                  if (!e) {
-                    console.warn(
-                      `[expo-receipts] 🛡️ OCHRONA: Expo token ma ${newCount} failures ALE był aktywny ${Math.floor(tokenAge/60000)}min temu — NIE usuwam!`,
-                      token.slice(0, 30)
-                    );
-                  }
-                })
-            );
-          } else {
-            // Inkrementuj
-            dbOps.push(
-              supabaseAdmin
-                .from("admin_fcm_tokens")
-                .update({
-                  failure_count: newCount,
-                  last_failure_at: new Date().toISOString(),
-                  last_failure_reason: "DeviceNotRegistered (receipt)",
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("id", tokenRow.id)
-                .then(({ error: e }) => {
-                  if (!e) {
-                    console.warn(
-                      `[expo-receipts] ⚠️ Expo token failure ${newCount}/${FAILURE_THRESHOLD}:`,
-                      token.slice(0, 30)
-                    );
-                  }
-                })
-            );
-          }
+          // Inkrementuj failure_count ale NIGDY nie usuwaj tokena.
+          // Restauracja może nie mieć zamówień przez godziny — token musi przetrwać.
+          // Heartbeat co 5 min zresetuje failure_count gdy tablet wróci online.
+          dbOps.push(
+            supabaseAdmin
+              .from("admin_fcm_tokens")
+              .update({
+                failure_count: newCount,
+                last_failure_at: new Date().toISOString(),
+                last_failure_reason: "DeviceNotRegistered (receipt)",
+              })
+              .eq("id", tokenRow.id)
+              .then(({ error: e }) => {
+                if (!e) {
+                  console.warn(
+                    `[expo-receipts] ⚠️ Expo token failure ${newCount} (zachowuję — nigdy nie usuwam):`,
+                    token.slice(0, 30)
+                  );
+                }
+              })
+          );
         }
       }
     }
