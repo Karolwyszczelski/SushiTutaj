@@ -161,11 +161,26 @@ export async function GET(req: Request) {
 
       for (const token of uniqueDeadTokens) {
         // Pobierz aktualny failure_count I updated_at
-        const { data: tokenRow } = await supabaseAdmin
-          .from("admin_fcm_tokens")
-          .select("id, failure_count, updated_at")
-          .eq("token", token)
-          .maybeSingle();
+        // FALLBACK: Jeśli failure_count nie istnieje (brak migracji), używamy id + updated_at
+        let tokenRow: { id: string; failure_count?: number; updated_at: string } | null = null;
+        {
+          const { data, error: selErr } = await supabaseAdmin
+            .from("admin_fcm_tokens")
+            .select("id, failure_count, updated_at")
+            .eq("token", token)
+            .maybeSingle();
+
+          if (selErr && (selErr.code === "42703" || selErr.message?.includes("does not exist"))) {
+            const { data: fallbackData } = await supabaseAdmin
+              .from("admin_fcm_tokens")
+              .select("id, updated_at")
+              .eq("token", token)
+              .maybeSingle();
+            tokenRow = fallbackData ? { ...fallbackData, failure_count: 0 } : null;
+          } else {
+            tokenRow = data;
+          }
+        }
 
         if (tokenRow) {
           const newCount = (tokenRow.failure_count || 0) + 1;
