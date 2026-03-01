@@ -320,11 +320,16 @@ export function useNotifications(): UseNotificationsReturn {
         // ale nie wie czy tablet NAPRAWDĘ je wyświetlił.
         // ACK = "tak, dostałem, wyświetliłem, zawibrował"
         // =================================================================
-        AsyncStorage.getItem(STORAGE_KEY_TOKEN).then((token) => {
+        AsyncStorage.multiGet([STORAGE_KEY_TOKEN, STORAGE_KEY_AUTH]).then((stores) => {
+          const token = stores[0][1];
+          const authToken = stores[1][1];
           if (!token) return;
           fetch(`${ADMIN_URL}/api/admin/push/delivery-ack`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              ...(authToken && { Authorization: `Bearer ${authToken}` }),
+            },
             body: JSON.stringify({
               token,
               notification_id: data.timestamp || notification.request.identifier,
@@ -350,11 +355,16 @@ export function useNotifications(): UseNotificationsReturn {
 
         // ACK: kliknięcie = pewne potwierdzenie dostarczenia
         // (powiadomienie musiało się wyświetlić żeby user mógł kliknąć)
-        AsyncStorage.getItem(STORAGE_KEY_TOKEN).then((token) => {
+        AsyncStorage.multiGet([STORAGE_KEY_TOKEN, STORAGE_KEY_AUTH]).then((stores) => {
+          const token = stores[0][1];
+          const authToken = stores[1][1];
           if (!token) return;
           fetch(`${ADMIN_URL}/api/admin/push/delivery-ack`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              ...(authToken && { Authorization: `Bearer ${authToken}` }),
+            },
             body: JSON.stringify({
               token,
               notification_id: data.timestamp || response.notification.request.identifier,
@@ -455,11 +465,4 @@ export async function saveCookiesFromWebView(cookies: string) {
   if (cookies) {
     await AsyncStorage.setItem(STORAGE_KEY_COOKIES, cookies);
   }
-}
-
-/**
- * Pobiera zapisany restaurant_slug z AsyncStorage.
- */
-export async function getSavedSlug(): Promise<string | null> {
-  return AsyncStorage.getItem(STORAGE_KEY_SLUG);
 }

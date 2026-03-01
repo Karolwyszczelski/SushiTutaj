@@ -21,6 +21,7 @@ import { Audio } from "expo-av";
 let alarmInstance: Audio.Sound | null = null;
 let isPlaying = false;
 let autoStopTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingStop = false;   // CRITICAL: chroni przed race condition start/stop
 
 // Alarm gra max 2 minuty — jeśli nikt nie reaguje, cisza
 // (zapobiega nieskończonemu dzwonieniu np. w nocy)
@@ -40,6 +41,8 @@ const AUTO_STOP_MS = 2 * 60 * 1000;
 export async function startAlarm(): Promise<void> {
   if (isPlaying) return; // Już gra — nie startuj drugiego
 
+  pendingStop = false;   // Reset flagi przy nowym starcie
+
   try {
     // Konfiguracja audio:
     // - staysActiveInBackground: dźwięk nie przestaje gdy app schodzi do tła
@@ -50,6 +53,12 @@ export async function startAlarm(): Promise<void> {
       staysActiveInBackground: true,
       shouldDuckAndroid: false,
     });
+
+    // CRITICAL: Sprawdź czy stopAlarm() została wywołana w trakcie await
+    if (pendingStop) {
+      pendingStop = false;
+      return;
+    }
 
     const { sound } = await Audio.Sound.createAsync(
       require("../../assets/new_order.mp3"),
@@ -62,6 +71,14 @@ export async function startAlarm(): Promise<void> {
 
     alarmInstance = sound;
     isPlaying = true;
+
+    // CRITICAL: Jeśli stopAlarm() była wywołana podczas ładowania dźwięku,
+    // zatrzymaj natychmiast — nie zostawiaj osieroconego sound instance
+    if (pendingStop) {
+      pendingStop = false;
+      void stopAlarm();
+      return;
+    }
 
     console.log("[Alarm] 🔔 Alarm STARTED (looping new_order.mp3)");
 
@@ -85,6 +102,10 @@ export async function startAlarm(): Promise<void> {
  * - Auto-timeout 2 minuty
  */
 export async function stopAlarm(): Promise<void> {
+  // CRITICAL: Ustaw flagę NATYCHMIAST — jeśli startAlarm() jest w trakcie
+  // await, sprawdzi tę flagę po wznowieniu i zatrzyma się
+  pendingStop = true;
+
   if (autoStopTimer) {
     clearTimeout(autoStopTimer);
     autoStopTimer = null;

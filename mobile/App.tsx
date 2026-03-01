@@ -21,7 +21,6 @@ import {
 import { WebView, WebViewNavigation } from "react-native-webview";
 import * as SplashScreen from "expo-splash-screen";
 import { activateKeepAwakeAsync } from "expo-keep-awake";
-import { registerRootComponent } from "expo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { ADMIN_URL, START_PATH } from "./src/config";
@@ -202,8 +201,22 @@ const INJECTED_JS = `
       var raw = '';
       if (chunks.length > 0) {
         chunks.sort(function(a, b) { return a.idx - b.idx; });
+        // Walidacja: sprawdź czy chunki są ciągłe (0, 1, 2, ...)
+        var chunksValid = true;
         for (var k = 0; k < chunks.length; k++) {
-          raw += chunks[k].value;
+          if (chunks[k].idx !== k) {
+            chunksValid = false;
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'DEBUG',
+              message: 'AUTH chunk gap! Expected idx=' + k + ' got=' + chunks[k].idx + ' total=' + chunks.length,
+            }));
+            break;
+          }
+        }
+        if (chunksValid) {
+          for (var k2 = 0; k2 < chunks.length; k2++) {
+            raw += chunks[k2].value;
+          }
         }
       } else if (baseCookie) {
         raw = baseCookie;
@@ -261,7 +274,14 @@ const INJECTED_JS = `
           message: 'AUTH ok len=' + token.length + ' chunks=' + chunks.length,
         }));
       } else if (!token) {
-        // Brak tokena — loguj diagnostykę
+        // Brak tokena — powiadom RN żeby zresetować hasAuthToken
+        if (_lastAuthToken) {
+          _lastAuthToken = null;
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'AUTH_CLEARED',
+          }));
+        }
+        // Diagnostyka
         var cookieNames = [];
         for (var m = 0; m < allCookies.length; m++) {
           var cn = allCookies[m].trim().split('=')[0];
@@ -311,7 +331,7 @@ const INJECTED_JS = `
     }
   }
   sendSlug();
-  setInterval(sendSlug, 3000);
+  setInterval(sendSlug, 15000);
 
   // --- 4. Ukryj elementy niepotrzebne w natywnej apce ---
   try {
@@ -411,7 +431,6 @@ export default function App() {
   const webViewRef = useRef<WebView>(null);
   const [isReady, setIsReady] = useState(false);
   const [canGoBack, setCanGoBack] = useState(false);
-  const [currentUrl, setCurrentUrl] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
   // Czy HTML się załadował (ale React mógł jeszcze nie wyrenderować)
   const [htmlLoaded, setHtmlLoaded] = useState(false);
@@ -435,6 +454,8 @@ export default function App() {
   // ------------------------------------------------------------------
   useEffect(() => {
     SplashScreen.hideAsync().catch(() => {});
+    // Cleanup: zatrzymaj alarm przy unmount (np. force-kill, Fast Refresh)
+    return () => { stopAlarm().catch(() => {}); };
   }, []);
 
   // ------------------------------------------------------------------
@@ -481,13 +502,20 @@ export default function App() {
   // Foreground detection: wymusza re-rejestrację FCM po powrocie z tła
   // KRYTYCZNE: Gdy tablet jest zablokowany dłuższy czas, auth token
   // mógł wygasnąć. Po odblokowaniu musimy wymusić ponowną rejestrację.
+  // WAŻNE: Sprawdzamy previous state żeby uniknąć fałszywych triggerów
+  // (np. otwarcie panelu powiadomień = active→inactive→active)
   // ------------------------------------------------------------------
+  const appStateRefApp = useRef(AppState.currentState);
   useEffect(() => {
     const sub = AppState.addEventListener("change", (nextState) => {
-      if (nextState === "active") {
+      if (
+        appStateRefApp.current.match(/inactive|background/) &&
+        nextState === "active"
+      ) {
         console.log("[App] Foreground detected — wymuszam re-rejestrację FCM");
         setForegroundCount((c) => c + 1);
       }
+      appStateRefApp.current = nextState;
     });
     return () => sub.remove();
   }, []);
@@ -507,7 +535,7 @@ export default function App() {
       console.log("[App] Nawigacja z powiadomienia:", fullUrl);
 
       webViewRef.current.injectJavaScript(`
-        window.location.href = "${fullUrl}";
+        window.location.href = ${JSON.stringify(fullUrl)};
         true;
       `);
 
@@ -577,6 +605,12 @@ export default function App() {
             }
             break;
 
+          case "AUTH_CLEARED":
+            // Użytkownik się wylogował — zatrzymaj heartbeat i FCM rejestrację
+            console.log("[App] Auth cleared — użytkownik wylogowany");
+            setHasAuthToken(false);
+            break;
+
           case "RESTAURANT_SLUG":
             if (msg.slug && msg.slug !== restaurantSlug) {
               console.log("[App] Restaurant slug z WebView:", msg.slug);
@@ -621,7 +655,6 @@ export default function App() {
   const onNavigationStateChange = useCallback(
     (navState: WebViewNavigation) => {
       setCanGoBack(navState.canGoBack);
-      setCurrentUrl(navState.url);
     },
     []
   );
