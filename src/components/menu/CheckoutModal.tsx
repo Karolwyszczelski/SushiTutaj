@@ -1492,6 +1492,27 @@ const totalWithDelivery = Math.max(0, subtotal + deliveryCost - totalDiscount);
       return;
     }
 
+    // === Walidacja wymaganych opcji (np. smak gyozy) ===
+    for (const item of items) {
+      const product = resolveProduct(item);
+      if (!product?.product_option_groups?.length) continue;
+      const addons: string[] = Array.isArray(item.addons) ? item.addons : [];
+      for (const link of product.product_option_groups) {
+        const group = link.option_group;
+        if (!group) continue;
+        const isRequired = group.min_select > 0 || group.type === "radio";
+        if (!isRequired) continue;
+        const minNeeded = Math.max(group.min_select, 1);
+        const selectedCount = group.options.filter((o: any) => addons.includes(o.name)).length;
+        if (selectedCount < minNeeded) {
+          setErrorMessage(
+            `Produkt „${item.name}" wymaga wyboru opcji „${group.name}". Wybierz co najmniej ${minNeeded}.`
+          );
+          return;
+        }
+      }
+    }
+
     // Wymagaj wyboru futomaki przy 4 naklejkach
     if (canUseLoyalty4 && !selectedFreeRoll) {
       setErrorMessage("Wybierz darmowe Futomaki z nagrody lojalnościowej (4 naklejki).");

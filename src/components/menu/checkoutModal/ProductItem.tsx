@@ -98,6 +98,16 @@ export const ProductItem: React.FC<{
   // 3. Funkcja pomocnicza sprawdzająca czy opcja jest wybrana
   const isOptionSelected = (optionName: string) => addonsArr.includes(optionName);
 
+  // Sprawdzenie, które grupy wymagają wyboru (min_select > 0 lub radio z min_select >= 1)
+  const getGroupSelectedCount = (group: DbOptionGroup) =>
+    group.options.filter((o) => addonsArr.includes(o.name)).length;
+
+  const isGroupRequired = (group: DbOptionGroup) =>
+    group.min_select > 0 || group.type === "radio";
+
+  const isGroupMissingSelection = (group: DbOptionGroup) =>
+    isGroupRequired(group) && getGroupSelectedCount(group) < Math.max(group.min_select, 1);
+
   // 3. Obsługa kliknięcia (Radio vs Checkbox)
   const handleOptionToggle = (group: DbOptionGroup, option: DbOption) => {
     const isSelected = isOptionSelected(option.name);
@@ -693,16 +703,40 @@ const showSauces = !isDrink && !isDessert;
       {/* === SEKCJA DYNAMICZNYCH OPCJI Z BAZY (Najwyższy priorytet) === */}
         {optionGroups.length > 0 && (
            <div className="space-y-4 mb-2 pt-1 border-b border-dashed border-white/10 lg:border-gray-200 pb-4">
-              {optionGroups.map((group: DbOptionGroup) => (
-                <div key={group.id} className="space-y-2">
+              {optionGroups.map((group: DbOptionGroup) => {
+                const missing = isGroupMissingSelection(group);
+                const required = isGroupRequired(group);
+                return (
+                <div key={group.id} className={clsx("space-y-2 rounded-xl p-2 -mx-2 transition-all", missing && "bg-red-500/10 lg:bg-red-50 ring-1 ring-red-400/40 lg:ring-red-300")}>
                   <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center">
-                      <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
+                    <div className={clsx("w-6 h-6 rounded-lg flex items-center justify-center", missing ? "bg-gradient-to-br from-red-400 to-red-600" : "bg-gradient-to-br from-blue-400 to-indigo-500")}>
+                      {missing ? (
+                        <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 3l9.66 16.59A1 1 0 0120.66 21H3.34a1 1 0 01-.86-1.41L12 3z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
                     </div>
                     <div className="font-semibold text-sm text-white lg:text-black">{group.name}</div>
+                    {required && (
+                      <span className={clsx(
+                        "text-[10px] font-semibold px-1.5 py-0.5 rounded-full",
+                        missing
+                          ? "bg-red-500/20 text-red-300 lg:bg-red-100 lg:text-red-600 animate-pulse"
+                          : "bg-green-500/20 text-green-300 lg:bg-green-100 lg:text-green-600"
+                      )}>
+                        {missing ? "★ wymagane" : "✓"}
+                      </span>
+                    )}
                   </div>
+                  {missing && (
+                    <p className="text-[11px] text-red-300 lg:text-red-500 pl-8">
+                      Wybierz opcję aby kontynuować
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-2">
                     {group.options.map((option: DbOption) => {
                       const selected = isOptionSelected(option.name);
@@ -718,7 +752,9 @@ const showSauces = !isDrink && !isDessert;
                             "px-3 py-2 rounded-lg text-[11px] border transition-all font-medium",
                             selected 
                               ? "bg-[#a61b1b] text-white border-[#a61b1b]" 
-                              : "bg-white/5 lg:bg-white text-white/80 lg:text-black/80 hover:bg-white/10 lg:hover:bg-gray-100 border-white/15 lg:border-black/10"
+                              : missing
+                                ? "bg-white/5 lg:bg-white text-white/80 lg:text-black/80 hover:bg-white/10 lg:hover:bg-gray-100 border-red-400/40 lg:border-red-300"
+                                : "bg-white/5 lg:bg-white text-white/80 lg:text-black/80 hover:bg-white/10 lg:hover:bg-gray-100 border-white/15 lg:border-black/10"
                           )}
                         >
                           {selected ? "✓ " : ""}{option.name}{priceTxt}
@@ -727,7 +763,8 @@ const showSauces = !isDrink && !isDessert;
                     })}
                   </div>
                 </div>
-              ))}
+                );
+              })}
            </div>
         )}
         {isSet && !isSetMonth && setRows.length > 0 && (
