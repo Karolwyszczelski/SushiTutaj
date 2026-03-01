@@ -25,8 +25,12 @@ const supabaseAdmin = createClient(
 // Ochrona endpointu — Vercel CRON_SECRET lub brak w dev
 const CRON_SECRET = process.env.CRON_SECRET;
 
-// Ile kolejnych failures żeby usunąć token
-const FAILURE_THRESHOLD = 3;
+// ---------------------------------------------------------------------------
+// Token NIGDY nie jest usuwany automatycznie!
+// Tylko soft-disable (przestajemy wysyłać) — heartbeat z apki wznowi.
+// Matching SOFT_DISABLE_THRESHOLD from src/lib/fcm.ts
+// ---------------------------------------------------------------------------
+const SOFT_DISABLE_THRESHOLD = 15;
 
 export async function GET(req: Request) {
   // Weryfikacja — tylko Vercel Cron lub dev
@@ -155,7 +159,7 @@ export async function GET(req: Request) {
     }
 
     // 5) Inkrementuj failure_count dla dead tokenów (DeviceNotRegistered)
-    //    Używamy tego samego FAILURE_THRESHOLD co FCM
+    //    NIGDY NIE USUWAMY! Tylko soft-disable matching SOFT_DISABLE_THRESHOLD z fcm.ts
     if (deadTokens.length > 0) {
       const uniqueDeadTokens = [...new Set(deadTokens)];
 
@@ -182,73 +186,36 @@ export async function GET(req: Request) {
         if (tokenRow) {
           const newCount = (tokenRow.failure_count || 0) + 1;
 
-          // =====================================================================
-          // KRYTYCZNA OCHRONA: taka sama jak w fcm.ts
-          // NIE usuwaj tokenów które były aktywne w ciągu ostatnich 15 minut!
-          // Apka robi heartbeat co 5 min → jeśli updated_at świeże, tablet żyje.
-          // =====================================================================
-          const tokenAge = Date.now() - new Date(tokenRow.updated_at).getTime();
-          const isRecentlyActive = tokenAge < 15 * 60 * 1000; // 15 minut
-
-          if (newCount >= FAILURE_THRESHOLD && !isRecentlyActive) {
-            // Przekroczony próg I token nieaktywny → naprawdę martwy, usuń
-            dbOps.push(
-              supabaseAdmin
-                .from("admin_fcm_tokens")
-                .delete()
-                .eq("id", tokenRow.id)
-                .then(({ error: e }) => {
-                  if (!e) {
-                    console.log(
-                      `[expo-receipts] 🗑️ Usunięto martwy Expo token po ${newCount} failures (ostatnia aktywność ${Math.floor(tokenAge/60000)}min temu):`,
-                      token.slice(0, 30)
-                    );
-                  }
-                })
-            );
-          } else if (newCount >= FAILURE_THRESHOLD && isRecentlyActive) {
-            // Przekroczony próg ALE token aktywny → OCHRONA!
-            dbOps.push(
-              supabaseAdmin
-                .from("admin_fcm_tokens")
-                .update({
-                  failure_count: newCount,
-                  last_failure_at: new Date().toISOString(),
-                  last_failure_reason: "DeviceNotRegistered (receipt)",
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("id", tokenRow.id)
-                .then(({ error: e }) => {
-                  if (!e) {
+          // NIGDY NIE USUWAJ! Tylko inkrementuj failure_count.
+          // Po SOFT_DISABLE_THRESHOLD → fcm.ts przestanie wysyłać (soft-disable).
+          // Heartbeat z tabletu zresetuje failure_count do 0 → wznowi wysyłkę.
+          dbOps.push(
+            supabaseAdmin
+              .from("admin_fcm_tokens")
+              .update({
+                failure_count: newCount,
+                last_failure_at: new Date().toISOString(),
+                last_failure_reason: "DeviceNotRegistered (receipt)",
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", tokenRow.id)
+              .then(({ error: e }) => {
+                if (!e) {
+                  if (newCount >= SOFT_DISABLE_THRESHOLD) {
                     console.warn(
-                      `[expo-receipts] 🛡️ OCHRONA: Expo token ma ${newCount} failures ALE był aktywny ${Math.floor(tokenAge/60000)}min temu — NIE usuwam!`,
-                      token.slice(0, 30)
+                      `[expo-receipts] ⏸️ Expo token SOFT-DISABLED po ${newCount} failures:`,
+                      token.slice(0, 30),
+                      "(NIE usunięty! Heartbeat go wznowi)"
                     );
-                  }
-                })
-            );
-          } else {
-            // Inkrementuj
-            dbOps.push(
-              supabaseAdmin
-                .from("admin_fcm_tokens")
-                .update({
-                  failure_count: newCount,
-                  last_failure_at: new Date().toISOString(),
-                  last_failure_reason: "DeviceNotRegistered (receipt)",
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("id", tokenRow.id)
-                .then(({ error: e }) => {
-                  if (!e) {
+                  } else {
                     console.warn(
-                      `[expo-receipts] ⚠️ Expo token failure ${newCount}/${FAILURE_THRESHOLD}:`,
+                      `[expo-receipts] ⚠️ Expo token failure ${newCount}/${SOFT_DISABLE_THRESHOLD}:`,
                       token.slice(0, 30)
                     );
                   }
-                })
-            );
-          }
+                }
+              })
+          );
         }
       }
     }

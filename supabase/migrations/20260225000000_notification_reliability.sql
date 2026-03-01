@@ -11,7 +11,8 @@
 -- 1. Dodaj kolumny failure tracking do admin_fcm_tokens
 -- =============================================================================
 
--- Licznik kolejnych błędów wysyłki — token usuwany dopiero po >= 3
+-- Licznik kolejnych błódów wysyłki — token SOFT-DISABLED po >= 15
+-- NIGDY nie usuwany automatycznie! Heartbeat z tabletu resetuje do 0.
 ALTER TABLE admin_fcm_tokens
   ADD COLUMN IF NOT EXISTS failure_count integer DEFAULT 0;
 
@@ -152,6 +153,11 @@ CREATE POLICY "Service role full access to expo receipts"
 
 -- =============================================================================
 -- 5. Automatyczne czyszczenie starych danych (pg_cron)
+-- ⚠️ UWAGA: Poniższe zapytania są ZAKOMENTOWANE i NIE POWINNY być odkomentowane!
+-- Usuwanie tokenów FCM jest obsługiwane przez:
+--   1. src/lib/fcm.ts → SOFT-DISABLE (nigdy nie kasuje)
+--   2. /api/cron/cleanup-tokens → JEDYNY cleanup po 30 dniach braku heartbeat
+-- NIE używaj pg_cron do kasowania admin_fcm_tokens!
 -- =============================================================================
 
 -- Logi starsze niż 30 dni — czyść co niedzielę o 4:00
