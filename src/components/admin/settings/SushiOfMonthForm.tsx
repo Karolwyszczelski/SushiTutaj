@@ -28,7 +28,7 @@ const SOM_BUCKET = process.env.NEXT_PUBLIC_SOM_BUCKET || "menu";
 const MAX_MB = 6;
 
 // domyślny obrazek z public/
-const DEFAULT_LOCAL_IMAGE = "/assets/menuphoto/zestaw-miesiaca.png";
+const DEFAULT_LOCAL_IMAGE = "/assets/menuphoto/zestaw-miesiaca.svg";
 
 // stała ścieżka w Storage (nadpisywanie = “podmiana”)
 const SOM_STORAGE_PATH = "som/zestaw-miesiaca";
