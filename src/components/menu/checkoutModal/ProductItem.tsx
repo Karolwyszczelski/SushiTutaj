@@ -293,6 +293,21 @@ const syncAddonCount = useCallback((label: string, desiredCount: number) => {
 
     if (!prodInfo) return false;
 
+    // BLOCK 0: nie pozwalaj dodać dodatku, który już jest w nazwie dania
+    const _fullText = `${prod.name} ${prodInfo.description || ""}`.toLowerCase();
+    const _fullPlain = normalizePlain(`${prod.name} ${prodInfo.description || ""}`);
+    const _hasTempuraInName = _fullText.includes("tempur");
+    const _hasPlatekInName = _fullPlain.includes("platek sojow") || _fullPlain.includes("platku sojow");
+    if (extra === "Tempura" && _hasTempuraInName) return false;
+    if (extra === "Płatek sojowy" && _hasPlatekInName) return false;
+    if (extra === "Tamago" && _fullPlain.includes("tamago")) return false;
+
+    // BLOCK 0b: Tempura i Płatek sojowy wykluczają się wzajemnie
+    // (jeśli w nazwie jest jedno, drugie nie może być dodane, i odwrotnie)
+    const _addons: string[] = Array.isArray(prod.addons) ? prod.addons as string[] : [];
+    if (extra === "Tempura" && (_hasPlatekInName || _addons.includes("Płatek sojowy"))) return false;
+    if (extra === "Płatek sojowy" && (_hasTempuraInName || _addons.includes("Tempura"))) return false;
+
     const catForLogic =
       inferCategoryFromName(prodInfo.name) ||
       inferCategoryFromName(prod.name) ||
@@ -878,17 +893,19 @@ const showSauces = !isDrink && !isDessert;
     const rowTextPlain = normalizePlain(rowText || "");
 
     // 0) BLOKADA "DODAJESZ TO CO JUŻ JEST W ROLCE"
-    // Tempura / tempurze / tempur... => blokuj Tempurę
-    if (ex === "Tempura" && rowTextLc.includes("tempur")) return false;
+    const _hasTempInRow = rowTextLc.includes("tempur");
+    const _hasPlatInRow = rowTextPlain.includes("platek sojow") || rowTextPlain.includes("platku sojow");
+    if (ex === "Tempura" && _hasTempInRow) return false;
+    if (ex === "Płatek sojowy" && _hasPlatInRow) return false;
+    if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
 
-    // "płatek sojowy" / "w płatku sojowym" => blokuj Płatek sojowy
-if (
-  ex === "Płatek sojowy" &&
-  (rowTextPlain.includes("platek sojow") || rowTextPlain.includes("platku sojow"))
-) return false;
-
-// "tamago" => blokuj Tamago (żeby nie dało się dodać drugi raz)
-if (ex === "Tamago" && rowTextPlain.includes("tamago")) return false;
+    // 0b) Tempura i Płatek sojowy wykluczają się wzajemnie
+    // (rolka w tempurze nie może mieć płatka i odwrotnie;
+    //  jeśli użytkownik już wybrał jedno jako addon, drugie jest zablokowane)
+    const _rowExtras: string[] = Array.isArray(prod.addons) ? prod.addons as string[] : [];
+    const _rowExKey = (e: string) => `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — ${e}`;
+    if (ex === "Tempura" && (_hasPlatInRow || _rowExtras.includes(_rowExKey("Płatek sojowy")))) return false;
+    if (ex === "Płatek sojowy" && (_hasTempInRow || _rowExtras.includes(_rowExKey("Tempura")))) return false;
 
     // === Hosomaki / Hoso ===
     if (rowCatLc.includes("hosomaki") || rowCatLc.includes("hoso")) {

@@ -408,6 +408,21 @@ const ProductItemEditor: React.FC<{
 
     if (!prodInfo) return false;
 
+    // BLOCK 0: nie pozwalaj dodać dodatku, który już jest w nazwie dania
+    const _fullText = `${item.name} ${prodInfo.description || ""}`.toLowerCase();
+    const _hasTempInName = _fullText.includes("tempur");
+    const _hasPlatInName =
+      _fullText.includes("płatek sojow") || _fullText.includes("płatku sojow") ||
+      _fullText.includes("platek sojow") || _fullText.includes("platku sojow");
+    if (extra === "Tempura" && _hasTempInName) return false;
+    if (extra === "Płatek sojowy" && _hasPlatInName) return false;
+    if (extra === "Tamago" && _fullText.includes("tamago")) return false;
+
+    // BLOCK 0b: Tempura i Płatek sojowy wykluczają się wzajemnie
+    const _addons: string[] = Array.isArray(item.addons) ? item.addons : [];
+    if (extra === "Tempura" && (_hasPlatInName || _addons.includes("Płatek sojowy"))) return false;
+    if (extra === "Płatek sojowy" && (_hasTempInName || _addons.includes("Tempura"))) return false;
+
     const s = (prodInfo.subcategory || subcat || "").toLowerCase();
 
     // === California ===
@@ -602,9 +617,10 @@ const ProductItemEditor: React.FC<{
   const toggleAddon = (a: string) => {
     const on = (item.addons ?? []).includes(a);
     const allowed = EXTRAS.includes(a) ? canUseExtra(a) : true;
+    // zawsze pozwalaj usunąć (deselect), nawet gdy !allowed (np. stare dane z obu wybranych)
+    if (on) { removeAddon(index, a); return; }
     if (!allowed) return;
-    if (on) removeAddon(index, a);
-    else addAddon(index, a);
+    addAddon(index, a);
   };
 
   const toggleWholeSetBake = () => {
@@ -691,6 +707,21 @@ const ProductItemEditor: React.FC<{
               }`.toLowerCase();
 
               const canUseExtraForRow = (ex: string): boolean => {
+                // BLOCK 0: nie pozwalaj dodać dodatku, który już jest w rolce
+                const _hasTempR = text.includes("tempur");
+                const _hasPlatR =
+                  text.includes("płatek sojow") || text.includes("płatku sojow") ||
+                  text.includes("platek sojow") || text.includes("platku sojow");
+                if (ex === "Tempura" && _hasTempR) return false;
+                if (ex === "Płatek sojowy" && _hasPlatR) return false;
+                if (ex === "Tamago" && text.includes("tamago")) return false;
+
+                // BLOCK 0b: Tempura i Płatek sojowy wykluczają się wzajemnie
+                const _rowAddons: string[] = Array.isArray(item.addons) ? item.addons : [];
+                const _rKey = (e: string) => `${SET_ROLL_EXTRA_PREFIX}${rowKeyBase} — ${e}`;
+                if (ex === "Tempura" && (_hasPlatR || _rowAddons.includes(_rKey("Płatek sojowy")))) return false;
+                if (ex === "Płatek sojowy" && (_hasTempR || _rowAddons.includes(_rKey("Tempura")))) return false;
+
                 if (rowCatLc.includes("california")) {
                   if (ex === "Ryba pieczona") {
                     return isSpecialCaliforniaBakedFishProduct(
@@ -781,16 +812,17 @@ const ProductItemEditor: React.FC<{
                           key={ex}
                           type="button"
                           onClick={() => {
+                            // zawsze pozwalaj usunąć (deselect), nawet gdy !allowed
+                            if (on) { removeAddon(index, key); return; }
                             if (!allowed) return;
-                            if (on) removeAddon(index, key);
-                            else addAddon(index, key);
+                            addAddon(index, key);
                           }}
                           className={clsx(
                             "px-2 py-1 rounded text-[11px] border",
-                            !allowed
-                              ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
-                              : on
+                            on
                               ? "bg-black text-white border-black"
+                              : !allowed
+                              ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
                               : "bg-white text-black hover:bg-gray-50 border-gray-200"
                           )}
                         >
@@ -905,13 +937,13 @@ const ProductItemEditor: React.FC<{
                 return (
                   <button
                     key={ex}
-                    onClick={() => allowed && toggleAddon(ex)}
+                    onClick={() => (allowed || on) && toggleAddon(ex)}
                     className={clsx(
                       "px-2 py-1 rounded text-xs border",
-                      !allowed
-                        ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
-                        : on
+                      on
                         ? "bg-black text-white border-black"
+                        : !allowed
+                        ? "opacity-40 cursor-not-allowed bg-gray-50 border-gray-200"
                         : "bg-white text-black hover:bg-gray-50 border-gray-200"
                     )}
                   >
