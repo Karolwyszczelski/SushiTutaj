@@ -88,10 +88,45 @@ export const ProductItem: React.FC<{
   // 2. TERAZ MOŻEMY GO UŻYĆ w optionGroups
   // === NOWA LOGIKA Z BAZY ===
   // Wyciągamy grupy opcji z produktu do łatwiejszej zmiennej
-  const optionGroups = useMemo(() => {
+  const rawOptionGroups = useMemo(() => {
   // Dopisałem typ: (link: DbProductOptionLink)
   return prodInfo?.product_option_groups?.map((link: DbProductOptionLink) => link.option_group) || [];
 }, [prodInfo]);
+
+  // --- FILTR: pokaż tylko grupy opcji PASUJĄCE do podkategorii produktu ---
+  // Jeśli nazwa grupy zawiera podkategorię (np. "Dodatki Futomaki"),
+  // to grupa pokazuje się TYLKO dla produktów tej podkategorii.
+  // Grupy bez konkretnej podkategorii w nazwie (np. "Smak") — uniwersalne.
+  const optionGroups = useMemo(() => {
+    if (!rawOptionGroups.length) return [];
+    const productSubcatNorm = (subcat || '').toLowerCase();
+
+    const subcatMatchers: [string, string[]][] = [
+      ['futomaki', ['futo', 'futomak']],
+      ['hosomaki', ['hoso', 'hosomak']],
+      ['california', ['california', 'cali']],
+      ['nigiri', ['nigiri']],
+      ['specjaly', ['specjal', 'specjał']],
+      ['zestawy', ['zestaw', 'set']],
+    ];
+
+    return rawOptionGroups.filter((group: DbOptionGroup) => {
+      const gn = group.name.toLowerCase();
+
+      for (const [subKey, keywords] of subcatMatchers) {
+        const groupMentionsSubcat = keywords.some(kw => gn.includes(kw));
+        if (groupMentionsSubcat) {
+          // Grupa celuje w konkretną podkategorię — pokaż tylko jeśli produkt pasuje
+          const productMatches = productSubcatNorm.includes(subKey) ||
+            keywords.some(kw => productSubcatNorm.includes(kw));
+          return productMatches;
+        }
+      }
+
+      // Nazwa grupy nie wspomina żadnej podkategorii — uniwersalna, pokazuj
+      return true;
+    });
+  }, [rawOptionGroups, subcat]);
 
   const addonsArr: string[] = Array.isArray(prod.addons) ? (prod.addons as string[]) : [];
   
@@ -1397,7 +1432,7 @@ const showSauces = !isDrink && !isDessert;
           </div>
         )}
 
-        {!isSet && !isDrink && !isDessert && (
+        {!isSet && !isDrink && !isDessert && rawOptionGroups.length === 0 && (
           <div className="mt-4 space-y-3">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-purple-400 to-indigo-500 flex items-center justify-center">

@@ -40,6 +40,7 @@ import {
   computeAddonsCostWithSauces,
   getRestaurantCityFromPath,
   getRestaurantPhone,
+  inferCategoryFromName,
   isDateTimeBlocked,
   isOpenForSchedule,
   isVisible,
@@ -1493,13 +1494,42 @@ const totalWithDelivery = Math.max(0, subtotal + deliveryCost - totalDiscount);
     }
 
     // === Walidacja wymaganych opcji (np. smak gyozy) ===
+    // Filtr: pomijamy grupy, których nazwa wskazuje na inną podkategorię niż produkt.
+    const subcatMatchersValidation: [string, string[]][] = [
+      ['futomaki', ['futo', 'futomak']],
+      ['hosomaki', ['hoso', 'hosomak']],
+      ['california', ['california', 'cali']],
+      ['nigiri', ['nigiri']],
+      ['specjaly', ['specjal', 'specjał']],
+      ['zestawy', ['zestaw', 'set']],
+    ];
+    const isGroupRelevant = (groupName: string, productSubcat: string): boolean => {
+      const gn = groupName.toLowerCase();
+      const sn = productSubcat.toLowerCase();
+      for (const [subKey, keywords] of subcatMatchersValidation) {
+        if (keywords.some(kw => gn.includes(kw))) {
+          return sn.includes(subKey) || keywords.some(kw => sn.includes(kw));
+        }
+      }
+      return true; // uniwersalna grupa
+    };
+
     for (const item of items) {
       const product = resolveProduct(item);
       if (!product?.product_option_groups?.length) continue;
       const addons: string[] = Array.isArray(item.addons) ? item.addons : [];
+      const itemSubcat = (
+        inferCategoryFromName(product.name) ||
+        product.subcategory ||
+        productCategory(item.baseName || item.name) ||
+        ''
+      ).toLowerCase();
+
       for (const link of product.product_option_groups) {
         const group = link.option_group;
         if (!group) continue;
+        // Pomijaj grupy nieadekwatne do podkategorii produktu
+        if (!isGroupRelevant(group.name, itemSubcat)) continue;
         const isRequired = group.min_select > 0 || group.type === "radio";
         if (!isRequired) continue;
         const minNeeded = Math.max(group.min_select, 1);
