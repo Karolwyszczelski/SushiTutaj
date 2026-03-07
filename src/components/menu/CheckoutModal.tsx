@@ -1495,6 +1495,8 @@ const totalWithDelivery = Math.max(0, subtotal + deliveryCost - totalDiscount);
 
     // === Walidacja wymaganych opcji (np. smak gyozy) ===
     // Filtr: pomijamy grupy, których nazwa wskazuje na inną podkategorię niż produkt.
+    // Dla sushi (futomaki, hosomaki, california, nigiri) — dodatki są OPCJONALNE, nie walidujemy.
+    const SUSHI_SUBCAT_KEYWORDS = ['futo', 'futomak', 'hoso', 'hosomak', 'california', 'cali', 'nigiri'];
     const subcatMatchersValidation: [string, string[]][] = [
       ['futomaki', ['futo', 'futomak']],
       ['hosomaki', ['hoso', 'hosomak']],
@@ -1524,6 +1526,10 @@ const totalWithDelivery = Math.max(0, subtotal + deliveryCost - totalDiscount);
         productCategory(item.baseName || item.name) ||
         ''
       ).toLowerCase();
+
+      // Dla sushi: dodatki zawsze opcjonalne — pomijamy walidację
+      const isItemSushi = SUSHI_SUBCAT_KEYWORDS.some(kw => itemSubcat.includes(kw));
+      if (isItemSushi) continue;
 
       for (const link of product.product_option_groups) {
         const group = link.option_group;

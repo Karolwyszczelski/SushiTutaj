@@ -101,6 +101,77 @@ export const ProductItem: React.FC<{
   // Jeśli nazwa grupy zawiera podkategorię (np. "Dodatki Futomaki"),
   // to grupa pokazuje się TYLKO dla produktów tej podkategorii.
   // Grupy bez konkretnej podkategorii w nazwie (np. "Smak") — uniwersalne.
+
+  // Podkategorie sushi — dodatki są OPCJONALNE i filtrowane per produkt
+  const SUSHI_SUBCATS = ['futomaki', 'futo', 'hosomaki', 'hoso', 'california', 'cali', 'nigiri'];
+  const isSushiSubcat = SUSHI_SUBCATS.some(kw => subcat.includes(kw));
+
+  // Tekst produktu do analizy wykluczeń
+  const _productFullText = `${prod.name} ${prodInfo?.description || ""}`.toLowerCase();
+  const _productFullPlain = normalizePlain(`${prod.name} ${prodInfo?.description || ""}`);
+  const _prodHasTempura = _productFullText.includes("tempur");
+  const _prodHasPlatek = _productFullPlain.includes("platek sojow") || _productFullPlain.includes("platku sojow");
+  const _prodHasTamago = _productFullPlain.includes("tamago");
+  const _prodIsBakedOrTempura = isAlreadyBakedOrTempura(`${prod.name} ${prodInfo?.description || ""}`);
+
+  /** Sprawdza czy dana opcja z bazy jest dozwolona dla tego konkretnego produktu (sushi logic) */
+  const isDbOptionAllowedForProduct = useCallback((optionName: string): boolean => {
+    if (!isSushiSubcat) return true; // nie-sushi — nie filtrujemy opcji
+
+    const on = optionName.toLowerCase();
+    const isOptTempura = on.includes("tempur");
+    const isOptPlatek = on.includes("platek") || on.includes("płatek");
+    const isOptTamago = on.includes("tamago");
+    const isOptBakedFish = on.includes("ryba pieczon") || on.includes("pieczona");
+
+    // Jeśli produkt jest już w tempurze / pieczony — nie pokazuj żadnych dodatków "pieczeniowych"
+    if (_prodIsBakedOrTempura && (isOptTempura || isOptBakedFish)) return false;
+
+    // Jeśli produkt ma już tempurę w nazwie — ukryj Tempurę
+    if (isOptTempura && _prodHasTempura) return false;
+    // Jeśli produkt ma już płatek sojowy — ukryj Płatek sojowy
+    if (isOptPlatek && _prodHasPlatek) return false;
+    // Jeśli produkt ma tamago — ukryj Tamago
+    if (isOptTamago && _prodHasTamago) return false;
+
+    // Tempura i Płatek sojowy wykluczają się wzajemnie
+    const currentAddons: string[] = Array.isArray(prod.addons) ? prod.addons as string[] : [];
+    if (isOptTempura && (_prodHasPlatek || currentAddons.some(a => a.toLowerCase().includes("płatek") || a.toLowerCase().includes("platek")))) return false;
+    if (isOptPlatek && (_prodHasTempura || currentAddons.some(a => a.toLowerCase().includes("tempur")))) return false;
+
+    // === California — prawie nic nie wolno ===
+    if (subcat.includes("california")) {
+      if (isOptBakedFish) {
+        return isSpecialCaliforniaBakedFishProduct(prod.name, prodInfo?.description || "");
+      }
+      return false; // California nie ma żadnych innych dodatków
+    }
+
+    // === Hosomaki — tylko Tempura ===
+    if (subcat.includes("hoso")) {
+      return isOptTempura;
+    }
+
+    // === Futomaki — Tempura, Płatek sojowy, Tamago, Ryba pieczona (surowe) ===
+    if (subcat.includes("futo")) {
+      if (isOptBakedFish) {
+        return /surowy/i.test(_productFullText);
+      }
+      return isOptTempura || isOptPlatek || isOptTamago;
+    }
+
+    // === Nigiri — Ryba pieczona (łosoś/tuńczyk) ===
+    if (subcat.includes("nigiri")) {
+      if (isOptBakedFish) {
+        return _productFullText.includes("łosoś") || _productFullText.includes("losos") ||
+               _productFullText.includes("tuńczyk") || _productFullText.includes("tunczyk");
+      }
+      return false;
+    }
+
+    return true;
+  }, [isSushiSubcat, subcat, _prodIsBakedOrTempura, _prodHasTempura, _prodHasPlatek, _prodHasTamago, _productFullText, _productFullPlain, prod.name, prod.addons, prodInfo]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const optionGroups = useMemo(() => {
     if (!rawOptionGroups.length) return [];
     const productSubcatNorm = (subcat || '').toLowerCase();
@@ -114,23 +185,30 @@ export const ProductItem: React.FC<{
       ['zestawy', ['zestaw', 'set']],
     ];
 
-    return rawOptionGroups.filter((group: DbOptionGroup) => {
-      const gn = group.name.toLowerCase();
+    return rawOptionGroups
+      .filter((group: DbOptionGroup) => {
+        const gn = group.name.toLowerCase();
 
-      for (const [subKey, keywords] of subcatMatchers) {
-        const groupMentionsSubcat = keywords.some(kw => gn.includes(kw));
-        if (groupMentionsSubcat) {
-          // Grupa celuje w konkretną podkategorię — pokaż tylko jeśli produkt pasuje
-          const productMatches = productSubcatNorm.includes(subKey) ||
-            keywords.some(kw => productSubcatNorm.includes(kw));
-          return productMatches;
+        for (const [subKey, keywords] of subcatMatchers) {
+          const groupMentionsSubcat = keywords.some(kw => gn.includes(kw));
+          if (groupMentionsSubcat) {
+            const productMatches = productSubcatNorm.includes(subKey) ||
+              keywords.some(kw => productSubcatNorm.includes(kw));
+            return productMatches;
+          }
         }
-      }
 
-      // Nazwa grupy nie wspomina żadnej podkategorii — uniwersalna, pokazuj
-      return true;
-    });
-  }, [rawOptionGroups, subcat]);
+        return true;
+      })
+      .map((group: DbOptionGroup) => {
+        // Dla sushi: filtruj poszczególne opcje wg logiki produktowej
+        if (!isSushiSubcat) return group;
+        const filteredOptions = group.options.filter(o => isDbOptionAllowedForProduct(o.name));
+        if (filteredOptions.length === 0) return null; // ukryj pustą grupę
+        return { ...group, options: filteredOptions };
+      })
+      .filter(Boolean) as DbOptionGroup[];
+  }, [rawOptionGroups, subcat, isSushiSubcat, isDbOptionAllowedForProduct]);
 
   const addonsArr: string[] = Array.isArray(prod.addons) ? (prod.addons as string[]) : [];
   
@@ -138,11 +216,13 @@ export const ProductItem: React.FC<{
   const isOptionSelected = (optionName: string) => addonsArr.includes(optionName);
 
   // Sprawdzenie, które grupy wymagają wyboru (min_select > 0 lub radio z min_select >= 1)
+  // DLA SUSHI (futomaki, hosomaki, california, nigiri) — dodatki są ZAWSZE opcjonalne.
+  // Wymagane tylko dla nie-sushi (np. Gyoza — wybór smaku).
   const getGroupSelectedCount = (group: DbOptionGroup) =>
     group.options.filter((o) => addonsArr.includes(o.name)).length;
 
   const isGroupRequired = (group: DbOptionGroup) =>
-    group.min_select > 0 || group.type === "radio";
+    !isSushiSubcat && (group.min_select > 0 || group.type === "radio");
 
   const isGroupMissingSelection = (group: DbOptionGroup) =>
     isGroupRequired(group) && getGroupSelectedCount(group) < Math.max(group.min_select, 1);
