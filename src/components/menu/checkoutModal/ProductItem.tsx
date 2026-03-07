@@ -85,6 +85,10 @@ export const ProductItem: React.FC<{
     (prod.baseName && byName.get(prod.baseName)) ||
     byName.get(prod.name);
 
+  // kategoria: najpierw po nazwie, potem z bazy (potrzebne wcześniej do filtrowania optionGroups)
+  const inferredCat = inferCategoryFromName(prodInfo?.name || prod.name);
+  const subcat = (inferredCat || prodInfo?.subcategory || "").toLowerCase();
+
   // 2. TERAZ MOŻEMY GO UŻYĆ w optionGroups
   // === NOWA LOGIKA Z BAZY ===
   // Wyciągamy grupy opcji z produktu do łatwiejszej zmiennej
@@ -166,10 +170,6 @@ export const ProductItem: React.FC<{
         }
     }
   };
-
-   // kategoria: najpierw po nazwie, potem z bazy
-  const inferredCat = inferCategoryFromName(prodInfo?.name || prod.name);
-  const subcat = (inferredCat || prodInfo?.subcategory || "").toLowerCase();
 
   // Zestaw miesiąca: wykrywamy po nazwie NIEZALEŻNIE od kategorii
   const isSetMonth = (() => {
