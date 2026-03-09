@@ -4,7 +4,7 @@
 import { useCallback, useMemo, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import useCartStore from "@/store/cartStore";
-import { useMobileNavStore, type MobileTab } from "@/store/mobileNavStore";
+import { useMobileNavStore } from "@/store/mobileNavStore";
 import MobileBottomNav, { type MobileTab as NavTab } from "./MobileBottomNav";
 import MobileBottomSheet from "./MobileBottomSheet";
 
@@ -149,58 +149,6 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
     setAccountOpen(false);
   }, [setAccountOpen]);
 
-  // Swipe gesture handling
-  const tabs: MobileTab[] = ["home", "menu", "set"];
-  const touchStartX = useRef(0);
-  const touchStartY = useRef(0);
-  const isSwiping = useRef(false);
-
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    // Nie obsługuj swipe gdy otwarte są modale
-    if (cartOpen || accountOpen || reservationOpen) return;
-    
-    touchStartX.current = e.touches[0].clientX;
-    touchStartY.current = e.touches[0].clientY;
-    isSwiping.current = false;
-  }, [cartOpen, accountOpen, reservationOpen]);
-
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (cartOpen || accountOpen || reservationOpen) return;
-    
-    const deltaX = e.touches[0].clientX - touchStartX.current;
-    const deltaY = e.touches[0].clientY - touchStartY.current;
-    
-    // Wyższy próg (30px) + ruch musi być wyraźnie poziomy (2x)
-    if (Math.abs(deltaX) > Math.abs(deltaY) * 2 && Math.abs(deltaX) > 30) {
-      isSwiping.current = true;
-    }
-  }, [cartOpen, accountOpen, reservationOpen]);
-
-  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (cartOpen || accountOpen || reservationOpen) {
-      isSwiping.current = false;
-      return;
-    }
-    if (!isSwiping.current) return;
-    
-    // Always reset swiping flag
-    isSwiping.current = false;
-    
-    const deltaX = e.changedTouches[0].clientX - touchStartX.current;
-    const threshold = 80;
-    
-    if (Math.abs(deltaX) < threshold) return;
-    
-    const currentIndex = tabs.indexOf(activeTab as MobileTab);
-    if (currentIndex === -1) return;
-    
-    if (deltaX > 0 && currentIndex > 0) {
-      setActiveTab(tabs[currentIndex - 1]);
-    } else if (deltaX < 0 && currentIndex < tabs.length - 1) {
-      setActiveTab(tabs[currentIndex + 1]);
-    }
-  }, [activeTab, setActiveTab, cartOpen, accountOpen, reservationOpen]);
-
   // Determine which MobileTab to show in bottom nav (hero maps to none being active)
   const displayActiveTab = activeTab === "home" ? undefined : activeTab;
 
@@ -209,10 +157,6 @@ export default function MobileAppShell({ children }: MobileAppShellProps) {
       {/* Main content area - scrollable within bounds */}
       <main 
         className="flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
-        style={{ touchAction: "pan-y" }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
       >
         {/* Keep all tab views mounted but hidden — prevents re-import & re-render lag */}
         <div className={activeTab === "home" ? "min-h-full" : "hidden"} style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 16px)" }}>

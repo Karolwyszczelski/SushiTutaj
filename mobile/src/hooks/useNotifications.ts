@@ -8,22 +8,45 @@ import {
   FCM_REGISTER_URL,
   NOTIFICATION_CHANNEL_ID,
   NOTIFICATION_CHANNEL_NAME,
+  NOTIFICATION_CHANNEL_VERSION,
+  VERSIONED_CHANNEL_ID,
   ADMIN_URL,
 } from "../config";
 import { startAlarm, stopAlarm } from "../utils/alarmSound";
 
 // ============================================================================
-// KONFIGURACJA POWIADOMIEŃ
+// KONFIGURACJA POWIADOMIEŃ - WARUNKOWY DŹWIĘK
 // ============================================================================
-
-// Jak powiadomienia mają się zachowywać gdy app jest na pierwszym planie
+// KRYTYCZNE: shouldPlaySound MUSI być warunkowe!
+// Bez tego KAŻDE powiadomienie (systemowe, testowe, ACK) gra dźwięk kanału.
+// Profesjonalne apki (Glovo, Uber Eats Merchant) grają dźwięk TYLKO
+// dla zamówień — reszta jest cicha.
+//
+// shouldShowBanner + shouldShowList = nowe API (zastępuje shouldShowAlert)
+// shouldPlaySound: false na Androidzie = drop-down alert NIE pokaże się
+// (niezależnie od priorytetu), WIĘC zostawiamy true dla zamówień
+// i false dla reszty.
+// ============================================================================
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,    // Pokaż nawet gdy app jest otwarta
-    shouldPlaySound: true,    // Zawsze graj dźwięk
-    shouldSetBadge: true,     // Ustaw badge
-    priority: Notifications.AndroidNotificationPriority.MAX, // Najwyższy priorytet
-  }),
+  handleNotification: async (notification) => {
+    const data = notification.request.content.data || {};
+    const type = typeof data.type === "string" ? data.type : "";
+    const isOrder = type === "order" || type === "";
+    // WAŻNE: type === "" (brak pola type) traktujemy jako zamówienie
+    // dla kompatybilności wstecznej, ALE sprawdzamy czy jest title
+    // żeby odfiltrować puste/systemowe powiadomienia
+    const hasContent = !!(notification.request.content.title || notification.request.content.body);
+    const shouldSound = isOrder && hasContent;
+
+    return {
+      shouldShowAlert: true,    // Pokaż nawet gdy app jest otwarta
+      shouldShowBanner: true,   // Nowe API — banner na górze ekranu  
+      shouldShowList: true,     // Nowe API — pokaż w centrum powiadomień
+      shouldPlaySound: shouldSound, // Dźwięk TYLKO dla zamówień z treścią!
+      shouldSetBadge: true,     // Ustaw badge
+      priority: Notifications.AndroidNotificationPriority.MAX,
+    };
+  },
 });
 
 // ============================================================================
@@ -91,41 +114,96 @@ export function useNotifications(): UseNotificationsReturn {
     //    getDevicePushTokenAsync or getExpoPushTokenAsync"
     if (Platform.OS === "android") {
       // =================================================================
-      // KRYTYCZNE: Usuń kanał przed ponownym utworzeniem!
-      // Na Androidzie 8+ (API 26+) ustawienia kanału — dźwięk, wibracje,
-      // importance — są NIEZMIENNE po utworzeniu. Wywołanie
-      // setNotificationChannelAsync na istniejącym kanale NIE aktualizuje
-      // dźwięku! Jedyny sposób to delete + create.
-      //
-      // Bez tego: jeśli kanał był kiedykolwiek utworzony bez dźwięku
-      // (stara wersja apki, bug, reset OEM), dźwięk NIGDY nie zadziała
-      // na tym urządzeniu — nawet po aktualizacji apki.
-      //
-      // Profesjonalne apki POS (Square, Toast) robią to samo.
-      // Dla tabletu restauracyjnego to bezpieczne — restauracja nie
-      // customizuje ustawień powiadomień.
+      // KANAŁ POWIADOMIEŃ — WERSJONOWANE ODTWARZANIE
       // =================================================================
+      // PROBLEM Z POPRZEDNIĄ WERSJĄ:
+      //   delete + create przy KAŻDYM uruchomieniu powodował LUKĘ czasową
+      //   (~50-200ms) gdy kanał nie istniał → powiadomienie przychodziło
+      //   na nieistniejący kanał → Android je wyciszał → CISZA!
+      //   To prawdopodobna przyczyna braku dźwięku w piątek.
+      //
+      // NOWE ROZWIĄZANIE (jak Square POS, Uber Eats Merchant):
+      //   1. Tworzymy NOWY kanał z wersją w ID (np. "orders_v3")
+      //   2. DOPIERO PO sukcesie usuwamy stary kanał
+      //   3. W żadnym momencie nie ma luki bez kanału!
+      //
+      // Kanał jest immutable na Androidzie 8+, więc jedyny sposób
+      // na zmianę dźwięku to nowy kanał z nowym ID.
+      //
+      // audioAttributes.usage = ALARM → używa suwaka głośności ALARMU:
+      //   - Głośność alarmów jest zwykle ustawiona wyżej niż powiadomień
+      //   - Nie jest wyciszana przez tryb cichy/DND (z bypassDnd: true)
+      //   - Na tablecie restauracyjnym to DOKŁADNIE co chcemy
+      // =================================================================
+      const CHANNEL_VERSION = NOTIFICATION_CHANNEL_VERSION;
+
+      // Sprawdź czy aktualny kanał już istnieje i jest poprawny
+      let needsCreation = true;
       try {
-        await Notifications.deleteNotificationChannelAsync(NOTIFICATION_CHANNEL_ID);
-        console.log("[FCM] 🗑️ Stary kanał '" + NOTIFICATION_CHANNEL_ID + "' usunięty (force recreation)");
+        const existing = await Notifications.getNotificationChannelAsync(VERSIONED_CHANNEL_ID);
+        if (existing && existing.importance === Notifications.AndroidImportance.MAX && existing.sound) {
+          // Kanał istnieje i ma poprawną konfigurację — nie ruszaj!
+          needsCreation = false;
+          console.log("[FCM] ✅ Kanał '" + VERSIONED_CHANNEL_ID + "' OK (existing)");
+        } else if (existing) {
+          // Kanał istnieje ale ma złą konfigurację — musimy go odtworzyć
+          console.warn("[FCM] ⚠️ Kanał '" + VERSIONED_CHANNEL_ID + "' ma złą konfigurację:",
+            "importance=" + existing.importance, "sound=" + existing.sound);
+          // Usuwamy wadliwy kanał i odtwarzamy
+          try { await Notifications.deleteNotificationChannelAsync(VERSIONED_CHANNEL_ID); } catch {}
+        }
       } catch {
-        // Kanał nie istniał — OK, pierwszy start
+        // Kanał nie istnieje — tworzymy
       }
 
-      await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNEL_ID, {
-        name: NOTIFICATION_CHANNEL_NAME,
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 300, 100, 300, 100, 400],
-        lightColor: "#FF0000",
-        lockscreenVisibility:
-          Notifications.AndroidNotificationVisibility.PUBLIC,
-        bypassDnd: true,
-        sound: "new_order.mp3",
-        enableVibrate: true,
-        enableLights: true,
-        showBadge: true,
-      });
-      console.log("[FCM] ✅ Kanał powiadomień '" + NOTIFICATION_CHANNEL_ID + "' utworzony z dźwiękiem new_order.mp3");
+      if (needsCreation) {
+        await Notifications.setNotificationChannelAsync(VERSIONED_CHANNEL_ID, {
+          name: NOTIFICATION_CHANNEL_NAME,
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 300, 100, 300, 100, 400],
+          lightColor: "#FF0000",
+          lockscreenVisibility:
+            Notifications.AndroidNotificationVisibility.PUBLIC,
+          bypassDnd: true,
+          sound: "new_order.mp3",
+          enableVibrate: true,
+          enableLights: true,
+          showBadge: true,
+          // KRYTYCZNE: AudioAttributes z usage ALARM!
+          // Używa strumienia ALARM zamiast domyślnego NOTIFICATION.
+          // Na tablecie restauracyjnym alarm volume jest zwykle na max.
+          audioAttributes: {
+            usage: Notifications.AndroidAudioUsage.ALARM,
+            contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+            flags: {
+              enforceAudibility: true,                          // Wymuszaj słyszalność
+              requestHardwareAudioVideoSynchronization: false,
+            },
+          },
+        });
+        console.log("[FCM] ✅ NOWY kanał '" + VERSIONED_CHANNEL_ID + "' utworzony z dźwiękiem ALARM + new_order.mp3");
+      }
+
+      // Wyczyść STARE kanały (poprzednie wersje) — BEZ luki!
+      // Robimy to PO utworzeniu nowego kanału, więc zawsze jest aktywny kanał.
+      //
+      // UWAGA: NIE usuwamy bazowego "orders" bo jest to defaultChannel
+      // skompilowany w natywnym buildzie (app.config.js → expo-notifications plugin).
+      // Jeśli jakieś powiadomienie przyjdzie BEZ channelId, Android użyje
+      // defaultChannel. Lepiej żeby istniał (choć bez custom dźwięku)
+      // niż żeby go nie było (= ciche powiadomienie bez kanału).
+      const oldChannelIds = [
+        // NOTIFICATION_CHANNEL_ID — celowo POMIJAMY bazowy "orders" (defaultChannel)
+        ...Array.from({ length: CHANNEL_VERSION - 1 }, (_, i) => `${NOTIFICATION_CHANNEL_ID}_v${i + 1}`),
+      ];
+      for (const oldId of oldChannelIds) {
+        try {
+          await Notifications.deleteNotificationChannelAsync(oldId);
+          console.log("[FCM] 🗑️ Stary kanał '" + oldId + "' usunięty");
+        } catch {
+          // Kanał nie istniał — OK
+        }
+      }
     }
 
     // Sprawdź uprawnienia
@@ -290,28 +368,61 @@ export function useNotifications(): UseNotificationsReturn {
     notificationListenerRef.current =
       Notifications.addNotificationReceivedListener((notification) => {
         const data = notification.request.content.data || {};
-        console.log("[FCM] Powiadomienie otrzymane:", data);
+        const notifTitle = notification.request.content.title || "";
+        const notifBody = notification.request.content.body || "";
+        const notifType = typeof data.type === "string" ? data.type : "";
+
+        console.log("[FCM] Powiadomienie otrzymane:", {
+          type: notifType || "(brak)",
+          title: notifTitle.slice(0, 50),
+          hasBody: !!notifBody,
+          dataKeys: Object.keys(data),
+        });
 
         // =================================================================
-        // BELT & SUSPENDERS: Dodatkowa wibracja jako backup
-        // Nawet jeśli dźwięk kanału nie zadziała (Android bug, DND mode,
-        // głośność media na 0), wibracja ZAWSZE jest wyczuwalna.
-        // Pattern: krótka-pauza-długa-pauza-krótka (jak dzwonek)
+        // FILTROWANIE: Alarm + wibracja TYLKO dla zamówień z treścią!
         // =================================================================
-        try {
-          Vibration.vibrate([0, 400, 200, 600, 200, 400]);
-        } catch {
-          // Wibracja niedostępna — ignoruj
-        }
+        // Poprzednio: `!data.type || data.type === "order"` startował alarm
+        // dla KAŻDEGO powiadomienia bez pola type (systemowe, testowe,
+        // delivery ACK, Firebase console itp.) → phantom dźwięki!
+        //
+        // Nowa logika (jak Glovo/Uber Eats):
+        //   1. type MUSI być "order" (explicit, nie fallback na brak type)
+        //   2. Powiadomienie MUSI mieć tytuł lub treść (nie puste)
+        //   3. Brak type + jest treść → traktuj jako zamówienie (legacy compat)
+        //      ALE TYLKO jeśli tytuł zawiera słowo kluczowe
+        // =================================================================
+        const isExplicitOrder = notifType === "order";
+        const isLegacyOrder = !notifType && notifTitle && (
+          notifTitle.toLowerCase().includes("zamówienie") ||
+          notifTitle.toLowerCase().includes("zamowienie") ||
+          notifTitle.toLowerCase().includes("nowe ") ||
+          notifTitle.toLowerCase().includes("order")
+        );
+        const isOrderNotification = isExplicitOrder || isLegacyOrder;
 
-        // =================================================================
-        // LOOPING ALARM — jak Glovo, Pyszne.pl, Uber Eats Merchant
-        // Pojedynczy dźwięk notification channel łatwo przeoczyć w kuchni.
-        // Zapętlony alarm gra dopóki pracownik nie kliknie powiadomienia
-        // lub nie wejdzie na stronę zamówień. Auto-stop po 2 min.
-        // =================================================================
-        if (!data.type || data.type === "order") {
+        if (isOrderNotification) {
+          // =================================================================
+          // BELT & SUSPENDERS: Dodatkowa wibracja jako backup
+          // Nawet jeśli dźwięk kanału nie zadziała (Android bug, DND mode,
+          // głośność media na 0), wibracja ZAWSZE jest wyczuwalna.
+          // Pattern: krótka-pauza-długa-pauza-krótka (jak dzwonek)
+          // =================================================================
+          try {
+            Vibration.vibrate([0, 400, 200, 600, 200, 400]);
+          } catch {
+            // Wibracja niedostępna — ignoruj
+          }
+
+          // =================================================================
+          // LOOPING ALARM — jak Glovo, Pyszne.pl, Uber Eats Merchant
+          // Pojedynczy dźwięk notification channel łatwo przeoczyć w kuchni.
+          // Zapętlony alarm gra dopóki pracownik nie kliknie powiadomienia
+          // lub nie wejdzie na stronę zamówień. Auto-stop po 2 min.
+          // =================================================================
           startAlarm().catch(() => {});
+        } else {
+          console.log("[FCM] ℹ️ Nie-zamówieniowe powiadomienie — BEZ alarmu (type='" + notifType + "')");
         }
 
         // =================================================================

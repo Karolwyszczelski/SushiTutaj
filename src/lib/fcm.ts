@@ -187,7 +187,7 @@ async function sendExpoPush(
       timestamp: Date.now(),
     },
     priority: "high" as const,
-    channelId: "orders",
+    channelId: "orders_v4",
     categoryId: "order",
   }));
 
@@ -342,7 +342,9 @@ async function sendFcmNative(
             type: payload.type || "order",
             url: payload.url || "/admin/pickup-order",
             // Kanał + dźwięk — expo-notifications używa tych wartości:
-            channelId: "orders",
+            // KRYTYCZNE: ID kanału MUSI pasować do tego w useNotifications.ts!
+            // Używamy wersjonowanego ID żeby uniknąć problemów z immutable channel.
+            channelId: "orders_v4",
             sound: "new_order.mp3",
             categoryId: "order",
             // KRYTYCZNE: Flagi expo-notifications dla data-only messages
@@ -359,10 +361,46 @@ async function sendFcmNative(
             direct_boot_ok: true,
             // TTL 4h — FCM trzyma wiadomość jeśli urządzenie offline
             ttl: "14400s",
-            // ❌ BRAK notification {} — to GWARANTUJE data-only behavior!
-            // Z notification {} Android System Handler przejmuje kontrolę
-            // w tle i dźwięk zależy od kanału systemowego (zawodny).
-            // Bez notification {} → expo-notifications ZAWSZE kontroluje dźwięk.
+            // ================================================================
+            // NOTIFICATION PAYLOAD — FALLBACK dla Google Play Services Proxy
+            // ================================================================
+            // Na Android Q+ (API 29+) Google Play Services może przejąć
+            // wysyłkę HIGH priority notifications ("notification proxying").
+            // Gdy to się dzieje, GMS wyświetla powiadomienie BEZ uruchamiania
+            // apki → expo-notifications NIE odpala onMessageReceived!
+            //
+            // Z notification {} payload:
+            //   - GMS proxy wyświetla powiadomienie z dźwiękiem kanału
+            //   - Gdy apka JEST uruchomiona: ExpoFirebaseMessagingService
+            //     przechwytuje wiadomość normalnie → alarm loop działa
+            //   - Gdy apka jest w tle: System Handler wyświetla notification
+            //     z ustawieniami kanału → dźwięk jest z kanału ALARM
+            //
+            // KOMPROMIS: Tracimy gwarancję onMessageReceived w tle,
+            // ale ZYSKUJEMY pewność że dźwięk ZAWSZE zagra —
+            // nawet jeśli Android zabił proces apki.
+            //
+            // Dla tabletu restauracyjnego (ekran włączony, apka foreground)
+            // to nie robi różnicy — expo zawsze dostaje callback.
+            // Dla sytuacji "piątek, tablet zablokowany" — to NAPRAWIA problem.
+            // ================================================================
+            notification: {
+              channel_id: "orders_v4",
+              sound: "new_order",  // Bez .mp3! Android szuka w res/raw/
+              default_sound: false,
+              notification_priority: "PRIORITY_MAX",
+              visibility: "PUBLIC",
+              // KRYTYCZNE: default_vibrate_timings: false + custom vibrate
+              // wymusza nasz pattern zamiast domyślnego
+              default_vibrate_timings: false,
+              vibrate_timings: ["0s", "0.3s", "0.1s", "0.3s", "0.1s", "0.4s"],
+              default_light_settings: false,
+              light_settings: {
+                color: { red: 1, green: 0, blue: 0, alpha: 1 },
+                light_on_duration: "0.5s",
+                light_off_duration: "0.5s",
+              },
+            },
           },
         },
       };

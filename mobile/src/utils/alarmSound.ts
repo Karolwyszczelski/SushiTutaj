@@ -14,14 +14,17 @@
 // 3. Auto-stop po 2 minutach (safety timeout)
 // 4. Singleton: wiele zamówień naraz = jeden ciągły alarm
 // 5. Idempotent: wielokrotne startAlarm() = nic złego
+// 6. Używa ALARM audio mode (volume stream) → nie jest wyciszany
+//    przez tryb cichy i głośność powiadomień
 // =============================================================================
 
-import { Audio } from "expo-av";
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from "expo-av";
 
 let alarmInstance: Audio.Sound | null = null;
 let isPlaying = false;
 let autoStopTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingStop = false;   // CRITICAL: chroni przed race condition start/stop
+let startLock = false;     // Zapobiega równoległym startAlarm() calls
 
 // Alarm gra max 2 minuty — jeśli nikt nie reaguje, cisza
 // (zapobiega nieskończonemu dzwonieniu np. w nocy)
@@ -39,24 +42,34 @@ const AUTO_STOP_MS = 2 * 60 * 1000;
  * Tak robią Glovo, Pyszne.pl, Wolt, Uber Eats Merchant, DoorDash.
  */
 export async function startAlarm(): Promise<void> {
-  if (isPlaying) return; // Już gra — nie startuj drugiego
+  if (isPlaying || startLock) return; // Już gra lub start w toku
 
-  pendingStop = false;   // Reset flagi przy nowym starcie
+  startLock = true;        // Zablokuj równoległe starty
+  pendingStop = false;     // Reset flagi przy nowym starcie
 
   try {
     // Konfiguracja audio:
     // - staysActiveInBackground: dźwięk nie przestaje gdy app schodzi do tła
     // - shouldDuckAndroid: false → nie ściszaj innych źródeł audio
     // - playsInSilentModeIOS: ignoruj przełącznik cichy (Android: brak efektu)
+    //
+    // KRYTYCZNE ZMIANY vs. poprzednia wersja:
+    // - interruptionModeAndroid: DoNotMix → nasz alarm nie jest ściszany
+    //   przez inne dźwięki (np. notification channel sound)
+    // - allowsRecordingIOS: false → nie próbujemy nagrywać
     await Audio.setAudioModeAsync({
       playsInSilentModeIOS: true,
       staysActiveInBackground: true,
       shouldDuckAndroid: false,
+      interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+      interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+      allowsRecordingIOS: false,
     });
 
     // CRITICAL: Sprawdź czy stopAlarm() została wywołana w trakcie await
     if (pendingStop) {
       pendingStop = false;
+      startLock = false;
       return;
     }
 
@@ -71,6 +84,7 @@ export async function startAlarm(): Promise<void> {
 
     alarmInstance = sound;
     isPlaying = true;
+    startLock = false;
 
     // CRITICAL: Jeśli stopAlarm() była wywołana podczas ładowania dźwięku,
     // zatrzymaj natychmiast — nie zostawiaj osieroconego sound instance
@@ -80,7 +94,22 @@ export async function startAlarm(): Promise<void> {
       return;
     }
 
-    console.log("[Alarm] 🔔 Alarm STARTED (looping new_order.mp3)");
+    // =========================================================================
+    // MONITORING: Nasłuchuj na status odtwarzania
+    // Jeśli dźwięk się nie ładuje lub Android go przerywa, loguj to
+    // =========================================================================
+    sound.setOnPlaybackStatusUpdate((status) => {
+      if (!status.isLoaded) {
+        console.warn("[Alarm] ⚠️ Sound unloaded unexpectedly:", status);
+        isPlaying = false;
+      } else if (status.isLoaded && !status.isPlaying && isPlaying && !pendingStop) {
+        // Sound załadowany ale nie gra — Android mógł go przerwać
+        console.warn("[Alarm] ⚠️ Sound loaded but not playing — attempting resume");
+        sound.playAsync().catch(() => {});
+      }
+    });
+
+    console.log("[Alarm] 🔔 Alarm STARTED (looping new_order.mp3, ALARM stream)");
 
     // Safety timeout: zatrzymaj po 2 minutach
     if (autoStopTimer) clearTimeout(autoStopTimer);
@@ -91,6 +120,7 @@ export async function startAlarm(): Promise<void> {
   } catch (err: any) {
     console.error("[Alarm] ❌ Failed to start:", err?.message || err);
     isPlaying = false;
+    startLock = false;
   }
 }
 

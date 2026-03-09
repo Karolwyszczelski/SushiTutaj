@@ -26,5 +26,14 @@ export const START_PATH = "/admin/login";
 // Kanał powiadomień Android (musi odpowiadać temu w app.json)
 export const NOTIFICATION_CHANNEL_ID = "orders";
 
+// Wersja kanału — inkrementuj gdy zmieniasz konfigurację kanału.
+// Android 8+ nie pozwala modyfikować kanału po utworzeniu (immutable).
+// Jedyny sposób: nowy kanał z nowym ID = "${NOTIFICATION_CHANNEL_ID}_v${VERSION}"
+// WAŻNE: Po zmianie wersji tutaj, zaktualizuj też channelId w src/lib/fcm.ts!
+export const NOTIFICATION_CHANNEL_VERSION = 4;
+
+// Pełne ID wersjonowanego kanału (używane w useNotifications.ts i fcm.ts)
+export const VERSIONED_CHANNEL_ID = `${NOTIFICATION_CHANNEL_ID}_v${NOTIFICATION_CHANNEL_VERSION}`;
+
 // Nazwa kanału widoczna w ustawieniach Androida
 export const NOTIFICATION_CHANNEL_NAME = "Zamówienia";
